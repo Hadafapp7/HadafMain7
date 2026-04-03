@@ -1,16 +1,19 @@
-import { View, Text } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Typography } from '@/constants/theme';
 
 export default function FocusScreen() {
   const insets = useSafeAreaInsets();
   return (
-    <View style={{ flex: 1, backgroundColor: '#ffffff', paddingTop: insets.top, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ fontFamily: 'Manrope-Light', fontSize: 32, color: '#111111', letterSpacing: -0.8 }}>
-        Focus Mode
-      </Text>
-      <Text style={{ fontFamily: 'Inter-Regular', fontSize: 14, color: '#777777', marginTop: 8 }}>
-        Coming soon
-      </Text>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <Text style={styles.title}>Focus Mode</Text>
+      <Text style={styles.sub}>Coming soon</Text>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' },
+  title:     { ...Typography.pageTitle, color: Colors.primary },
+  sub:       { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.secondary, marginTop: 8 },
+});

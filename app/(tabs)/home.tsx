@@ -6,27 +6,22 @@ import {
   Dimensions,
   StyleSheet,
   Image,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Colors, Typography, Border, Radius } from '@/constants/theme';
+import { getGreeting } from '@/utils/formatters';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const H_PADDING = 24;
-const CARD_GAP  = 16;
-const CARD_SIZE = (SCREEN_WIDTH - H_PADDING * 2 - CARD_GAP) / 2;
+// On web the app lives inside a 390-wide frame; on native use real screen width
+const FRAME_W    = Platform.OS === 'web' ? 390 : Dimensions.get('window').width;
+const H_PADDING  = 24;
+const CARD_GAP   = 16;
+const CARD_SIZE  = (FRAME_W - H_PADDING * 2 - CARD_GAP) / 2;
+const HERO_BAR_W = FRAME_W - H_PADDING * 2 - 48;   // inside hero card padding
+const APP_BAR_W  = FRAME_W - H_PADDING * 2 - 40;   // inside app row padding
 
-// Hero card inner width: screen - scrollview padding×2 - card padding×2
-const HERO_INNER_W = SCREEN_WIDTH - H_PADDING * 2 - 48;
-// App row inner width: screen - scrollview padding×2 - row padding×2
-const APP_ROW_W = SCREEN_WIDTH - H_PADDING * 2 - 40;
-
-// Shared editorial label style — Work Sans Bold, 10 px, uppercase, tracked
-const S_LABEL = {
-  fontFamily: 'WorkSans-Bold',
-  fontSize: 10,
-  letterSpacing: 2,
-  textTransform: 'uppercase' as const,
-};
+const S_LABEL = Typography.label;
 
 const QUICK_ACTIONS = [
   { label: 'Focus', icon: 'filter-center-focus' },
@@ -52,8 +47,12 @@ export default function HomeScreen() {
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <View style={styles.headerRow}>
         <View>
-          <Text style={[S_LABEL, { color: '#a8a29e' }]}>THURSDAY, OCT 24</Text>
-          <Text style={styles.greeting}>Good morning,{'\n'}Ahmad.</Text>
+          <Text style={[S_LABEL, { color: Colors.muted }]}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase()}
+          </Text>
+          <Text style={styles.greeting}>
+            {getGreeting()},{'\n'}Ahmad.
+          </Text>
         </View>
 
         <View style={styles.avatarFrame}>
@@ -69,7 +68,6 @@ export default function HomeScreen() {
       <View style={styles.heroCard}>
         <View style={styles.heroShine} />
 
-        {/* Label + metric + stat */}
         <View>
           <Text style={[S_LABEL, { color: 'rgba(255,255,255,0.6)' }]}>
             TODAY'S SCREEN TIME
@@ -81,12 +79,10 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Progress + buttons */}
         <View>
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: HERO_INNER_W * 0.5 }]} />
+            <View style={[styles.progressFill, { width: HERO_BAR_W * 0.5 }]} />
           </View>
-
           <View style={styles.heroBtnRow}>
             <TouchableOpacity style={styles.heroBtn} activeOpacity={0.7}>
               <MaterialIcons name="settings"  size={13} color="#ffffff" />
@@ -100,7 +96,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* ── Quick Actions 2 × 2 Grid ──────────────────────────────────────────── */}
+      {/* ── Quick Actions 2×2 ────────────────────────────────────────────────── */}
       <View style={styles.grid}>
         {QUICK_ACTIONS.map((action) => (
           <TouchableOpacity
@@ -112,11 +108,11 @@ export default function HomeScreen() {
               <MaterialIcons
                 name={action.icon as React.ComponentProps<typeof MaterialIcons>['name']}
                 size={28}
-                color="#111111"
+                color={Colors.primary}
               />
-              <MaterialIcons name="arrow-forward" size={20} color="#111111" />
+              <MaterialIcons name="arrow-forward" size={20} color={Colors.primary} />
             </View>
-            <Text style={[S_LABEL, { color: '#111111' }]}>{action.label}</Text>
+            <Text style={[S_LABEL, { color: Colors.primary }]}>{action.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -125,7 +121,7 @@ export default function HomeScreen() {
       <View>
         <View style={styles.appsSection}>
           <View style={styles.appsSectionHeader}>
-            <Text style={[S_LABEL, { color: '#111111' }]}>TOP APPS TODAY</Text>
+            <Text style={[S_LABEL, { color: Colors.primary }]}>TOP APPS TODAY</Text>
           </View>
 
           {TOP_APPS.map((app, index) => (
@@ -135,125 +131,60 @@ export default function HomeScreen() {
                   <MaterialIcons
                     name={app.icon as React.ComponentProps<typeof MaterialIcons>['name']}
                     size={20}
-                    color="#111111"
+                    color={Colors.primary}
                   />
                 </View>
                 <View style={styles.appInfo}>
                   <Text style={styles.appName}>{app.name}</Text>
-                  <Text style={[S_LABEL, { color: '#a8a29e' }]}>{app.category}</Text>
+                  <Text style={[S_LABEL, { color: Colors.muted }]}>{app.category}</Text>
                 </View>
                 <Text style={styles.appTime}>{app.time}</Text>
               </View>
-
-              {/* Pixel-width fill — no string percentages */}
               <View style={styles.appProgressTrack}>
-                <View style={[styles.appProgressFill, { width: APP_ROW_W * app.progress }]} />
+                <View style={[styles.appProgressFill, { width: APP_BAR_W * app.progress }]} />
               </View>
             </View>
           ))}
         </View>
 
         <TouchableOpacity style={styles.viewAllBtn} activeOpacity={0.7}>
-          <Text style={[S_LABEL, { color: '#111111' }]}>View All Apps</Text>
+          <Text style={[S_LABEL, { color: Colors.primary }]}>View All Apps</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
   );
 }
 
-const BORDER = { borderWidth: 1.5, borderColor: '#111111' } as const;
-
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  content: {
-    paddingHorizontal: H_PADDING,
-    paddingBottom: 140,
-    rowGap: 32,
-  },
+  scroll: { flex: 1, backgroundColor: Colors.background },
+  content: { paddingHorizontal: H_PADDING, paddingBottom: 140, rowGap: 32 },
 
   // Header
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  greeting: {
-    fontFamily: 'Manrope-Light',
-    fontSize: 32,
-    color: '#111111',
-    letterSpacing: -0.8,
-    lineHeight: 40,
-    marginTop: 4,
-  },
-  avatarFrame: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    ...BORDER,
-    padding: 2,
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-  },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  greeting:  { ...Typography.pageTitle, color: Colors.primary, marginTop: 4 },
+  avatarFrame: { width: 48, height: 48, borderRadius: 24, ...Border.signature, padding: 2, overflow: 'hidden' },
+  avatarImage: { width: 42, height: 42, borderRadius: 21 },
 
   // Hero card
   heroCard: {
-    backgroundColor: '#111111',
-    borderRadius: 24,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.lg,
     padding: 24,
     height: 256,
     justifyContent: 'space-between',
     overflow: 'hidden',
   },
   heroShine: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    position: 'absolute', top: 0, right: 0,
+    width: 200, height: 200, borderRadius: 100,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  heroMetric: {
-    fontFamily: 'Manrope-ExtraLight',
-    fontSize: 56,
-    color: '#ffffff',
-    letterSpacing: -1.5,
-    lineHeight: 60,
-    marginTop: 4,
-  },
-  heroStatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  heroStatText: {
-    fontSize: 12,
-    fontFamily: 'Inter-Medium',
-    color: 'rgba(255,255,255,0.8)',
-    marginLeft: 4,
-  },
-  progressTrack: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  progressFill: {
-    height: 4,
-    backgroundColor: '#ffffff',
-    borderRadius: 2,
-  },
-  heroBtnRow: {
-    flexDirection: 'row',
-  },
+  heroMetric:   { ...Typography.heroMetric, color: '#ffffff', marginTop: 4 },
+  heroStatRow:  { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  heroStatText: { fontFamily: 'Inter-Medium', fontSize: 12, color: 'rgba(255,255,255,0.8)', marginLeft: 4 },
+  progressTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden', marginBottom: 20 },
+  progressFill:  { height: 4, backgroundColor: '#ffffff', borderRadius: 2 },
+  heroBtnRow:    { flexDirection: 'row' },
   heroBtn: {
     flex: 1,
     height: 40,
@@ -267,93 +198,23 @@ const styles = StyleSheet.create({
   },
 
   // Grid
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: CARD_GAP,
-  },
-  actionCard: {
-    ...BORDER,
-    borderRadius: 24,
-    padding: 20,
-    justifyContent: 'space-between',
-    backgroundColor: '#ffffff',
-  },
-  actionCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
+  grid:        { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP },
+  actionCard:  { ...Border.signature, borderRadius: Radius.lg, padding: 20, justifyContent: 'space-between', backgroundColor: Colors.background },
+  actionCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
 
-  // Top Apps
-  appsSection: {
-    ...BORDER,
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  appsSectionHeader: {
-    padding: 20,
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#111111',
-    backgroundColor: '#fafaf9',
-  },
-  appRow: {
-    padding: 20,
-    backgroundColor: '#ffffff',
-  },
-  appRowBorder: {
-    borderTopWidth: 1.5,
-    borderTopColor: '#111111',
-  },
-  appRowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  appIconFrame: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f3f3f4',
-    ...BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  appInfo: {
-    flex: 1,
-  },
-  appName: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 14,
-    color: '#111111',
-    marginBottom: 2,
-  },
-  appTime: {
-    fontFamily: 'Manrope-Light',
-    fontSize: 20,
-    color: '#111111',
-    letterSpacing: -0.5,
-  },
-  appProgressTrack: {
-    height: 4,
-    backgroundColor: '#f3f3f4',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  appProgressFill: {
-    height: 4,
-    backgroundColor: '#111111',
-    borderRadius: 2,
-  },
+  // Top apps
+  appsSection:       { ...Border.signature, borderRadius: Radius.lg, overflow: 'hidden' },
+  appsSectionHeader: { padding: 20, borderBottomWidth: 1.5, borderBottomColor: Colors.primary, backgroundColor: Colors.surfaceLow },
+  appRow:            { padding: 20, backgroundColor: Colors.background },
+  appRowBorder:      { borderTopWidth: 1.5, borderTopColor: Colors.primary },
+  appRowTop:         { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  appIconFrame:      { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.surfaceLow, ...Border.signature, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  appInfo:           { flex: 1 },
+  appName:           { ...Typography.bodyBold, color: Colors.primary, marginBottom: 2 },
+  appTime:           { fontFamily: 'Manrope-Light', fontSize: 20, color: Colors.primary, letterSpacing: -0.5 },
+  appProgressTrack:  { height: 4, backgroundColor: Colors.surfaceLow, borderRadius: 2, overflow: 'hidden' },
+  appProgressFill:   { height: 4, backgroundColor: Colors.primary, borderRadius: 2 },
 
   // View All
-  viewAllBtn: {
-    marginTop: 8,
-    height: 56,
-    ...BORDER,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  viewAllBtn: { marginTop: 8, height: 56, ...Border.signature, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });
