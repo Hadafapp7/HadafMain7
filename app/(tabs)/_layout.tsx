@@ -1,28 +1,29 @@
 import { Tabs } from 'expo-router';
-import { View, Text, TouchableOpacity, type TouchableOpacityProps } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 const TABS = [
-  { name: 'home', label: 'HOME', icon: 'home' as const },
-  { name: 'analytics', label: 'STATS', icon: 'bar-chart' as const },
-  { name: 'focus', label: 'FOCUS', icon: 'adjust' as const },
-  { name: 'profile', label: 'PERSON', icon: 'person' as const },
-] satisfies { name: string; label: string; icon: React.ComponentProps<typeof MaterialIcons>['name'] }[];
+  { name: 'home',      label: 'HOME',   icon: 'home'      },
+  { name: 'analytics', label: 'STATS',  icon: 'bar-chart' },
+  { name: 'focus',     label: 'FOCUS',  icon: 'adjust'    },
+  { name: 'profile',   label: 'PERSON', icon: 'person'    },
+] as const;
 
 function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
 
   return (
+    // pointerEvents must be a View PROP, not inside style — fixes java.lang.String cast error
     <View
+      pointerEvents="box-none"
       style={{
         position: 'absolute',
         bottom: Math.max(insets.bottom, 8) + 16,
         left: 0,
         right: 0,
         alignItems: 'center',
-        pointerEvents: 'box-none',
       }}
     >
       <View
@@ -37,7 +38,7 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           alignItems: 'center',
           justifyContent: 'space-between',
           paddingHorizontal: 8,
-          shadowColor: '#000',
+          shadowColor: '#000000',
           shadowOffset: { width: 0, height: 20 },
           shadowOpacity: 0.4,
           shadowRadius: 40,
@@ -50,7 +51,11 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           if (!tab) return null;
 
           const onPress = () => {
-            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
             if (!isFocused && !event.defaultPrevented) {
               navigation.navigate(route.name);
             }
@@ -65,14 +70,18 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 8,
                   backgroundColor: '#333535',
                   borderRadius: 24,
                   paddingHorizontal: 20,
                   paddingVertical: 10,
                 }}
               >
-                <MaterialIcons name={tab.icon} size={20} color="#ffffff" />
+                <MaterialIcons
+                  name={tab.icon as React.ComponentProps<typeof MaterialIcons>['name']}
+                  size={20}
+                  color="#ffffff"
+                  style={{ marginRight: 8 }}
+                />
                 <Text
                   style={{
                     color: '#ffffff',
@@ -92,9 +101,18 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               key={route.key}
               onPress={onPress}
               activeOpacity={0.7}
-              style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}
+              style={{
+                width: 48,
+                height: 48,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <MaterialIcons name={tab.icon} size={24} color="rgba(255,255,255,0.4)" />
+              <MaterialIcons
+                name={tab.icon as React.ComponentProps<typeof MaterialIcons>['name']}
+                size={24}
+                color="rgba(255,255,255,0.4)"
+              />
             </TouchableOpacity>
           );
         })}

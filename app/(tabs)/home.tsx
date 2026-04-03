@@ -1,47 +1,36 @@
 import { ScrollView, View, Text, TouchableOpacity, Dimensions, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const H_PADDING = 24;
-const CARD_GAP = 16;
+const H_PADDING = 24;          // horizontal padding of the scroll container
+const CARD_GAP  = 16;          // gap between grid cards
 const CARD_SIZE = (SCREEN_WIDTH - H_PADDING * 2 - CARD_GAP) / 2;
 
-// ─── Editorial label style ────────────────────────────────────────────────────
-const editorialLabel: object = {
+// Hero card inner width: screen - scrollview H_PADDING×2 - card padding×2
+const HERO_INNER_W = SCREEN_WIDTH - H_PADDING * 2 - 48;
+// App row inner width: screen - scrollview padding×2 - row padding×2
+const APP_ROW_W = SCREEN_WIDTH - H_PADDING * 2 - 40;
+
+// ─── Shared editorial label style (Work Sans Bold, 10px, uppercase, tracked) ──
+const S_LABEL = {
   fontFamily: 'WorkSans-Bold',
   fontSize: 10,
   letterSpacing: 2,
   textTransform: 'uppercase' as const,
 };
 
-// ─── Quick action cards data ──────────────────────────────────────────────────
 const QUICK_ACTIONS = [
-  { label: 'Focus', icon: 'filter-center-focus', lib: 'material' },
-  { label: 'Mood', icon: 'mood', lib: 'material' },
-  { label: 'Goals', icon: 'flag', lib: 'material' },
-  { label: 'Stats', icon: 'insights', lib: 'material' },
+  { label: 'Focus', icon: 'filter-center-focus' },
+  { label: 'Mood',  icon: 'mood'                },
+  { label: 'Goals', icon: 'flag'                },
+  { label: 'Stats', icon: 'insights'            },
 ] as const;
 
-// ─── Top apps data ────────────────────────────────────────────────────────────
 const TOP_APPS = [
-  {
-    name: 'Outlook',
-    category: 'Productivity',
-    time: '45m',
-    progress: 0.75,
-    icon: 'mail',
-    iconLib: 'material',
-  },
-  {
-    name: 'CodeEdit',
-    category: 'Development',
-    time: '38m',
-    progress: 0.55,
-    icon: 'code',
-    iconLib: 'material',
-  },
+  { name: 'Outlook',  category: 'Productivity', time: '45m', progress: 0.75, icon: 'mail' },
+  { name: 'CodeEdit', category: 'Development',  time: '38m', progress: 0.55, icon: 'code' },
 ] as const;
 
 export default function HomeScreen() {
@@ -49,19 +38,17 @@ export default function HomeScreen() {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: '#ffffff' }}
-      contentContainerStyle={{
-        paddingHorizontal: H_PADDING,
-        paddingTop: insets.top + 32,
-        paddingBottom: 140, // space for floating tab bar
-        gap: 32,
-      }}
+      style={styles.scroll}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 32 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <View style={styles.headerRow}>
-        <View style={{ gap: 4 }}>
-          <Text style={[editorialLabel, { color: '#a8a29e' }]}>THURSDAY, OCT 24</Text>
+        <View>
+          <Text style={[S_LABEL, { color: '#a8a29e' }]}>THURSDAY, OCT 24</Text>
           <Text style={styles.greeting}>Good morning,{'\n'}Ahmad.</Text>
         </View>
 
@@ -76,11 +63,11 @@ export default function HomeScreen() {
 
       {/* ── Hero Dark Card ─────────────────────────────────────────────────── */}
       <View style={styles.heroCard}>
-        {/* Subtle radial shine overlay */}
         <View style={styles.heroShine} />
 
-        <View style={{ gap: 6 }}>
-          <Text style={[editorialLabel, { color: 'rgba(255,255,255,0.6)' }]}>
+        {/* Top: label + metric + stat */}
+        <View style={{ rowGap: 6 }}>
+          <Text style={[S_LABEL, { color: 'rgba(255,255,255,0.6)' }]}>
             TODAY'S SCREEN TIME
           </Text>
           <Text style={styles.heroMetric}>2h 14m</Text>
@@ -90,31 +77,27 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={{ gap: 20 }}>
-          {/* Progress bar */}
+        {/* Bottom: progress bar + buttons */}
+        <View style={{ rowGap: 20 }}>
+          {/* Progress bar — numeric pixel width, no string percentages */}
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: '50%' }]} />
+            <View style={[styles.progressFill, { width: HERO_INNER_W * 0.5 }]} />
           </View>
 
-          {/* Pill buttons */}
           <View style={styles.heroBtnRow}>
             <TouchableOpacity style={styles.heroBtn} activeOpacity={0.7}>
-              <MaterialIcons name="settings" size={13} color="#ffffff" />
-              <Text style={[editorialLabel, { color: '#ffffff', letterSpacing: 1.5 }]}>
-                SETTINGS
-              </Text>
+              <MaterialIcons name="settings"  size={13} color="#ffffff" />
+              <Text style={[S_LABEL, { color: '#ffffff', letterSpacing: 1.5 }]}>SETTINGS</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.heroBtn} activeOpacity={0.7}>
               <MaterialIcons name="analytics" size={13} color="#ffffff" />
-              <Text style={[editorialLabel, { color: '#ffffff', letterSpacing: 1.5 }]}>
-                ANALYTICS
-              </Text>
+              <Text style={[S_LABEL, { color: '#ffffff', letterSpacing: 1.5 }]}>ANALYTICS</Text>
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
-      {/* ── Quick Actions 2×2 Grid ──────────────────────────────────────────── */}
+      {/* ── Quick Actions 2 × 2 Grid ────────────────────────────────────────── */}
       <View style={styles.grid}>
         {QUICK_ACTIONS.map((action) => (
           <TouchableOpacity
@@ -123,10 +106,14 @@ export default function HomeScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.actionCardTop}>
-              <MaterialIcons name={action.icon} size={28} color="#111111" />
+              <MaterialIcons
+                name={action.icon as React.ComponentProps<typeof MaterialIcons>['name']}
+                size={28}
+                color="#111111"
+              />
               <MaterialIcons name="arrow-forward" size={20} color="#111111" />
             </View>
-            <Text style={[editorialLabel, { color: '#111111' }]}>{action.label}</Text>
+            <Text style={[S_LABEL, { color: '#111111' }]}>{action.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -136,55 +123,67 @@ export default function HomeScreen() {
         <View style={styles.appsSection}>
           {/* Section header */}
           <View style={styles.appsSectionHeader}>
-            <Text style={[editorialLabel, { color: '#111111' }]}>TOP APPS TODAY</Text>
+            <Text style={[S_LABEL, { color: '#111111' }]}>TOP APPS TODAY</Text>
           </View>
 
-          {/* App rows */}
           {TOP_APPS.map((app, index) => (
             <View
               key={app.name}
-              style={[
-                styles.appRow,
-                index > 0 && styles.appRowBorder,
-              ]}
+              style={[styles.appRow, index > 0 && styles.appRowBorder]}
             >
               <View style={styles.appRowTop}>
-                {/* App icon */}
                 <View style={styles.appIconFrame}>
-                  <MaterialIcons name={app.icon} size={20} color="#111111" />
+                  <MaterialIcons
+                    name={app.icon as React.ComponentProps<typeof MaterialIcons>['name']}
+                    size={20}
+                    color="#111111"
+                  />
                 </View>
 
-                {/* App info */}
-                <View style={{ flex: 1, gap: 2 }}>
+                <View style={styles.appInfo}>
                   <Text style={styles.appName}>{app.name}</Text>
-                  <Text style={[editorialLabel, { color: '#a8a29e' }]}>{app.category}</Text>
+                  <Text style={[S_LABEL, { color: '#a8a29e' }]}>{app.category}</Text>
                 </View>
 
-                {/* Time */}
                 <Text style={styles.appTime}>{app.time}</Text>
               </View>
 
-              {/* Usage bar */}
+              {/* Progress bar — numeric pixel width, no template-literal strings */}
               <View style={styles.appProgressTrack}>
-                <View style={[styles.appProgressFill, { width: `${app.progress * 100}%` }]} />
+                <View
+                  style={[
+                    styles.appProgressFill,
+                    { width: APP_ROW_W * app.progress },
+                  ]}
+                />
               </View>
             </View>
           ))}
         </View>
 
-        {/* View All button */}
         <TouchableOpacity style={styles.viewAllBtn} activeOpacity={0.7}>
-          <Text style={[editorialLabel, { color: '#111111' }]}>View All Apps</Text>
+          <Text style={[S_LABEL, { color: '#111111' }]}>View All Apps</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
   );
 }
 
+// ─── Styles ────────────────────────────────────────────────────────────────────
 const BORDER = { borderWidth: 1.5, borderColor: '#111111' } as const;
 
 const styles = StyleSheet.create({
-  // ── Header ────────────────────────────────────────────────────────────────
+  scroll: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  content: {
+    paddingHorizontal: H_PADDING,
+    paddingBottom: 140,
+    rowGap: 32,
+  },
+
+  // ── Header ─────────────────────────────────────────────────────────────────
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -196,6 +195,7 @@ const styles = StyleSheet.create({
     color: '#111111',
     letterSpacing: -0.8,
     lineHeight: 40,
+    marginTop: 4,
   },
   avatarFrame: {
     width: 48,
@@ -205,13 +205,14 @@ const styles = StyleSheet.create({
     padding: 2,
     overflow: 'hidden',
   },
+  // Explicit pixel dimensions — avoids string '100%' on Android
   avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
 
-  // ── Hero Card ─────────────────────────────────────────────────────────────
+  // ── Hero Card ───────────────────────────────────────────────────────────────
   heroCard: {
     backgroundColor: '#111111',
     borderRadius: 24,
@@ -239,28 +240,29 @@ const styles = StyleSheet.create({
   heroStatRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    columnGap: 4,
   },
   heroStatText: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
     color: 'rgba(255,255,255,0.8)',
   },
+  // Track: overflow hidden clips the fill at exact pixel width
   progressTrack: {
-    width: '100%',
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: 2,
     overflow: 'hidden',
   },
+  // Fill: height is an explicit integer, not a % string
   progressFill: {
-    height: '100%',
+    height: 4,
     backgroundColor: '#ffffff',
     borderRadius: 2,
   },
   heroBtnRow: {
     flexDirection: 'row',
-    gap: 12,
+    columnGap: 12,
   },
   heroBtn: {
     flex: 1,
@@ -271,10 +273,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    columnGap: 6,
   },
 
-  // ── Quick Actions Grid ────────────────────────────────────────────────────
+  // ── Quick Actions Grid ──────────────────────────────────────────────────────
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -293,7 +295,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
 
-  // ── Top Apps ──────────────────────────────────────────────────────────────
+  // ── Top Apps ────────────────────────────────────────────────────────────────
   appsSection: {
     ...BORDER,
     borderRadius: 24,
@@ -307,7 +309,7 @@ const styles = StyleSheet.create({
   },
   appRow: {
     padding: 20,
-    gap: 12,
+    rowGap: 12,
     backgroundColor: '#ffffff',
   },
   appRowBorder: {
@@ -317,7 +319,7 @@ const styles = StyleSheet.create({
   appRowTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    columnGap: 12,
   },
   appIconFrame: {
     width: 40,
@@ -327,6 +329,10 @@ const styles = StyleSheet.create({
     ...BORDER,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  appInfo: {
+    flex: 1,
+    rowGap: 2,
   },
   appName: {
     fontFamily: 'Inter-Bold',
@@ -339,20 +345,21 @@ const styles = StyleSheet.create({
     color: '#111111',
     letterSpacing: -0.5,
   },
+  // Track: overflow hidden clips the fill at exact pixel width
   appProgressTrack: {
-    width: '100%',
     height: 4,
     backgroundColor: '#f3f3f4',
     borderRadius: 2,
     overflow: 'hidden',
   },
+  // Fill: height is explicit integer, width passed as calculated pixel value
   appProgressFill: {
-    height: '100%',
+    height: 4,
     backgroundColor: '#111111',
     borderRadius: 2,
   },
 
-  // ── View All button ───────────────────────────────────────────────────────
+  // ── View All ────────────────────────────────────────────────────────────────
   viewAllBtn: {
     marginTop: 8,
     height: 56,
