@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  /* === Brand Colors === */
+  --color-primary: #111111;
+  --color-on-primary: #e5e2e1;
+  --color-primary-container: #3c3b3b;
+
+  /* === Surfaces === */
+  --color-background: #ffffff;
+  --color-surface: #f9f9f9;
+  --color-surface-bright: #f9f9f9;
+  --color-surface-dim: #dadada;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f3f3f4;
+  --color-surface-container: #eeeeee;
+  --color-surface-container-high: #e8e8e8;
+  --color-surface-container-highest: #e2e2e2;
+  --color-surface-variant: #e2e2e2;
+  --color-inverse-surface: #2f3131;
+  --color-inverse-on-surface: #f0f1f1;
+
+  /* === Text === */
+  --color-on-background: #1a1c1c;
+  --color-on-surface: #1a1c1c;
+  --color-on-surface-variant: #474747;
+  --color-secondary: #5e5e5e;
+  --color-tertiary: #3a3b3c;
+
+  /* === Secondary containers === */
+  --color-secondary-container: #d5d4d4;
+  --color-on-secondary-container: #1b1c1c;
+  --color-tertiary-container: #747475;
+  --color-on-tertiary-container: #ffffff;
+
+  /* === Borders / Outline === */
+  --color-outline: #777777;
+  --color-outline-variant: #c6c6c6;
+
+  /* === State === */
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #410002;
+
+  /* === Misc === */
+  --color-inverse-primary: #c8c6c5;
+  --color-surface-tint: #5f5e5e;
+
+  /* === Fonts === */
+  --font-headline: "Manrope-Light";
+  --font-body: "Inter-Regular";
+  --font-label: "WorkSans-Bold";
+}
