@@ -13,7 +13,6 @@ import {
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from '@expo-google-fonts/inter';
 import { WorkSans_400Regular, WorkSans_700Bold } from '@expo-google-fonts/work-sans';
 import * as SplashScreen from 'expo-splash-screen';
-import { MobileFrame } from '@/components/MobileFrame';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -39,12 +38,12 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <MobileFrame>
+    <>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
       </Stack>
-    </MobileFrame>
+    </>
   );
 }
