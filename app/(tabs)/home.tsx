@@ -1,19 +1,26 @@
-import { ScrollView, View, Text, TouchableOpacity, Dimensions, StyleSheet } from 'react-native';
+import {
+  ScrollView,
+  View,
+  Text,
+  TouchableOpacity,
+  Dimensions,
+  StyleSheet,
+  Image,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const H_PADDING = 24;          // horizontal padding of the scroll container
-const CARD_GAP  = 16;          // gap between grid cards
+const H_PADDING = 24;
+const CARD_GAP  = 16;
 const CARD_SIZE = (SCREEN_WIDTH - H_PADDING * 2 - CARD_GAP) / 2;
 
-// Hero card inner width: screen - scrollview H_PADDING×2 - card padding×2
+// Hero card inner width: screen - scrollview padding×2 - card padding×2
 const HERO_INNER_W = SCREEN_WIDTH - H_PADDING * 2 - 48;
 // App row inner width: screen - scrollview padding×2 - row padding×2
 const APP_ROW_W = SCREEN_WIDTH - H_PADDING * 2 - 40;
 
-// ─── Shared editorial label style (Work Sans Bold, 10px, uppercase, tracked) ──
+// Shared editorial label style — Work Sans Bold, 10 px, uppercase, tracked
 const S_LABEL = {
   fontFamily: 'WorkSans-Bold',
   fontSize: 10,
@@ -39,13 +46,10 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + 32 },
-      ]}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 32 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <View style={styles.headerRow}>
         <View>
           <Text style={[S_LABEL, { color: '#a8a29e' }]}>THURSDAY, OCT 24</Text>
@@ -54,19 +58,19 @@ export default function HomeScreen() {
 
         <View style={styles.avatarFrame}>
           <Image
-            source="https://randomuser.me/api/portraits/men/32.jpg"
+            source={{ uri: 'https://randomuser.me/api/portraits/men/32.jpg' }}
             style={styles.avatarImage}
-            contentFit="cover"
+            resizeMode="cover"
           />
         </View>
       </View>
 
-      {/* ── Hero Dark Card ─────────────────────────────────────────────────── */}
+      {/* ── Hero Dark Card ───────────────────────────────────────────────────── */}
       <View style={styles.heroCard}>
         <View style={styles.heroShine} />
 
-        {/* Top: label + metric + stat */}
-        <View style={{ rowGap: 6 }}>
+        {/* Label + metric + stat */}
+        <View>
           <Text style={[S_LABEL, { color: 'rgba(255,255,255,0.6)' }]}>
             TODAY'S SCREEN TIME
           </Text>
@@ -77,9 +81,8 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Bottom: progress bar + buttons */}
-        <View style={{ rowGap: 20 }}>
-          {/* Progress bar — numeric pixel width, no string percentages */}
+        {/* Progress + buttons */}
+        <View>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: HERO_INNER_W * 0.5 }]} />
           </View>
@@ -97,7 +100,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* ── Quick Actions 2 × 2 Grid ────────────────────────────────────────── */}
+      {/* ── Quick Actions 2 × 2 Grid ──────────────────────────────────────────── */}
       <View style={styles.grid}>
         {QUICK_ACTIONS.map((action) => (
           <TouchableOpacity
@@ -118,19 +121,15 @@ export default function HomeScreen() {
         ))}
       </View>
 
-      {/* ── Top Apps Today ──────────────────────────────────────────────────── */}
+      {/* ── Top Apps Today ────────────────────────────────────────────────────── */}
       <View>
         <View style={styles.appsSection}>
-          {/* Section header */}
           <View style={styles.appsSectionHeader}>
             <Text style={[S_LABEL, { color: '#111111' }]}>TOP APPS TODAY</Text>
           </View>
 
           {TOP_APPS.map((app, index) => (
-            <View
-              key={app.name}
-              style={[styles.appRow, index > 0 && styles.appRowBorder]}
-            >
+            <View key={app.name} style={[styles.appRow, index > 0 && styles.appRowBorder]}>
               <View style={styles.appRowTop}>
                 <View style={styles.appIconFrame}>
                   <MaterialIcons
@@ -139,23 +138,16 @@ export default function HomeScreen() {
                     color="#111111"
                   />
                 </View>
-
                 <View style={styles.appInfo}>
                   <Text style={styles.appName}>{app.name}</Text>
                   <Text style={[S_LABEL, { color: '#a8a29e' }]}>{app.category}</Text>
                 </View>
-
                 <Text style={styles.appTime}>{app.time}</Text>
               </View>
 
-              {/* Progress bar — numeric pixel width, no template-literal strings */}
+              {/* Pixel-width fill — no string percentages */}
               <View style={styles.appProgressTrack}>
-                <View
-                  style={[
-                    styles.appProgressFill,
-                    { width: APP_ROW_W * app.progress },
-                  ]}
-                />
+                <View style={[styles.appProgressFill, { width: APP_ROW_W * app.progress }]} />
               </View>
             </View>
           ))}
@@ -169,7 +161,6 @@ export default function HomeScreen() {
   );
 }
 
-// ─── Styles ────────────────────────────────────────────────────────────────────
 const BORDER = { borderWidth: 1.5, borderColor: '#111111' } as const;
 
 const styles = StyleSheet.create({
@@ -183,7 +174,7 @@ const styles = StyleSheet.create({
     rowGap: 32,
   },
 
-  // ── Header ─────────────────────────────────────────────────────────────────
+  // Header
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -205,14 +196,13 @@ const styles = StyleSheet.create({
     padding: 2,
     overflow: 'hidden',
   },
-  // Explicit pixel dimensions — avoids string '100%' on Android
   avatarImage: {
     width: 42,
     height: 42,
     borderRadius: 21,
   },
 
-  // ── Hero Card ───────────────────────────────────────────────────────────────
+  // Hero card
   heroCard: {
     backgroundColor: '#111111',
     borderRadius: 24,
@@ -236,25 +226,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: -1.5,
     lineHeight: 60,
+    marginTop: 4,
   },
   heroStatRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    columnGap: 4,
+    marginTop: 6,
   },
   heroStatText: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
     color: 'rgba(255,255,255,0.8)',
+    marginLeft: 4,
   },
-  // Track: overflow hidden clips the fill at exact pixel width
   progressTrack: {
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
     borderRadius: 2,
     overflow: 'hidden',
+    marginBottom: 20,
   },
-  // Fill: height is an explicit integer, not a % string
   progressFill: {
     height: 4,
     backgroundColor: '#ffffff',
@@ -262,7 +253,6 @@ const styles = StyleSheet.create({
   },
   heroBtnRow: {
     flexDirection: 'row',
-    columnGap: 12,
   },
   heroBtn: {
     flex: 1,
@@ -273,10 +263,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    columnGap: 6,
+    marginHorizontal: 6,
   },
 
-  // ── Quick Actions Grid ──────────────────────────────────────────────────────
+  // Grid
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -295,7 +285,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
 
-  // ── Top Apps ────────────────────────────────────────────────────────────────
+  // Top Apps
   appsSection: {
     ...BORDER,
     borderRadius: 24,
@@ -309,7 +299,6 @@ const styles = StyleSheet.create({
   },
   appRow: {
     padding: 20,
-    rowGap: 12,
     backgroundColor: '#ffffff',
   },
   appRowBorder: {
@@ -319,7 +308,7 @@ const styles = StyleSheet.create({
   appRowTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    columnGap: 12,
+    marginBottom: 12,
   },
   appIconFrame: {
     width: 40,
@@ -329,15 +318,16 @@ const styles = StyleSheet.create({
     ...BORDER,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
   appInfo: {
     flex: 1,
-    rowGap: 2,
   },
   appName: {
     fontFamily: 'Inter-Bold',
     fontSize: 14,
     color: '#111111',
+    marginBottom: 2,
   },
   appTime: {
     fontFamily: 'Manrope-Light',
@@ -345,21 +335,19 @@ const styles = StyleSheet.create({
     color: '#111111',
     letterSpacing: -0.5,
   },
-  // Track: overflow hidden clips the fill at exact pixel width
   appProgressTrack: {
     height: 4,
     backgroundColor: '#f3f3f4',
     borderRadius: 2,
     overflow: 'hidden',
   },
-  // Fill: height is explicit integer, width passed as calculated pixel value
   appProgressFill: {
     height: 4,
     backgroundColor: '#111111',
     borderRadius: 2,
   },
 
-  // ── View All ────────────────────────────────────────────────────────────────
+  // View All
   viewAllBtn: {
     marginTop: 8,
     height: 56,
