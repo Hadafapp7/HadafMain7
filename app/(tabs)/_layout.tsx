@@ -15,15 +15,14 @@ function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
 
   return (
-    // pointerEvents must be a View PROP, not inside style — fixes java.lang.String cast error
     <View
-      pointerEvents="box-none"
       style={{
         position: 'absolute',
         bottom: Math.max(insets.bottom, 8) + 16,
         left: 0,
         right: 0,
         alignItems: 'center',
+        pointerEvents: 'box-none',
       }}
     >
       <View
