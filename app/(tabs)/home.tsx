@@ -1,6 +1,19 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, Pressable, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withDelay,
+  withTiming,
+  withSequence,
+  withRepeat,
+  useReducedMotion,
+  interpolate,
+} from 'react-native-reanimated';
 import { StatCard } from '@/components/home/StatCard';
 import { AppUsageRow } from '@/components/home/AppUsageRow';
 import { QuickActionTile } from '@/components/home/QuickActionTile';
@@ -18,107 +31,213 @@ const SECTION_SHADOW = {
   elevation: 2,
 } as const;
 
+const ENTRANCE_SPRING = { stiffness: 80, damping: 20 } as const;
+
+// ─── AnimatedSection ──────────────────────────────────────────────────────────
+// Wraps a section so it can replay its entrance animation when `triggerKey` changes.
+
+interface AnimatedSectionProps {
+  delay: number;
+  triggerKey: number;
+  reduced: boolean;
+  children: React.ReactNode;
+  style?: object;
+}
+
+function AnimatedSection({ delay, triggerKey, reduced, children, style }: AnimatedSectionProps) {
+  const progress = useSharedValue(reduced ? 1 : 0);
+
+  useEffect(() => {
+    if (reduced) {
+      progress.value = 1;
+      return;
+    }
+    progress.value = 0;
+    progress.value = withDelay(delay, withSpring(1, ENTRANCE_SPRING));
+  }, [triggerKey, delay, reduced]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [
+      { translateY: interpolate(progress.value, [0, 1], [30, 0]) },
+      { scale: interpolate(progress.value, [0, 1], [0.97, 1]) },
+    ],
+  }));
+
+  return <Animated.View style={[animStyle, style]}>{children}</Animated.View>;
+}
+
+// ─── HomeScreen ───────────────────────────────────────────────────────────────
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { data: stats, isLoading: statsLoading } = useHomeStats();
   const { data: apps } = useMostUsedApps();
   const { data: quickActions } = useQuickActions();
-
   const greeting = getGreeting();
+  const reduced = useReducedMotion() ?? false;
+
+  // animKey increments each time the tab is re-focused → all sections re-animate
+  const [animKey, setAnimKey] = useState(0);
+  const isFirstFocus = useRef(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstFocus.current) {
+        isFirstFocus.current = false;
+        return;
+      }
+      setAnimKey((k) => k + 1);
+    }, []),
+  );
+
+  // Header slides in from the top
+  const headerProgress = useSharedValue(reduced ? 1 : 0);
+
+  useEffect(() => {
+    if (reduced) {
+      headerProgress.value = 1;
+      return;
+    }
+    headerProgress.value = 0;
+    headerProgress.value = withSpring(1, ENTRANCE_SPRING);
+  }, [animKey, reduced]);
+
+  const headerStyle = useAnimatedStyle(() => ({
+    opacity: headerProgress.value,
+    transform: [{ translateY: interpolate(headerProgress.value, [0, 1], [-20, 0]) }],
+  }));
+
+  // Skeleton shimmer: pulse opacity
+  const shimmer = useSharedValue(1);
+
+  useEffect(() => {
+    if (statsLoading && !reduced) {
+      shimmer.value = withRepeat(
+        withSequence(
+          withTiming(0.35, { duration: 750 }),
+          withTiming(1, { duration: 750 }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      shimmer.value = 1;
+    }
+  }, [statsLoading, reduced]);
+
+  const shimmerStyle = useAnimatedStyle(() => ({ opacity: shimmer.value }));
+
+  // Focus button spring press
+  const focusPress = useSharedValue(0);
+  const focusButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(focusPress.value, [0, 1], [1, 0.97]) }],
+  }));
 
   return (
     <View style={styles.root}>
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <View style={styles.headerRow}>
-          {/* Greeting */}
-          <View>
-            <View style={styles.greetingRow}>
-              <Text style={styles.greetingText}>{greeting}, Alex</Text>
-              <Text style={styles.wave}>👋</Text>
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <Animated.View style={headerStyle}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+          <View style={styles.headerRow}>
+            <View>
+              <View style={styles.greetingRow}>
+                <Text style={styles.greetingText}>{greeting}, Alex</Text>
+                <Text style={styles.wave}>👋</Text>
+              </View>
+              <Text style={styles.focusMode}>Focus Mode: Off</Text>
             </View>
-            <Text style={styles.focusMode}>Focus Mode: Off</Text>
-          </View>
-
-          {/* Avatar */}
-          <View style={styles.avatarWrapper}>
-            <Image
-              source={{ uri: 'https://i.pravatar.cc/96?img=11' }}
-              style={styles.avatar}
-              resizeMode="cover"
-            />
+            <View style={styles.avatarWrapper}>
+              <Image
+                source={{ uri: 'https://i.pravatar.cc/96?img=11' }}
+                style={styles.avatar}
+                resizeMode="cover"
+              />
+            </View>
           </View>
         </View>
-      </View>
+      </Animated.View>
 
-      {/* ── Scrollable Content ─────────────────────────────────────────────── */}
+      {/* ── Scrollable Content ───────────────────────────────────────────── */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* Stats Grid */}
-        <View style={styles.statsGrid}>
-          {statsLoading ? (
-            <>
-              <View style={styles.skeletonCard} />
-              <View style={styles.skeletonCard} />
-            </>
-          ) : (
-            <>
-              <StatCard
-                variant="screenTime"
-                hours={stats.screenTimeHours}
-                minutes={stats.screenTimeMinutes}
-                trendDirection={stats.screenTimeChangeDirection}
-                trendPercent={stats.screenTimeChangePercent}
-              />
-              <StatCard
-                variant="doomscore"
-                score={stats.doomScore}
-                change={stats.doomScoreChange}
-              />
-            </>
-          )}
-        </View>
+        <AnimatedSection delay={80} triggerKey={animKey} reduced={reduced}>
+          <View style={styles.statsGrid}>
+            {statsLoading ? (
+              <>
+                <Animated.View style={[styles.skeletonCard, shimmerStyle]} />
+                <Animated.View style={[styles.skeletonCard, shimmerStyle]} />
+              </>
+            ) : (
+              <>
+                <StatCard
+                  variant="screenTime"
+                  hours={stats.screenTimeHours}
+                  minutes={stats.screenTimeMinutes}
+                  trendDirection={stats.screenTimeChangeDirection}
+                  trendPercent={stats.screenTimeChangePercent}
+                />
+                <StatCard
+                  variant="doomscore"
+                  score={stats.doomScore}
+                  change={stats.doomScoreChange}
+                />
+              </>
+            )}
+          </View>
+        </AnimatedSection>
 
         {/* Start Focus Session Button */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.focusButton,
-            pressed && styles.focusButtonPressed,
-          ]}
-          android_ripple={{ color: 'rgba(255,255,255,0.15)', borderless: false }}
-        >
-          <View style={styles.focusIconCircle}>
-            <MaterialIcons name="play-arrow" size={32} color="#ffffff" />
-          </View>
-          <Text style={styles.focusButtonText}>Start Focus Session</Text>
-        </Pressable>
+        <AnimatedSection delay={160} triggerKey={animKey} reduced={reduced}>
+          <Animated.View style={focusButtonStyle}>
+            <Pressable
+              onPressIn={() => {
+                focusPress.value = withSpring(1, { stiffness: 400, damping: 15 });
+              }}
+              onPressOut={() => {
+                focusPress.value = withSpring(0, { stiffness: 400, damping: 15 });
+              }}
+              style={({ pressed }) => [
+                styles.focusButton,
+                pressed && styles.focusButtonPressed,
+              ]}
+              android_ripple={{ color: 'rgba(255,255,255,0.15)', borderless: false }}
+            >
+              <View style={styles.focusIconCircle}>
+                <MaterialIcons name="play-arrow" size={32} color="#ffffff" />
+              </View>
+              <Text style={styles.focusButtonText}>Start Focus Session</Text>
+            </Pressable>
+          </Animated.View>
+        </AnimatedSection>
 
         {/* Most Used Apps */}
-        <View style={[styles.appsCard, SECTION_SHADOW]}>
-          <View style={styles.appsHeader}>
-            <Text style={styles.appsTitle}>Most Used Apps</Text>
-            <MaterialIcons
-              name="more-horiz"
-              size={20}
-              color="rgba(71,71,71,0.4)"
-            />
+        <AnimatedSection delay={240} triggerKey={animKey} reduced={reduced}>
+          <View style={[styles.appsCard, SECTION_SHADOW]}>
+            <View style={styles.appsHeader}>
+              <Text style={styles.appsTitle}>Most Used Apps</Text>
+              <MaterialIcons name="more-horiz" size={20} color="rgba(71,71,71,0.4)" />
+            </View>
+            <View style={styles.appsList}>
+              {apps.map((app, i) => (
+                <AppUsageRow key={app.id} app={app} index={i} animKey={animKey} />
+              ))}
+            </View>
           </View>
-          <View style={styles.appsList}>
-            {apps.map((app) => (
-              <AppUsageRow key={app.id} app={app} />
-            ))}
-          </View>
-        </View>
+        </AnimatedSection>
 
         {/* Quick Action Tiles */}
-        <View style={styles.quickActions}>
-          {quickActions.map((action) => (
-            <QuickActionTile key={action.id} action={action} />
-          ))}
-        </View>
+        <AnimatedSection delay={320} triggerKey={animKey} reduced={reduced}>
+          <View style={styles.quickActions}>
+            {quickActions.map((action, i) => (
+              <QuickActionTile key={action.id} action={action} index={i} />
+            ))}
+          </View>
+        </AnimatedSection>
       </ScrollView>
     </View>
   );
@@ -163,7 +282,6 @@ const styles = StyleSheet.create({
     color: Colors.onSurfaceVariant,
     marginTop: 4,
   },
-  // Border lives on the wrapper View — never on the expo-image style
   avatarWrapper: {
     width: 48,
     height: 48,

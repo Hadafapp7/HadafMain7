@@ -6,7 +6,10 @@
       "Bash(node -e ':*)",
       "Bash(npm uninstall:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx expo-doctor:*)"
+      "Bash(npx expo-doctor:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(node -e \"const p=require\\('./node_modules/react-native-reanimated/package.json'\\); console.log\\('installed reanimated:', p.version\\)\")",
+      "Bash(node -e ' *)"
     ]
   }
 }

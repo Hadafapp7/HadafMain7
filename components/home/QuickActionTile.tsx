@@ -1,5 +1,12 @@
 import type { ComponentProps } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  useReducedMotion,
+  interpolate,
+} from 'react-native-reanimated';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { QuickAction } from '@/types/home';
 
@@ -17,7 +24,7 @@ const PALETTE = {
     border: '#d1fae5',
     icon: '#059669',
     label: 'rgba(6, 95, 70, 0.7)',
-    filled: { bg: '#059669', text: '#ffffff' },
+    filled:  { bg: '#059669', text: '#ffffff' },
     outline: { bg: '#d1fae5', text: '#059669' },
   },
   orange: {
@@ -25,46 +32,67 @@ const PALETTE = {
     border: '#ffedd5',
     icon: '#ea580c',
     label: 'rgba(154, 52, 18, 0.7)',
-    filled: { bg: '#ea580c', text: '#ffffff' },
+    filled:  { bg: '#ea580c', text: '#ffffff' },
     outline: { bg: '#ffedd5', text: '#ea580c' },
   },
 } as const;
 
-interface QuickActionTileProps {
+const PRESS_SPRING = { stiffness: 400, damping: 15 } as const;
+
+export interface QuickActionTileProps {
   action: QuickAction;
   onPress?: () => void;
+  /** Used for stagger delays if added in the future */
+  index?: number;
 }
 
 export function QuickActionTile({ action, onPress }: QuickActionTileProps) {
   const palette = PALETTE[action.variant];
-  const badge = action.badgeStyle === 'filled' ? palette.filled : palette.outline;
+  const badge   = action.badgeStyle === 'filled' ? palette.filled : palette.outline;
+  const reduced = useReducedMotion() ?? false;
+
+  const press = useSharedValue(0);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: interpolate(press.value, [0, 1], [1, 0.96]) },
+    ],
+  }));
+
+  const handlePressIn = reduced
+    ? undefined
+    : () => { press.value = withSpring(1, PRESS_SPRING); };
+
+  const handlePressOut = reduced
+    ? undefined
+    : () => { press.value = withSpring(0, PRESS_SPRING); };
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      style={[
-        styles.tile,
-        {
-          backgroundColor: palette.bg,
-          borderColor: palette.border,
-        },
-      ]}
-    >
-      <MaterialIcons
-        name={action.iconName as ComponentProps<typeof MaterialIcons>['name']}
-        size={28}
-        color={palette.icon}
-      />
-      <Text style={[styles.label, { color: palette.label }]}>
-        {action.label}
-      </Text>
-      <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-        <Text style={[styles.badgeText, { color: badge.text }]}>
-          {action.badgeText}
+    <Animated.View style={[{ flex: 1 }, animStyle]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={[
+          styles.tile,
+          { backgroundColor: palette.bg, borderColor: palette.border },
+        ]}
+      >
+        <MaterialIcons
+          name={action.iconName as ComponentProps<typeof MaterialIcons>['name']}
+          size={28}
+          color={palette.icon}
+        />
+        <Text style={[styles.label, { color: palette.label }]}>
+          {action.label}
         </Text>
-      </View>
-    </TouchableOpacity>
+        <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+          <Text style={[styles.badgeText, { color: badge.text }]}>
+            {action.badgeText}
+          </Text>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 

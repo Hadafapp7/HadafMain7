@@ -1,21 +1,49 @@
+import { useEffect } from 'react';
 import type { ComponentProps } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withDelay,
+  withTiming,
+  useReducedMotion,
+  Easing,
+} from 'react-native-reanimated';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
 import type { MostUsedApp } from '@/types/home';
 
 const SURFACE_CONTAINER = '#eeeeee';
 
-interface AppUsageRowProps {
+export interface AppUsageRowProps {
   app: MostUsedApp;
+  /** Row index used to stagger the progress bar fill animation */
+  index?: number;
+  /** Increments when the parent screen re-focuses, re-triggering animations */
+  animKey?: number;
 }
 
-export function AppUsageRow({ app }: AppUsageRowProps) {
-  // Convert 0–1 fraction to integer flex units (0–100).
-  // Using flex instead of percentage strings avoids the Fabric
-  // String → Boolean cast crash on Android.
-  const fillFlex = Math.round(app.progressFraction * 100);
-  const emptyFlex = 100 - fillFlex;
+export function AppUsageRow({ app, index = 0, animKey = 0 }: AppUsageRowProps) {
+  const reduced = useReducedMotion() ?? false;
+  const targetFill = Math.round(app.progressFraction * 100);
+
+  // Animate fill flex from 0 → target, staggered by row index
+  const fillFlex = useSharedValue(reduced ? targetFill : 0);
+
+  useEffect(() => {
+    if (reduced) {
+      fillFlex.value = targetFill;
+      return;
+    }
+    fillFlex.value = 0;
+    fillFlex.value = withDelay(
+      index * 80,
+      withTiming(targetFill, { duration: 900, easing: Easing.out(Easing.cubic) }),
+    );
+  }, [animKey, targetFill, index, reduced]);
+
+  const fillStyle  = useAnimatedStyle(() => ({ flex: fillFlex.value }));
+  const emptyStyle = useAnimatedStyle(() => ({ flex: Math.max(100 - fillFlex.value, 0) }));
 
   return (
     <View style={styles.row}>
@@ -34,12 +62,12 @@ export function AppUsageRow({ app }: AppUsageRowProps) {
         </View>
       </View>
 
-      {/* Right: time + progress bar */}
+      {/* Right: time + animated progress bar */}
       <View style={styles.rightSection}>
         <Text style={styles.timeText}>{app.timeDisplay}</Text>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { flex: fillFlex }]} />
-          <View style={{ flex: emptyFlex }} />
+          <Animated.View style={[styles.progressFill, fillStyle]} />
+          <Animated.View style={emptyStyle} />
         </View>
       </View>
     </View>
@@ -94,11 +122,11 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE_CONTAINER,
     borderRadius: 2,
     overflow: 'hidden',
-    flexDirection: 'row', // children fill horizontally via flex
+    flexDirection: 'row',
     marginTop: 4,
   },
   progressFill: {
-    height: 4,               // explicit number — never '100%' string on Fabric
+    height: 4,
     backgroundColor: Colors.onSurface,
     borderRadius: 2,
   },
