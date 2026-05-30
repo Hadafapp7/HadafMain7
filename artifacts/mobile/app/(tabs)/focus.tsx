@@ -90,19 +90,11 @@ function TimerRing({
   remainingSecs,
   sessionState,
   duration,
-  onStart,
-  onPause,
-  onResume,
-  onStop,
 }: {
   totalSecs: number;
   remainingSecs: number;
   sessionState: SessionState;
   duration: number;
-  onStart: () => void;
-  onPause: () => void;
-  onResume: () => void;
-  onStop: () => void;
 }) {
   const colors   = useColors();
   const fillPct  = useSharedValue(0);
@@ -152,47 +144,14 @@ function TimerRing({
           />
         </Svg>
 
-        {/* Center: time + label + action button */}
-        <View style={styles.ringCenter} pointerEvents="box-none">
+        {/* Center: time + label */}
+        <View style={styles.ringCenter} pointerEvents="none">
           <Text style={[styles.ringTime, { color: colors.onSurface }]}>{displayTime}</Text>
           <Text style={[styles.ringSubLabel, { color: colors.outline }]}>
             {sessionState === "idle"    ? "MINUTES"   :
              sessionState === "paused"  ? "PAUSED"    :
              sessionState === "done"    ? "COMPLETE"  : "REMAINING"}
           </Text>
-
-          {/* In-ring action button */}
-          <View style={{ height: 16 }} />
-          {sessionState === "idle" && (
-            <TouchableOpacity
-              style={[styles.ringActionBtn, { backgroundColor: colors.primary }]}
-              onPress={onStart}
-              activeOpacity={0.85}
-            >
-              <MaterialIcons name="play-arrow" size={18} color="#fff" />
-              <Text style={styles.ringActionBtnText}>Start Session</Text>
-            </TouchableOpacity>
-          )}
-          {sessionState === "running" && (
-            <TouchableOpacity
-              style={[styles.ringActionBtn, { backgroundColor: colors.surfaceContainerHigh }]}
-              onPress={onPause}
-              activeOpacity={0.85}
-            >
-              <MaterialIcons name="pause" size={18} color={colors.onSurface} />
-              <Text style={[styles.ringActionBtnText, { color: colors.onSurface }]}>Pause</Text>
-            </TouchableOpacity>
-          )}
-          {sessionState === "paused" && (
-            <TouchableOpacity
-              style={[styles.ringActionBtn, { backgroundColor: colors.primary }]}
-              onPress={onResume}
-              activeOpacity={0.85}
-            >
-              <MaterialIcons name="play-arrow" size={18} color="#fff" />
-              <Text style={styles.ringActionBtnText}>Resume</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
     </View>
@@ -449,7 +408,7 @@ export default function FocusScreen() {
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
-            { paddingTop: topPad + 12, paddingBottom: bottomPad + 40 },
+            { paddingTop: topPad + 12, paddingBottom: bottomPad + 130 },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -458,30 +417,16 @@ export default function FocusScreen() {
           <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()}>
             <View style={styles.headerRow}>
               <Text style={[styles.headerTitle, { color: colors.onSurface }]}>FOCUS MODE</Text>
-              {isActive && (
-                <TouchableOpacity
-                  style={[styles.endChip, { backgroundColor: colors.surfaceContainerHigh }]}
-                  onPress={handleStop}
-                  activeOpacity={0.8}
-                >
-                  <MaterialIcons name="stop" size={14} color={colors.onSurface} />
-                  <Text style={[styles.endChipText, { color: colors.onSurface }]}>End Session</Text>
-                </TouchableOpacity>
-              )}
             </View>
           </Animated.View>
 
-          {/* Timer ring with in-ring button */}
+          {/* Timer ring */}
           <Animated.View entering={isWeb ? undefined : FadeInDown.delay(40).springify()}>
             <TimerRing
               totalSecs={totalSecs}
               remainingSecs={remaining}
               sessionState={sessionState}
               duration={duration}
-              onStart={handleStart}
-              onPause={handlePause}
-              onResume={handleResume}
-              onStop={handleStop}
             />
           </Animated.View>
 
@@ -686,6 +631,65 @@ export default function FocusScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Sticky bottom — Start / Pause / Resume / End */}
+      <View
+        style={[
+          styles.stickyBottom,
+          { paddingBottom: bottomPad + 12, backgroundColor: colors.background },
+        ]}
+      >
+        {sessionState === "idle" && (
+          <TouchableOpacity
+            style={[styles.startBtn, { backgroundColor: colors.primary }]}
+            onPress={handleStart}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="play-arrow" size={24} color="#fff" />
+            <Text style={styles.startBtnText}>Start {duration} Min Session</Text>
+          </TouchableOpacity>
+        )}
+        {sessionState === "running" && (
+          <View style={styles.activeActions}>
+            <TouchableOpacity
+              style={[styles.actionBtnSecondary, { backgroundColor: colors.surfaceContainerHigh }]}
+              onPress={handleStop}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="stop" size={20} color={colors.onSurface} />
+              <Text style={[styles.actionBtnSecondaryText, { color: colors.onSurface }]}>End</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtnPrimary, { backgroundColor: colors.primary }]}
+              onPress={handlePause}
+              activeOpacity={0.85}
+            >
+              <MaterialIcons name="pause" size={24} color="#fff" />
+              <Text style={styles.actionBtnPrimaryText}>Pause</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {sessionState === "paused" && (
+          <View style={styles.activeActions}>
+            <TouchableOpacity
+              style={[styles.actionBtnSecondary, { backgroundColor: colors.surfaceContainerHigh }]}
+              onPress={handleStop}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="stop" size={20} color={colors.onSurface} />
+              <Text style={[styles.actionBtnSecondaryText, { color: colors.onSurface }]}>End</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtnPrimary, { backgroundColor: colors.primary }]}
+              onPress={handleResume}
+              activeOpacity={0.85}
+            >
+              <MaterialIcons name="play-arrow" size={24} color="#fff" />
+              <Text style={styles.actionBtnPrimaryText}>Resume</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
       {/* App picker modal */}
       <AppPickerModal
         visible={showPicker}
@@ -706,8 +710,6 @@ const styles = StyleSheet.create({
 
   headerRow:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   headerTitle:  { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
-  endChip:      { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
-  endChipText:  { fontSize: 12, fontFamily: "Inter_600SemiBold" },
 
   // Ring
   ringWrapper:    { alignItems: "center" },
@@ -715,15 +717,23 @@ const styles = StyleSheet.create({
   ringCenter:     { position: "absolute", alignItems: "center" },
   ringTime:       { fontSize: 48, fontFamily: "Inter_700Bold", letterSpacing: -2 },
   ringSubLabel:   { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 2.5, marginTop: 2 },
-  ringActionBtn:  {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 22,
+  stickyBottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(0,0,0,0.08)",
   },
-  ringActionBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff" },
+  startBtn:            { height: 58, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 4 },
+  startBtnText:        { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
+  activeActions:       { flexDirection: "row", gap: 12 },
+  actionBtnSecondary:  { height: 58, flex: 0.38, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  actionBtnSecondaryText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  actionBtnPrimary:    { height: 58, flex: 0.62, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 4 },
+  actionBtnPrimaryText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 
   // Intention
   intentionCard:   { borderRadius: 18, flexDirection: "row", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
