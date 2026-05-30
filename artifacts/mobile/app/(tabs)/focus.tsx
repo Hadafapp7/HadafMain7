@@ -320,7 +320,8 @@ export default function FocusScreen() {
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [remaining,    setRemaining]    = useState(duration * 60);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const totalSecs = duration * 60;
+  const totalSecs   = duration * 60;
+  const tabBarH     = isWeb ? 84 : 62 + insets.bottom;
 
   useEffect(() => {
     if (sessionState === "idle") setRemaining(duration * 60);
@@ -408,7 +409,7 @@ export default function FocusScreen() {
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
-            { paddingTop: topPad + 12, paddingBottom: bottomPad + 130 },
+            { paddingTop: topPad + 12, paddingBottom: (isWeb ? 84 : 62 + insets.bottom) + 90 },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -631,11 +632,11 @@ export default function FocusScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Sticky bottom — Start / Pause / Resume / End */}
+      {/* Floating button — always above tab bar */}
       <View
         style={[
           styles.stickyBottom,
-          { paddingBottom: bottomPad + 12, backgroundColor: colors.background },
+          { bottom: tabBarH + 16 },
         ]}
       >
         {sessionState === "idle" && (
@@ -719,15 +720,10 @@ const styles = StyleSheet.create({
   ringSubLabel:   { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 2.5, marginTop: 2 },
   stickyBottom: {
     position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(0,0,0,0.08)",
+    left: 20,
+    right: 20,
   },
-  startBtn:            { height: 58, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 4 },
+  startBtn:            { height: 58, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
   startBtnText:        { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
   activeActions:       { flexDirection: "row", gap: 12 },
   actionBtnSecondary:  { height: 58, flex: 0.38, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
