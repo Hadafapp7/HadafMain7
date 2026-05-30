@@ -16,65 +16,49 @@ import { useColors } from "@/hooks/useColors";
 
 type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
 
-const TAB_CONFIG: { name: string; icon: IconName; label: string }[] = [
-  { name: "index", icon: "home", label: "Home" },
-  { name: "analytics", icon: "bar-chart", label: "Analytics" },
-  { name: "focus", icon: "timer", label: "Focus" },
-  { name: "profile", icon: "person", label: "Profile" },
-];
+// Keyed by route NAME — immune to Expo Router's alphabetical ordering
+const TAB_CONFIG: Record<string, { icon: IconName; label: string }> = {
+  index:     { icon: "home",      label: "Home"      },
+  analytics: { icon: "bar-chart", label: "Analytics" },
+  focus:     { icon: "timer",     label: "Focus"     },
+  profile:   { icon: "person",    label: "Profile"   },
+};
 
 function TabItem({
-  config,
+  routeName,
   isFocused,
   onPress,
 }: {
-  config: (typeof TAB_CONFIG)[0];
+  routeName: string;
   isFocused: boolean;
   onPress: () => void;
 }) {
   const colors = useColors();
-  const iconScale = useSharedValue(1);
+  const config = TAB_CONFIG[routeName] ?? { icon: "circle" as IconName, label: routeName };
+
+  const iconScale    = useSharedValue(1);
   const rippleOpacity = useSharedValue(0);
-  const rippleScale = useSharedValue(0.5);
+  const rippleScale   = useSharedValue(0.5);
 
   const handlePress = () => {
-    iconScale.value = withSequence(withSpring(1.25, { damping: 8 }), withSpring(1, { damping: 10 }));
-    rippleOpacity.value = withSequence(
-      withTiming(0.12, { duration: 0 }),
-      withTiming(0, { duration: 450 })
-    );
-    rippleScale.value = withSequence(
-      withTiming(0.5, { duration: 0 }),
-      withSpring(2.2, { damping: 12 })
-    );
+    iconScale.value    = withSequence(withSpring(1.25, { damping: 8 }), withSpring(1, { damping: 10 }));
+    rippleOpacity.value = withSequence(withTiming(0.12, { duration: 0 }), withTiming(0, { duration: 450 }));
+    rippleScale.value   = withSequence(withTiming(0.5, { duration: 0 }), withSpring(2.2, { damping: 12 }));
     onPress();
   };
 
-  const iconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: iconScale.value }],
-  }));
-
+  const iconStyle   = useAnimatedStyle(() => ({ transform: [{ scale: iconScale.value }] }));
   const rippleStyle = useAnimatedStyle(() => ({
-    opacity: rippleOpacity.value,
+    opacity:   rippleOpacity.value,
     transform: [{ scale: rippleScale.value }],
   }));
 
-  const activeColor = colors.primary;
-  const inactiveColor = colors.outline;
-  const color = isFocused ? activeColor : inactiveColor;
+  const color = isFocused ? colors.primary : colors.outline;
 
   return (
     <Pressable style={styles.tabItem} onPress={handlePress} android_ripple={null}>
       <View style={styles.tabInner}>
-        {/* Ripple ring */}
-        <Animated.View
-          style={[
-            styles.ripple,
-            { backgroundColor: colors.primary },
-            rippleStyle,
-          ]}
-        />
-        {/* Icon */}
+        <Animated.View style={[styles.ripple, { backgroundColor: colors.primary }, rippleStyle]} />
         <Animated.View style={iconStyle}>
           <MaterialIcons name={config.icon} size={24} color={color} />
         </Animated.View>
@@ -82,10 +66,7 @@ function TabItem({
       <Text
         style={[
           styles.tabLabel,
-          {
-            color,
-            fontFamily: isFocused ? "Inter_700Bold" : "Inter_500Medium",
-          },
+          { color, fontFamily: isFocused ? "Inter_700Bold" : "Inter_500Medium" },
         ]}
       >
         {config.label}
@@ -107,24 +88,27 @@ export default function AnimatedTabBar({ state, navigation }: BottomTabBarProps)
       {isIOS ? (
         <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
       ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surfaceContainerLowest }]} />
+        <View
+          style={[StyleSheet.absoluteFill, { backgroundColor: colors.surfaceContainerLowest }]}
+        />
       )}
+
       <View style={styles.row}>
-        {TAB_CONFIG.map((config, index) => {
+        {state.routes.map((route, index) => {
           const isFocused = state.index === index;
           return (
             <TabItem
-              key={config.name}
-              config={config}
+              key={route.key}
+              routeName={route.name}
               isFocused={isFocused}
               onPress={() => {
                 const event = navigation.emit({
                   type: "tabPress",
-                  target: state.routes[index].key,
+                  target: route.key,
                   canPreventDefault: true,
                 });
                 if (!isFocused && !event.defaultPrevented) {
-                  navigation.navigate(state.routes[index].name);
+                  navigation.navigate(route.name);
                 }
               }}
             />

@@ -8,6 +8,12 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <AnimatedTabBar {...props} />}
-    />
+    >
+      {/* Explicit order overrides Expo Router's alphabetical default */}
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="analytics" />
+      <Tabs.Screen name="focus" />
+      <Tabs.Screen name="profile" />
+    </Tabs>
   );
 }

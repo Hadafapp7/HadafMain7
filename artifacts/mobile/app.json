@@ -14,9 +14,16 @@
       "backgroundColor": "#f9f9f9"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.hadaf.mobile"
     },
-    "android": {},
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#f9f9f9"
+      },
+      "package": "com.hadaf.mobile"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
