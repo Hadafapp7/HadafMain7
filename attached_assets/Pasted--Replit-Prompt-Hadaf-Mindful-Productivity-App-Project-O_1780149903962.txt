@@ -1,0 +1,228 @@
+# Replit Prompt: Hadaf — Mindful Productivity App
+
+## Project Overview
+
+Build a **React + Vite** mobile-first web app called **Hadaf** — a mindful productivity/digital wellness application. The zip file I'm attaching contains 4 screens (each with a `code.html` design and `screen.png` reference) plus a `DESIGN.md` design system spec. Reproduce the app pixel-perfectly from these files.
+
+---
+
+## Tech Stack
+
+- **React 18 + Vite**
+- **Tailwind CSS v3** (with custom config — see Design System below)
+- **React Router v6** (4 routes, one per screen)
+- **Recharts** (for the analytics graph screen)
+- **Google Fonts:** Inter (weights 400, 500, 600, 700, 800, 900)
+- **Material Symbols Outlined** (Google icon font — load via CDN link tag)
+- **No other UI libraries**
+
+---
+
+## Design System — "Stark Editorial / Obsidian Chalk"
+
+Apply this **globally** via `tailwind.config.js`. Do NOT deviate.
+
+### Colors (extend theme)
+```js
+colors: {
+  "primary": "#000000",
+  "primary-container": "#3b3b3b",
+  "primary-fixed": "#5e5e5e",
+  "primary-fixed-dim": "#474747",
+  "on-primary": "#e2e2e2",
+  "on-primary-container": "#ffffff",
+  "on-primary-fixed": "#ffffff",
+  "on-primary-fixed-variant": "#e2e2e2",
+  "secondary": "#5f5e60",
+  "secondary-container": "#d6d3d6",
+  "secondary-fixed": "#c8c6c8",
+  "secondary-fixed-dim": "#acaaad",
+  "on-secondary": "#ffffff",
+  "on-secondary-container": "#1b1b1d",
+  "on-secondary-fixed": "#1b1b1d",
+  "on-secondary-fixed-variant": "#3b3b3d",
+  "tertiary": "#3b3b3c",
+  "tertiary-container": "#747474",
+  "tertiary-fixed": "#5e5e5e",
+  "tertiary-fixed-dim": "#464747",
+  "on-tertiary": "#e3e2e2",
+  "on-tertiary-container": "#ffffff",
+  "on-tertiary-fixed": "#ffffff",
+  "on-tertiary-fixed-variant": "#e3e2e2",
+  "surface": "#f9f9f9",
+  "surface-dim": "#dadada",
+  "surface-bright": "#f9f9f9",
+  "surface-container-lowest": "#ffffff",
+  "surface-container-low": "#f3f3f3",
+  "surface-container": "#eeeeee",
+  "surface-container-high": "#e8e8e8",
+  "surface-container-highest": "#e2e2e2",
+  "surface-variant": "#e2e2e2",
+  "surface-tint": "#5e5e5e",
+  "on-surface": "#1a1c1c",
+  "on-surface-variant": "#474747",
+  "background": "#f9f9f9",
+  "on-background": "#1a1c1c",
+  "outline": "#777777",
+  "outline-variant": "#c6c6c6",
+  "inverse-surface": "#2f3131",
+  "inverse-on-surface": "#f1f1f1",
+  "inverse-primary": "#c6c6c6",
+  "error": "#ba1a1a",
+  "error-container": "#ffdad6",
+  "on-error": "#ffffff",
+  "on-error-container": "#410002",
+}
+```
+
+### Border Radius
+```js
+borderRadius: {
+  DEFAULT: "1rem",
+  lg: "2rem",
+  xl: "3rem",
+  full: "9999px",
+}
+```
+
+### Font Family
+```js
+fontFamily: {
+  headline: ["Inter", "sans-serif"],
+  body: ["Inter", "sans-serif"],
+  label: ["Inter", "sans-serif"],
+}
+```
+
+### Global Rules (from DESIGN.md)
+- **NO 1px divider lines.** Separate sections via background shifts, white space, or card mass.
+- **NO color** except grayscale + `error` (#ba1a1a) sparingly.
+- **NO sharp corners.** Every interactive element must be rounded (minimum `rounded-2xl`; buttons/chips use `rounded-full`).
+- **NO thin font weights.** Never use `font-light`; minimum `font-normal` (400), prefer `font-medium`/`font-bold`/`font-black`.
+- Cards: white (`surface-container-lowest`) on light grey (`surface`) background with soft ambient shadow: `box-shadow: 0 4px 24px rgba(0,0,0,0.04)`.
+- Progress bars/circles: thick stroke (8-12px), track = `surface-container-highest`, fill = gradient `primary` → `primary-container`.
+- Buttons: **Primary** = solid black fill, `on-primary` text, `rounded-full`. **Secondary** = 2px black border, transparent bg. **Tertiary** = bold text only.
+- Input fields: `surface-container-highest` background, `rounded-xl`, no bottom-line. On focus: white bg + 2px black border.
+
+---
+
+## App Structure
+
+```
+/src
+  /pages
+    Home.jsx          ← vibrant_productivity_home screen
+    Analytics.jsx     ← polished_analytics_graph screen
+    FocusMode.jsx     ← refined_focus_mode_setup_v6 screen
+    Profile.jsx       ← refined_profile_screen_v2 screen
+  /components
+    BottomNav.jsx     ← shared bottom navigation bar
+    AppBar.jsx        ← shared top header (where applicable)
+  App.jsx
+  main.jsx
+  index.css
+```
+
+---
+
+## Screen 1: Home (`/`) — `vibrant_productivity_home`
+
+Reference: `vibrant_productivity_home/screen.png`
+
+### Layout
+- Fixed top AppBar: "Good Evening, Alex 👋" (large bold), subtitle "FOCUS MODE: OFF" (tiny, uppercase, tracking-widest). User avatar (circular, grayscale) top-right.
+- Backdrop blur on header (`bg-white/90 backdrop-blur-xl`).
+- Main scrollable content below header, above bottom nav.
+
+### Sections (top to bottom)
+1. **2-column stats grid:**
+   - **Screen Time card** (white card, `rounded-[2.5rem]`): "4h 32m" in huge black font. Small badge showing "↘ 23%" with an arrow icon. Tiny bar chart visual (2 bars).
+   - **Doomscroll Score card**: Score "68" in huge font. Mini label "Better +4 pts". Progress bar at 68% filled black.
+
+2. **Start Focus Session button**: Full-width, very tall (`h-20`), solid black, `rounded-full`. Left side: circular white/10 inner button with play icon. Right: "Start Focus Session" in large bold white text.
+
+3. **Most Used Apps widget** (white card, `rounded-[3rem]`): Header "MOST USED APPS" + `more_horiz` icon. List of 3 apps (Instagram 2h15m, TikTok 1h45m, YouTube 45m) — each with icon in rounded square, app name bold, category label small grey uppercase, time right-aligned + mini fill bar. **No dividers.**
+
+4. **Weekly Focus card** (white card, `rounded-[3rem]`): 7-day bar chart using plain divs — days Mon–Sun, bars proportional, current day bar = solid black, others = lighter grey. "Weekly Focus" label + this week's total hours.
+
+5. **Quick Actions row** (horizontal scroll): 3–4 pill chips (e.g., "Block Apps", "Set Limits", "Downtime", "App Limits") — `rounded-full`, `surface-container` background, bold black label, matching icon.
+
+---
+
+## Screen 2: Analytics (`/analytics`) — `polished_analytics_graph`
+
+Reference: `polished_analytics_graph/screen.png`
+
+### Layout
+- Top AppBar: Back arrow + "Analytics" title centered + calendar icon right.
+- Date range selector: pill chips for "Day / Week / Month" — active chip = solid black, inactive = grey surface.
+- Main KPI row: 2–3 stat cards (Total Screen Time, Sessions, Avg Session) — white cards, large bold numbers.
+- **Line Chart** (Recharts `LineChart`): Screen time over 7 days. Single line, stroke = black, no dots, smooth curve (`type="monotone"`). No grid lines. Custom tooltip = white card, `rounded-xl`, bold number + label. X-axis: day labels, no axis lines.
+- **App Breakdown section**: List of apps with horizontal fill bars — bar track = `surface-container-highest`, fill = black. Sorted by usage descending. Each row: icon + app name left, time right. No dividers between rows.
+- **Insights card** (full-width, white, `rounded-[3rem]`): 2–3 short text insights e.g. "Your Instagram usage peaked on Wednesday."
+
+---
+
+## Screen 3: Focus Mode Setup (`/focus`) — `refined_focus_mode_setup_v6`
+
+Reference: `refined_focus_mode_setup_v6/screen.png`
+
+### Layout
+- Top AppBar: "Focus Mode" title + close (X) icon.
+- **Session Duration picker**: Large circular dial/display showing "25 min". Minus and plus buttons (secondary style, `rounded-full`). Or use a styled slider.
+- **Focus Type selector**: Horizontal scrollable cards — "Deep Work", "Reading", "Exercise", "Custom". Selected = black card with white text, unselected = white card with grey text. `rounded-[2.5rem]`.
+- **Apps to Block section**: "Block Distractions" header. Toggle switches for: Social Media, Games, Entertainment, Messaging (all grouped in a white card, no dividers — use spacing only). Toggles: pill-shape, ON = black track, OFF = grey.
+- **Allowed Apps** section: 4–5 app icons in rounded squares that user can tap to allow/deny. Denied = greyed out with strikethrough badge.
+- **Start Session button**: Same full-width solid black `rounded-full` CTA as Home screen.
+
+---
+
+## Screen 4: Profile (`/profile`) — `refined_profile_screen_v2`
+
+Reference: `refined_profile_screen_v2/screen.png`
+
+### Layout
+- Top AppBar: "Account" title + settings gear icon.
+- **Profile header card** (full-width, white, `rounded-[3rem]`): Large circular avatar (grayscale) centered. Bold name "Alex Johnson". Grey subtitle "Premium Member". Row of 3 stats: "47 Sessions | 12 Goals | 98% Rate".
+- **Goals section**: List of 3 active goals (e.g., "Reduce Screen Time to 3h", "30 Focus Sessions/Month", "No Phone After 10PM") — each in a white card, `rounded-[2.5rem]`. Left: goal text + progress %. Right: circular progress indicator (SVG arc, thick stroke, black fill). No dividers.
+- **Achievements section**: Horizontal scroll row of achievement badge cards — icon + label, white card, `rounded-[2rem]`.
+- **Settings list**: Standard list items (Notifications, Privacy, Export Data, Help, Sign Out) in a white card. Each row: icon left, label, chevron right. No dividers — spacing only. Sign Out row: `error` (#ba1a1a) colored text.
+
+---
+
+## Bottom Navigation Bar
+
+Shared across all 4 screens. Fixed to bottom. White background, `rounded-t-[2rem]`, ambient shadow.
+
+4 tabs:
+| Icon | Label | Route |
+|------|-------|-------|
+| `home` | Home | `/` |
+| `bar_chart` | Analytics | `/analytics` |
+| `timer` | Focus | `/focus` |
+| `person` | Profile | `/profile` |
+
+Active tab: icon + label = solid black, bold. Inactive: grey. No underline/indicator bar — weight alone shows active state.
+
+---
+
+## Implementation Notes
+
+1. **Mobile viewport:** All screens max-width `390px`, centered on desktop (`mx-auto`). Add `min-h-screen bg-surface` to root.
+2. **Scrollable content:** Each page has `pb-24` bottom padding to clear the fixed bottom nav.
+3. **Icons:** Load Material Symbols via `<link>` in `index.html`. Use as `<span className="material-symbols-outlined">icon_name</span>`.
+4. **No dividers rule:** Between list items use `space-y-4` or `space-y-5` only. Never `<hr>` or `border-b`.
+5. **Shadows:** Cards use `shadow-[0_4px_24px_rgba(0,0,0,0.04)]` (add as custom utility or inline style).
+6. **Progress bars:** `rounded-full` track div + inner fill div. Black fill.
+7. **Circular progress (Profile goals):** Use inline SVG `<circle>` with `stroke-dasharray` / `stroke-dashoffset` calculated from percentage.
+8. **Recharts (Analytics):** Disable grid (`<CartesianGrid>` omit or `strokeOpacity={0}`), use custom dot={false}, stroke="black", strokeWidth={2}.
+9. **Toggle switches (Focus screen):** Implement as styled `<button>` with state. Pill shape, black when ON.
+10. **All dummy data hardcoded** — no backend needed.
+
+---
+
+## File to Attach
+
+Attach the zip file `4_pages_hadaf.zip` alongside this prompt. Each folder's `code.html` is the ground-truth implementation for that screen — use it as your primary reference for exact class names, layout structure, spacing, and component details. The `screen.png` files are visual references. `obsidian_chalk/DESIGN.md` is the full design spec.
+
+**Replicate the HTML structure from each `code.html` as closely as possible, converting to React JSX components.**
