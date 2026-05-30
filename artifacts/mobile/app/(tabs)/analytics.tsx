@@ -1,5 +1,5 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Platform,
   ScrollView,
@@ -8,10 +8,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
+
+const isWeb = Platform.OS === "web";
 
 const DATE_RANGES = ["Day", "Week", "Month"];
 
@@ -40,23 +51,37 @@ function buildLinePath(data: number[], width: number, height: number): string {
   const padV = 10;
   const xs = data.map((_, i) => padH + (i / (data.length - 1)) * (width - padH * 2));
   const ys = data.map((v) => padV + (1 - (v - min) / range) * (height - padV * 2));
-
   let d = `M ${xs[0]} ${ys[0]}`;
   for (let i = 1; i < data.length; i++) {
-    const cpx1 = (xs[i - 1] + xs[i]) / 2;
-    const cpy1 = ys[i - 1];
-    const cpx2 = (xs[i - 1] + xs[i]) / 2;
-    const cpy2 = ys[i];
-    d += ` C ${cpx1} ${cpy1}, ${cpx2} ${cpy2}, ${xs[i]} ${ys[i]}`;
+    const cpx = (xs[i - 1] + xs[i]) / 2;
+    d += ` C ${cpx} ${ys[i - 1]}, ${cpx} ${ys[i]}, ${xs[i]} ${ys[i]}`;
   }
   return d;
+}
+
+function AnimatedBar({ percent, delay }: { percent: number; delay: number }) {
+  const colors = useColors();
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withDelay(delay, withSpring(percent, { damping: 20, stiffness: 90 }));
+  }, []);
+
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%` as any,
+  }));
+
+  return (
+    <View style={[styles.barTrack, { backgroundColor: colors.surfaceContainerHighest }]}>
+      <Animated.View style={[styles.barFill, { backgroundColor: colors.primary }, barStyle]} />
+    </View>
+  );
 }
 
 export default function AnalyticsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [activeRange, setActiveRange] = useState("Week");
-  const isWeb = Platform.OS === "web";
   const topPad = isWeb ? 67 : insets.top;
 
   const chartWidth = 340;
@@ -65,8 +90,10 @@ export default function AnalyticsScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <AnimatedBackground />
+
       {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: "rgba(249,249,249,0.95)" }]}>
+      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: "rgba(249,249,249,0.88)" }]}>
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <MaterialIcons name="arrow-back" size={22} color={colors.onSurface} />
@@ -76,27 +103,18 @@ export default function AnalyticsScreen() {
             <MaterialIcons name="calendar-today" size={20} color={colors.onSurface} />
           </View>
         </View>
-
-        {/* Date range chips */}
         <View style={styles.rangeRow}>
           {DATE_RANGES.map((r) => (
             <TouchableOpacity
               key={r}
               style={[
                 styles.rangeChip,
-                {
-                  backgroundColor: activeRange === r ? colors.primary : colors.surfaceContainer,
-                },
+                { backgroundColor: activeRange === r ? colors.primary : colors.surfaceContainer },
               ]}
               onPress={() => setActiveRange(r)}
               activeOpacity={0.8}
             >
-              <Text
-                style={[
-                  styles.rangeChipText,
-                  { color: activeRange === r ? colors.primaryForeground : colors.onSurface },
-                ]}
-              >
+              <Text style={[styles.rangeChipText, { color: activeRange === r ? colors.primaryForeground : colors.onSurface }]}>
                 {r}
               </Text>
             </TouchableOpacity>
@@ -113,21 +131,18 @@ export default function AnalyticsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* KPI row */}
-        <View style={styles.kpiRow}>
+        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(60).springify()} style={styles.kpiRow}>
           {[
             { label: "Screen Time", value: "4h 32m" },
             { label: "Sessions", value: "24" },
             { label: "Avg Session", value: "11m" },
           ].map((kpi, i) => (
-            <View key={i} style={[styles.kpiCard, { backgroundColor: colors.card }]}>
-              <Text style={[styles.kpiValue, { color: colors.onSurface }]}>{kpi.value}</Text>
-              <Text style={[styles.kpiLabel, { color: colors.outline }]}>{kpi.label}</Text>
-            </View>
+            <KpiCard key={i} kpi={kpi} index={i} />
           ))}
-        </View>
+        </Animated.View>
 
         {/* Line chart */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(140).springify()} style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.outline }]}>SCREEN TIME</Text>
           <View style={styles.chartContainer}>
             <Svg width={chartWidth} height={chartHeight}>
@@ -139,10 +154,10 @@ export default function AnalyticsScreen() {
               <Text key={i} style={[styles.xLabel, { color: colors.outline }]}>{l}</Text>
             ))}
           </View>
-        </View>
+        </Animated.View>
 
         {/* App Breakdown */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(220).springify()} style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.outline }]}>APP BREAKDOWN</Text>
           <View style={{ gap: 16, marginTop: 4 }}>
             {APP_BREAKDOWN.map((app, i) => (
@@ -155,17 +170,15 @@ export default function AnalyticsScreen() {
                     <Text style={[styles.breakdownName, { color: colors.onSurface }]}>{app.name}</Text>
                     <Text style={[styles.breakdownTime, { color: colors.onSurface }]}>{app.time}</Text>
                   </View>
-                  <View style={[styles.barTrack, { backgroundColor: colors.surfaceContainerHighest }]}>
-                    <View style={[styles.barFill, { width: `${app.percent * 100}%` as any, backgroundColor: colors.primary }]} />
-                  </View>
+                  <AnimatedBar percent={app.percent} delay={300 + i * 80} />
                 </View>
               </View>
             ))}
           </View>
-        </View>
+        </Animated.View>
 
         {/* Insights */}
-        <View style={[styles.insightsCard, { backgroundColor: colors.card }]}>
+        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(300).springify()} style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.outline }]}>INSIGHTS</Text>
           <View style={{ gap: 12, marginTop: 8 }}>
             {INSIGHTS.map((insight, i) => (
@@ -175,9 +188,27 @@ export default function AnalyticsScreen() {
               </View>
             ))}
           </View>
-        </View>
+        </Animated.View>
       </ScrollView>
     </View>
+  );
+}
+
+function KpiCard({ kpi, index }: { kpi: { label: string; value: string }; index: number }) {
+  const colors = useColors();
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View
+      style={[styles.kpiCard, { backgroundColor: colors.card }, pressStyle]}
+      onTouchStart={() => { scale.value = withSpring(0.96, { damping: 12 }); }}
+      onTouchEnd={() => { scale.value = withSpring(1, { damping: 12 }); }}
+      onTouchCancel={() => { scale.value = withSpring(1, { damping: 12 }); }}
+    >
+      <Text style={[styles.kpiValue, { color: colors.onSurface }]}>{kpi.value}</Text>
+      <Text style={[styles.kpiLabel, { color: colors.outline }]}>{kpi.label}</Text>
+    </Animated.View>
   );
 }
 
@@ -192,21 +223,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 14,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
   headerLeft: { width: 32, alignItems: "flex-start" },
   headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
   headerRight: { width: 32, alignItems: "flex-end" },
   rangeRow: { flexDirection: "row", gap: 8 },
-  rangeChip: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
+  rangeChip: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20 },
   rangeChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 16, gap: 14 },
@@ -233,37 +255,12 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 2,
   },
-  insightsCard: {
-    borderRadius: 28,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 24,
-    elevation: 2,
-  },
-  cardTitle: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1.2,
-    marginBottom: 12,
-  },
+  cardTitle: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.2, marginBottom: 12 },
   chartContainer: { overflow: "hidden" },
-  xLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
-    paddingHorizontal: 12,
-  },
+  xLabels: { flexDirection: "row", justifyContent: "space-between", marginTop: 8, paddingHorizontal: 12 },
   xLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
   breakdownRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  breakdownIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  breakdownIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   breakdownInfo: { flex: 1, gap: 6 },
   breakdownTop: { flexDirection: "row", justifyContent: "space-between" },
   breakdownName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },

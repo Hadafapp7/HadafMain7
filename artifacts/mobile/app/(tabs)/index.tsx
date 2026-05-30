@@ -1,19 +1,30 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useRef } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Animated,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import Animated, {
+  FadeInDown,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+  runOnJS,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
+
+const isWeb = Platform.OS === "web";
 
 const APPS = [
   { name: "Instagram", category: "SOCIAL", time: "2h 15m", percent: 0.85, icon: "photo-camera" as const },
@@ -22,13 +33,13 @@ const APPS = [
 ];
 
 const WEEK_DATA = [
-  { day: "Mon", value: 0.6, today: false },
-  { day: "Tue", value: 0.8, today: false },
-  { day: "Wed", value: 0.5, today: false },
-  { day: "Thu", value: 0.9, today: false },
-  { day: "Fri", value: 0.7, today: false },
+  { day: "Mon", value: 0.6 },
+  { day: "Tue", value: 0.8 },
+  { day: "Wed", value: 0.5 },
+  { day: "Thu", value: 0.9 },
+  { day: "Fri", value: 0.7 },
   { day: "Sat", value: 1.0, today: true },
-  { day: "Sun", value: 0.3, today: false },
+  { day: "Sun", value: 0.3 },
 ];
 
 const QUICK_ACTIONS = [
@@ -38,46 +49,115 @@ const QUICK_ACTIONS = [
   { label: "App Limits", icon: "hourglass-empty" as const },
 ];
 
-function AppRow({ app }: { app: typeof APPS[0] }) {
+function AnimatedProgressBar({ percent, delay = 0 }: { percent: number; delay?: number }) {
   const colors = useColors();
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withDelay(delay, withSpring(percent, { damping: 20, stiffness: 90 }));
+  }, []);
+
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%` as any,
+  }));
+
   return (
-    <View style={styles.appRow}>
-      <View style={[styles.appIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-        <MaterialIcons name={app.icon} size={22} color={colors.onSurface} />
-      </View>
-      <View style={styles.appInfo}>
-        <Text style={[styles.appName, { color: colors.onSurface }]}>{app.name}</Text>
-        <Text style={[styles.appCategory, { color: colors.outline }]}>{app.category}</Text>
-      </View>
-      <View style={styles.appRight}>
-        <Text style={[styles.appTime, { color: colors.onSurface }]}>{app.time}</Text>
-        <View style={[styles.miniBarTrack, { backgroundColor: colors.surfaceContainerHighest }]}>
-          <View style={[styles.miniBarFill, { width: `${app.percent * 100}%` as any, backgroundColor: colors.primary }]} />
+    <View style={[styles.progressTrack, { backgroundColor: colors.surfaceContainerHighest }]}>
+      <Animated.View style={[styles.progressFill, { backgroundColor: colors.primary }, barStyle]} />
+    </View>
+  );
+}
+
+function CounterNumber({ target, delay = 0, suffix = "" }: { target: number; delay?: number; suffix?: string }) {
+  const colors = useColors();
+  const count = useSharedValue(0);
+  const [display, setDisplay] = useState(0);
+
+  useAnimatedReaction(
+    () => Math.round(count.value),
+    (current, prev) => {
+      if (current !== prev) runOnJS(setDisplay)(current);
+    }
+  );
+
+  useEffect(() => {
+    count.value = withDelay(delay, withTiming(target, { duration: 1000 }));
+  }, []);
+
+  return (
+    <Text style={[styles.statBigNumber, { color: colors.onSurface }]}>
+      {display}{suffix}
+    </Text>
+  );
+}
+
+function AppRow({ app, index }: { app: typeof APPS[0]; index: number }) {
+  const colors = useColors();
+  const scale = useSharedValue(1);
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withDelay(400 + index * 120, withSpring(app.percent, { damping: 20 }));
+  }, []);
+
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as any }));
+
+  return (
+    <Animated.View
+      style={pressStyle}
+      entering={isWeb ? undefined : FadeInDown.delay(300 + index * 80).springify()}
+    >
+      <View style={styles.appRow}>
+        <View style={[styles.appIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
+          <MaterialIcons name={app.icon} size={22} color={colors.onSurface} />
+        </View>
+        <View style={styles.appInfo}>
+          <Text style={[styles.appName, { color: colors.onSurface }]}>{app.name}</Text>
+          <Text style={[styles.appCategory, { color: colors.outline }]}>{app.category}</Text>
+        </View>
+        <View style={styles.appRight}>
+          <Text style={[styles.appTime, { color: colors.onSurface }]}>{app.time}</Text>
+          <View style={[styles.miniBarTrack, { backgroundColor: colors.surfaceContainerHighest }]}>
+            <Animated.View style={[styles.miniBarFill, { backgroundColor: colors.primary }, barStyle]} />
+          </View>
         </View>
       </View>
-    </View>
+    </Animated.View>
+  );
+}
+
+function PressableCard({ children, style, delay = 0 }: { children: React.ReactNode; style?: any; delay?: number }) {
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View
+      style={[pressStyle, style]}
+      entering={isWeb ? undefined : FadeInDown.delay(delay).springify()}
+      onTouchStart={() => { scale.value = withSpring(0.97, { damping: 12 }); }}
+      onTouchEnd={() => { scale.value = withSpring(1, { damping: 12 }); }}
+      onTouchCancel={() => { scale.value = withSpring(1, { damping: 12 }); }}
+    >
+      {children}
+    </Animated.View>
   );
 }
 
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const isWeb = Platform.OS === "web";
   const topPad = isWeb ? 67 : insets.top;
+  const ctaScale = useSharedValue(1);
 
-  const handleFocusPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 0.96, duration: 80, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 1, duration: 80, useNativeDriver: true }),
-    ]).start();
-  };
+  const ctaStyle = useAnimatedStyle(() => ({ transform: [{ scale: ctaScale.value }] }));
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <AnimatedBackground />
+
       {/* Fixed header */}
-      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: "rgba(249,249,249,0.92)" }]}>
+      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: "rgba(249,249,249,0.88)" }]}>
         <View style={styles.headerLeft}>
           <Text style={[styles.headerGreeting, { color: colors.onSurface }]}>Good Evening, Alex</Text>
           <View style={[styles.focusBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
@@ -99,8 +179,7 @@ export default function HomeScreen() {
       >
         {/* Stats grid */}
         <View style={styles.statsGrid}>
-          {/* Screen time card */}
-          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+          <PressableCard delay={60} style={[styles.statCard, { backgroundColor: colors.card }]}>
             <Text style={[styles.statLabel, { color: colors.outline }]}>Screen Time</Text>
             <Text style={[styles.statBigNumber, { color: colors.onSurface }]}>4h 32m</Text>
             <View style={[styles.statBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
@@ -112,24 +191,29 @@ export default function HomeScreen() {
                 <View key={i} style={[styles.miniBarVert, { height: h * 20, backgroundColor: i === 1 ? colors.primary : colors.surfaceContainerHighest }]} />
               ))}
             </View>
-          </View>
+          </PressableCard>
 
-          {/* Doomscroll score card */}
-          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
-            <Text style={[styles.statLabel, { color: colors.outline }]}>Doomscroll Score</Text>
-            <Text style={[styles.statBigNumber, { color: colors.onSurface }]}>68</Text>
+          <PressableCard delay={120} style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.statLabel, { color: colors.outline }]}>Doomscroll</Text>
+            <CounterNumber target={68} delay={200} />
             <Text style={[styles.statSubLabel, { color: colors.secondary }]}>Better +4 pts</Text>
-            <View style={[styles.progressTrack, { backgroundColor: colors.surfaceContainerHighest }]}>
-              <View style={[styles.progressFill, { width: "68%", backgroundColor: colors.primary }]} />
-            </View>
-          </View>
+            <AnimatedProgressBar percent={0.68} delay={400} />
+          </PressableCard>
         </View>
 
         {/* Start Focus Session CTA */}
-        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-          <Pressable
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(180).springify()}
+          style={ctaStyle}
+        >
+          <TouchableOpacity
             style={[styles.focusCta, { backgroundColor: colors.primary }]}
-            onPress={handleFocusPress}
+            activeOpacity={0.85}
+            onPressIn={() => {
+              ctaScale.value = withSpring(0.96, { damping: 12 });
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }}
+            onPressOut={() => { ctaScale.value = withSpring(1, { damping: 12 }); }}
           >
             <View style={styles.focusCtaInner}>
               <View style={styles.focusPlayBtn}>
@@ -137,63 +221,97 @@ export default function HomeScreen() {
               </View>
               <Text style={[styles.focusCtaText, { color: colors.primaryForeground }]}>Start Focus Session</Text>
             </View>
-          </Pressable>
+          </TouchableOpacity>
         </Animated.View>
 
         {/* Most Used Apps */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <PressableCard delay={240} style={[styles.card, { backgroundColor: colors.card }]}>
           <View style={styles.cardHeader}>
             <Text style={[styles.cardTitle, { color: colors.outline }]}>MOST USED APPS</Text>
             <MaterialIcons name="more-horiz" size={20} color={colors.outline} />
           </View>
           <View style={styles.appList}>
-            {APPS.map((app, i) => <AppRow key={i} app={app} />)}
+            {APPS.map((app, i) => <AppRow key={i} app={app} index={i} />)}
           </View>
-        </View>
+        </PressableCard>
 
         {/* Weekly Focus */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <PressableCard delay={300} style={[styles.card, { backgroundColor: colors.card }]}>
           <View style={styles.cardHeader}>
             <Text style={[styles.cardTitle, { color: colors.outline }]}>WEEKLY FOCUS</Text>
             <Text style={[styles.weeklyTotal, { color: colors.onSurface }]}>8h 20m</Text>
           </View>
           <View style={styles.weekBars}>
             {WEEK_DATA.map((d, i) => (
-              <View key={i} style={styles.weekBarItem}>
-                <View style={styles.weekBarOuter}>
-                  <View
-                    style={[
-                      styles.weekBarFill,
-                      {
-                        height: `${d.value * 100}%` as any,
-                        backgroundColor: d.today ? colors.primary : colors.surfaceContainerHighest,
-                        borderRadius: 4,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={[styles.weekDay, { color: d.today ? colors.onSurface : colors.outline }]}>{d.day}</Text>
-              </View>
+              <WeekBar key={i} data={d} index={i} />
             ))}
           </View>
-        </View>
+        </PressableCard>
 
         {/* Quick Actions */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickScroll}>
-          {QUICK_ACTIONS.map((action, i) => (
-            <TouchableOpacity
-              key={i}
-              style={[styles.quickChip, { backgroundColor: colors.surfaceContainer }]}
-              activeOpacity={0.7}
-              onPress={() => Haptics.selectionAsync()}
-            >
-              <MaterialIcons name={action.icon} size={18} color={colors.onSurface} />
-              <Text style={[styles.quickChipText, { color: colors.onSurface }]}>{action.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(360).springify()}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickScroll}>
+            {QUICK_ACTIONS.map((action, i) => (
+              <QuickChip key={i} action={action} index={i} />
+            ))}
+          </ScrollView>
+        </Animated.View>
       </ScrollView>
     </View>
+  );
+}
+
+function WeekBar({ data, index }: { data: typeof WEEK_DATA[0]; index: number }) {
+  const colors = useColors();
+  const height = useSharedValue(0);
+
+  useEffect(() => {
+    height.value = withDelay(350 + index * 60, withSpring(data.value * 100, { damping: 18 }));
+  }, []);
+
+  const barStyle = useAnimatedStyle(() => ({
+    height: `${height.value}%` as any,
+  }));
+
+  return (
+    <View style={styles.weekBarItem}>
+      <View style={styles.weekBarOuter}>
+        <Animated.View
+          style={[
+            styles.weekBarFill,
+            {
+              backgroundColor: data.today ? colors.primary : colors.surfaceContainerHighest,
+              borderRadius: 4,
+            },
+            barStyle,
+          ]}
+        />
+      </View>
+      <Text style={[styles.weekDay, { color: data.today ? colors.onSurface : colors.outline }]}>{data.day}</Text>
+    </View>
+  );
+}
+
+function QuickChip({ action, index }: { action: typeof QUICK_ACTIONS[0]; index: number }) {
+  const colors = useColors();
+  const scale = useSharedValue(1);
+  const chipStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View style={chipStyle}>
+      <TouchableOpacity
+        style={[styles.quickChip, { backgroundColor: colors.surfaceContainer }]}
+        activeOpacity={0.7}
+        onPressIn={() => { scale.value = withSpring(0.94, { damping: 12 }); }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 12 });
+          Haptics.selectionAsync();
+        }}
+      >
+        <MaterialIcons name={action.icon} size={18} color={colors.onSurface} />
+        <Text style={[styles.quickChipText, { color: colors.onSurface }]}>{action.label}</Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -212,11 +330,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerLeft: { flex: 1 },
-  headerGreeting: {
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.3,
-  },
+  headerGreeting: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
   focusBadge: {
     alignSelf: "flex-start",
     paddingHorizontal: 8,
@@ -224,11 +338,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginTop: 4,
   },
-  focusBadgeText: {
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 1.2,
-  },
+  focusBadgeText: { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 1.2 },
   avatar: {
     width: 40,
     height: 40,
@@ -237,6 +347,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: 12,
   },
+  onSurfaceVariant: { color: "#474747" },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 16, gap: 14 },
   statsGrid: { flexDirection: "row", gap: 12 },
@@ -251,16 +362,8 @@ const styles = StyleSheet.create({
     elevation: 2,
     gap: 6,
   },
-  statLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.8,
-  },
-  statBigNumber: {
-    fontSize: 34,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -1,
-  },
+  statLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 },
+  statBigNumber: { fontSize: 34, fontFamily: "Inter_700Bold", letterSpacing: -1 },
   statBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -270,35 +373,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     gap: 2,
   },
-  statBadgeText: {
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-  },
-  statSubLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-  },
-  miniBars: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 4,
-    height: 22,
-    marginTop: 4,
-  },
+  statBadgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  statSubLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  miniBars: { flexDirection: "row", alignItems: "flex-end", gap: 4, height: 22, marginTop: 4 },
   miniBarVert: { width: 10, borderRadius: 3 },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
-    marginTop: 4,
-  },
+  progressTrack: { height: 8, borderRadius: 4, overflow: "hidden", marginTop: 4 },
   progressFill: { height: "100%", borderRadius: 4 },
-  focusCta: {
-    height: 72,
-    borderRadius: 36,
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
+  focusCta: { height: 72, borderRadius: 36, justifyContent: "center", paddingHorizontal: 20 },
   focusCtaInner: { flexDirection: "row", alignItems: "center", gap: 14 },
   focusPlayBtn: {
     width: 44,
@@ -308,11 +389,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  focusCtaText: {
-    fontSize: 18,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.2,
-  },
+  focusCtaText: { fontSize: 18, fontFamily: "Inter_700Bold", letterSpacing: -0.2 },
   card: {
     borderRadius: 28,
     padding: 20,
@@ -322,54 +399,20 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 2,
   },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  cardTitle: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1.2,
-  },
-  weeklyTotal: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
+  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
+  cardTitle: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
+  weeklyTotal: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   appList: { gap: 14 },
   appRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  appIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  appIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   appInfo: { flex: 1 },
-  appName: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-  },
-  appCategory: {
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    letterSpacing: 0.5,
-    marginTop: 1,
-  },
+  appName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  appCategory: { fontSize: 11, fontFamily: "Inter_500Medium", letterSpacing: 0.5, marginTop: 1 },
   appRight: { alignItems: "flex-end", gap: 4, minWidth: 60 },
-  appTime: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
+  appTime: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   miniBarTrack: { height: 4, width: 52, borderRadius: 2, overflow: "hidden" },
   miniBarFill: { height: "100%", borderRadius: 2 },
-  weekBars: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    height: 80,
-    alignItems: "flex-end",
-  },
+  weekBars: { flexDirection: "row", justifyContent: "space-between", height: 80, alignItems: "flex-end" },
   weekBarItem: { alignItems: "center", gap: 4, flex: 1 },
   weekBarOuter: { flex: 1, width: "60%", justifyContent: "flex-end" },
   weekBarFill: { width: "100%" },
@@ -384,8 +427,5 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     marginLeft: 12,
   },
-  quickChipText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
+  quickChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });
