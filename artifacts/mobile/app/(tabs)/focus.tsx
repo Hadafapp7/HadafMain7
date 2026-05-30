@@ -291,7 +291,7 @@ export default function FocusScreen() {
       style={styles.scroll}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: topPad + 12, paddingBottom: bottomPad + 110 },
+        { paddingTop: topPad + 12, paddingBottom: bottomPad + 130 },
       ]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
@@ -647,8 +647,12 @@ const styles = StyleSheet.create({
   appCategory: { fontSize: 11, fontFamily: "Inter_400Regular" },
 
   stickyBottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: 20,
-    paddingTop: 10,
+    paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(0,0,0,0.08)",
   },
