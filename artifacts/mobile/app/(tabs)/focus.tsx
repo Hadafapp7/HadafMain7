@@ -308,6 +308,41 @@ function SessionCompleteOverlay({
   );
 }
 
+// ── Duration card ─────────────────────────────────────────────────────────────
+function DurationCard({
+  option,
+  isActive,
+  cardWidth,
+  onPress,
+}: {
+  option: (typeof DURATION_OPTIONS)[0];
+  isActive: boolean;
+  cardWidth: number;
+  onPress: () => void;
+}) {
+  const colors = useColors();
+  const scale  = useSharedValue(1);
+  const anim   = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.View style={[anim, { width: cardWidth }]}>
+      <TouchableOpacity
+        style={[styles.durationCard, { backgroundColor: isActive ? colors.primary : colors.card }]}
+        onPressIn={() => { scale.value = withSpring(0.92, { damping: 12 }); }}
+        onPressOut={() => { scale.value = withSpring(1,    { damping: 12 }); }}
+        onPress={onPress}
+        activeOpacity={1}
+      >
+        <Text style={[styles.durationMins, { color: isActive ? "#fff" : colors.onSurface }]}>
+          {option.minutes}
+        </Text>
+        <Text style={[styles.durationLabel, { color: isActive ? "rgba(255,255,255,0.7)" : colors.outline }]}>
+          {option.label}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 // ── Main screen ────────────────────────────────────────────────────────────────
 export default function FocusScreen() {
   const colors    = useColors();
@@ -486,37 +521,20 @@ export default function FocusScreen() {
                 <Text style={[styles.sectionLabel, { color: colors.outline }]}>DURATION</Text>
 
                 <View style={styles.durationRow}>
-                  {DURATION_OPTIONS.map((opt) => {
-                    const active = duration === opt.minutes && !showCustom;
-                    const scale  = useSharedValue(1);
-                    const anim   = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-                    return (
-                      <Animated.View key={opt.minutes} style={[anim, { width: cardW }]}>
-                        <TouchableOpacity
-                          style={[
-                            styles.durationCard,
-                            { backgroundColor: active ? colors.primary : colors.card },
-                          ]}
-                          onPressIn={() => { scale.value = withSpring(0.92, { damping: 12 }); }}
-                          onPressOut={() => { scale.value = withSpring(1,    { damping: 12 }); }}
-                          onPress={() => {
-                            Haptics.selectionAsync();
-                            setDuration(opt.minutes);
-                            setShowCustom(false);
-                            setCustomInput("");
-                          }}
-                          activeOpacity={1}
-                        >
-                          <Text style={[styles.durationMins, { color: active ? "#fff" : colors.onSurface }]}>
-                            {opt.minutes}
-                          </Text>
-                          <Text style={[styles.durationLabel, { color: active ? "rgba(255,255,255,0.7)" : colors.outline }]}>
-                            {opt.label}
-                          </Text>
-                        </TouchableOpacity>
-                      </Animated.View>
-                    );
-                  })}
+                  {DURATION_OPTIONS.map((opt) => (
+                    <DurationCard
+                      key={opt.minutes}
+                      option={opt}
+                      isActive={duration === opt.minutes && !showCustom}
+                      cardWidth={cardW}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setDuration(opt.minutes);
+                        setShowCustom(false);
+                        setCustomInput("");
+                      }}
+                    />
+                  ))}
                 </View>
 
                 {/* Custom duration row — matches reference style */}
