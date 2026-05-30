@@ -280,12 +280,14 @@ export default function FocusScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <AnimatedBackground />
 
+      {/* KeyboardAvoidingView only wraps the scroll area so the sticky button is unaffected */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -501,8 +503,9 @@ export default function FocusScreen() {
           )}
         </Animated.View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
-      {/* ── Sticky Start Button ── */}
+      {/* ── Sticky Start Button — always visible, outside KeyboardAvoidingView ── */}
       <View
         style={[
           styles.stickyBottom,
@@ -531,7 +534,7 @@ export default function FocusScreen() {
         onToggle={toggleApp}
         onClose={() => setShowPicker(false)}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
