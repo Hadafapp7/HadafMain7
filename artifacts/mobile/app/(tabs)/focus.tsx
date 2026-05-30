@@ -1,348 +1,347 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  Dimensions,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import Animated, {
   FadeInDown,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
+import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
 
 const isWeb = Platform.OS === "web";
+const SCREEN_W = Dimensions.get("window").width;
 
-const FOCUS_TYPES = [
-  { label: "Deep Work", icon: "bolt" as const },
-  { label: "Reading", icon: "menu-book" as const },
-  { label: "Exercise", icon: "fitness-center" as const },
-  { label: "Custom", icon: "tune" as const },
+const DURATIONS = [15, 30, 45, 60];
+
+// Ring constants
+const RING_SIZE = 220;
+const STROKE_WIDTH = 10;
+const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
+const CENTER = RING_SIZE / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+// Arc spans 300° (60° gap at top-right)
+const ARC_DEGREES = 300;
+const GAP_DEGREES = 360 - ARC_DEGREES;
+const ARC_LENGTH = (ARC_DEGREES / 360) * CIRCUMFERENCE;
+const GAP_LENGTH = (GAP_DEGREES / 360) * CIRCUMFERENCE;
+// Rotate so the gap sits at the top-right (start arc at bottom-left)
+const RING_ROTATION = -90 + GAP_DEGREES / 2; // positions gap centered at top
+
+const BLOCKED_APPS = [
+  { name: "Instagram",  icon: "photo-camera"     as const },
+  { name: "TikTok",     icon: "music-video"       as const },
+  { name: "YouTube",    icon: "play-circle-filled" as const },
 ];
 
-const BLOCK_ITEMS = [
-  { label: "Social Media", icon: "thumb-up" as const },
-  { label: "Games", icon: "sports-esports" as const },
-  { label: "Entertainment", icon: "play-arrow" as const },
-  { label: "Messaging", icon: "chat" as const },
-];
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const ALLOWED_APPS = [
-  { name: "Spotify", icon: "music-note" as const, allowed: true },
-  { name: "Maps", icon: "map" as const, allowed: true },
-  { name: "Calendar", icon: "calendar-today" as const, allowed: true },
-  { name: "Notes", icon: "edit-note" as const, allowed: false },
-  { name: "Camera", icon: "camera-alt" as const, allowed: false },
-];
-
-function Toggle({ value, onToggle }: { value: boolean; onToggle: () => void }) {
+function TimerRing({ duration }: { duration: number }) {
   const colors = useColors();
-  const knobPos = useSharedValue(value ? 22 : 2);
-  const trackColor = useSharedValue(value ? 1 : 0);
+  const progress = useSharedValue(0.5); // 0–1 fraction of ARC_LENGTH
 
-  const knobStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: knobPos.value }],
+  useEffect(() => {
+    // Scale so 60 min = full 300° arc; add 0.35 base so ring always looks substantial
+    const raw = duration / 60;
+    progress.value = withSpring(Math.min(1, raw + 0.35), { damping: 18, stiffness: 80 });
+  }, [duration]);
+
+  // Track (full 300° arc, gray)
+  const trackDash = `${ARC_LENGTH} ${GAP_LENGTH}`;
+
+  // Fill arc (proportional to duration)
+  const animatedProps = useAnimatedProps(() => ({
+    strokeDasharray: `${progress.value * ARC_LENGTH} ${CIRCUMFERENCE - progress.value * ARC_LENGTH}`,
   }));
 
-  const handleToggle = () => {
-    const next = !value;
-    knobPos.value = withSpring(next ? 22 : 2, { damping: 14, stiffness: 200 });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onToggle();
-  };
+  const minutes = String(duration).padStart(2, "0");
 
   return (
-    <Pressable
-      onPress={handleToggle}
-      style={[styles.toggle, { backgroundColor: value ? colors.primary : colors.surfaceContainerHighest }]}
-    >
-      <Animated.View
-        style={[
-          styles.toggleKnob,
-          { backgroundColor: value ? colors.primaryForeground : colors.outline },
-          knobStyle,
-        ]}
-      />
-    </Pressable>
-  );
-}
+    <View style={styles.ringContainer}>
+      <Svg
+        width={RING_SIZE}
+        height={RING_SIZE}
+        style={{ transform: [{ rotate: `${RING_ROTATION}deg` }] }}
+      >
+        {/* Track */}
+        <Circle
+          cx={CENTER}
+          cy={CENTER}
+          r={RADIUS}
+          fill="none"
+          stroke={colors.surfaceContainerHighest}
+          strokeWidth={STROKE_WIDTH}
+          strokeDasharray={trackDash}
+          strokeLinecap="round"
+        />
+        {/* Fill */}
+        <AnimatedCircle
+          cx={CENTER}
+          cy={CENTER}
+          r={RADIUS}
+          fill="none"
+          stroke={colors.primary}
+          strokeWidth={STROKE_WIDTH}
+          strokeLinecap="round"
+          animatedProps={animatedProps}
+        />
+      </Svg>
 
-function PressCard({ children, style, delay = 0 }: { children: React.ReactNode; style?: any; delay?: number }) {
-  const scale = useSharedValue(1);
-  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  return (
-    <Animated.View
-      style={[pressStyle, style]}
-      entering={isWeb ? undefined : FadeInDown.delay(delay).springify()}
-      onTouchStart={() => { scale.value = withSpring(0.97, { damping: 12 }); }}
-      onTouchEnd={() => { scale.value = withSpring(1, { damping: 12 }); }}
-      onTouchCancel={() => { scale.value = withSpring(1, { damping: 12 }); }}
-    >
-      {children}
-    </Animated.View>
+      {/* Center label */}
+      <View style={styles.ringCenter} pointerEvents="none">
+        <Text style={[styles.ringTime, { color: colors.onSurface }]}>
+          {minutes}:00
+        </Text>
+        <Text style={[styles.ringSubLabel, { color: colors.outline }]}>MINUTES</Text>
+      </View>
+    </View>
   );
 }
 
 export default function FocusScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [duration, setDuration] = useState(25);
-  const [selectedType, setSelectedType] = useState(0);
-  const [blockToggles, setBlockToggles] = useState([true, false, true, false]);
-  const [allowedApps, setAllowedApps] = useState(ALLOWED_APPS.map((a) => a.allowed));
+  const [duration, setDuration] = useState(30);
+  const [intention, setIntention] = useState("");
+  const [removedApps, setRemovedApps] = useState<string[]>([]);
   const topPad = isWeb ? 67 : insets.top;
 
-  const ctaScale = useSharedValue(1);
-  const ctaStyle = useAnimatedStyle(() => ({ transform: [{ scale: ctaScale.value }] }));
+  const blockedApps = BLOCKED_APPS.filter((a) => !removedApps.includes(a.name));
 
-  const toggleBlock = (i: number) => {
-    setBlockToggles((prev) => {
-      const next = [...prev];
-      next[i] = !next[i];
-      return next;
-    });
+  const removeApp = (name: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setRemovedApps((prev) => [...prev, name]);
   };
 
-  const toggleApp = (i: number) => {
+  const selectDuration = (d: number) => {
     Haptics.selectionAsync();
-    setAllowedApps((prev) => {
-      const next = [...prev];
-      next[i] = !next[i];
-      return next;
-    });
+    setDuration(d);
   };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <AnimatedBackground />
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: "rgba(249,249,249,0.88)" }]}>
-        <View style={styles.headerRow}>
-          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>Focus Mode</Text>
-          <TouchableOpacity activeOpacity={0.7}>
-            <MaterialIcons name="close" size={22} color={colors.onSurface} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: topPad + 70, paddingBottom: isWeb ? 34 + 84 : 90 },
+          { paddingTop: topPad + 16, paddingBottom: isWeb ? 34 + 84 : 100 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Duration Picker */}
-        <PressCard delay={60} style={[styles.durationCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.sectionLabel, { color: colors.outline }]}>SESSION DURATION</Text>
-          <View style={styles.durationRow}>
-            <TouchableOpacity
-              style={[styles.durationBtn, { borderColor: colors.primary }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setDuration((d) => Math.max(5, d - 5));
-              }}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="remove" size={22} color={colors.primary} />
-            </TouchableOpacity>
-
-            <View style={styles.durationDisplay}>
-              <Text style={[styles.durationNumber, { color: colors.onSurface }]}>{duration}</Text>
-              <Text style={[styles.durationUnit, { color: colors.outline }]}>min</Text>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.durationBtn, { borderColor: colors.primary }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setDuration((d) => Math.min(120, d + 5));
-              }}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="add" size={22} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-        </PressCard>
-
-        {/* Focus Type */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(120).springify()}>
-          <Text style={[styles.sectionLabel, { color: colors.outline, marginLeft: 4, marginBottom: 10 }]}>FOCUS TYPE</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }}>
-            {FOCUS_TYPES.map((t, i) => (
-              <FocusTypeCard
-                key={i}
-                type={t}
-                index={i}
-                isSelected={selectedType === i}
-                isLast={i === FOCUS_TYPES.length - 1}
-                onSelect={() => {
-                  Haptics.selectionAsync();
-                  setSelectedType(i);
-                }}
-              />
-            ))}
-          </ScrollView>
+        {/* Header */}
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(0).springify()}
+        >
+          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>FOCUS MODE</Text>
         </Animated.View>
 
-        {/* Block Distractions */}
+        {/* Circular timer */}
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
+          style={styles.ringWrapper}
+        >
+          <TimerRing duration={duration} />
+        </Animated.View>
+
+        {/* Set an Intention */}
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(120).springify()}
+          style={[styles.intentionCard, { backgroundColor: colors.card }]}
+        >
+          {/* Left accent bar */}
+          <View style={[styles.intentionAccent, { backgroundColor: colors.primary }]} />
+
+          <View style={styles.intentionInner}>
+            <View style={styles.intentionHeader}>
+              <MaterialIcons name="lightbulb" size={18} color={colors.onSurface} />
+              <Text style={[styles.intentionLabel, { color: colors.onSurface }]}>
+                SET AN INTENTION
+              </Text>
+            </View>
+            <TextInput
+              style={[styles.intentionInput, { backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }]}
+              placeholder="What are you working on?"
+              placeholderTextColor={colors.outline}
+              value={intention}
+              onChangeText={setIntention}
+              returnKeyType="done"
+            />
+          </View>
+        </Animated.View>
+
+        {/* Duration */}
         <Animated.View
           entering={isWeb ? undefined : FadeInDown.delay(180).springify()}
-          style={[styles.card, { backgroundColor: colors.card }]}
+          style={styles.section}
         >
-          <Text style={[styles.sectionLabel, { color: colors.outline, marginBottom: 16 }]}>BLOCK DISTRACTIONS</Text>
-          <View style={{ gap: 18 }}>
-            {BLOCK_ITEMS.map((item, i) => (
-              <View key={i} style={styles.blockRow}>
-                <View style={[styles.blockIconWrap, { backgroundColor: colors.surfaceContainerHigh }]}>
-                  <MaterialIcons name={item.icon} size={18} color={colors.onSurface} />
-                </View>
-                <Text style={[styles.blockLabel, { color: colors.onSurface }]}>{item.label}</Text>
-                <Toggle value={blockToggles[i]} onToggle={() => toggleBlock(i)} />
-              </View>
-            ))}
-          </View>
-        </Animated.View>
+          <Text style={[styles.sectionLabel, { color: colors.outline }]}>DURATION</Text>
 
-        {/* Allowed Apps */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(240).springify()}>
-          <Text style={[styles.sectionLabel, { color: colors.outline, marginLeft: 4, marginBottom: 12 }]}>ALLOWED APPS</Text>
-          <View style={styles.allowedRow}>
-            {ALLOWED_APPS.map((app, i) => (
-              <AllowedAppCard
-                key={i}
-                app={app}
-                isAllowed={allowedApps[i]}
-                onToggle={() => toggleApp(i)}
+          {/* Duration pills */}
+          <View style={styles.durationPills}>
+            {DURATIONS.map((d) => (
+              <DurationPill
+                key={d}
+                value={d}
+                isActive={duration === d}
+                onPress={() => selectDuration(d)}
               />
             ))}
           </View>
+
+          {/* Custom duration row */}
+          <TouchableOpacity
+            style={[styles.customDurationRow, { backgroundColor: colors.card }]}
+            activeOpacity={0.7}
+            onPress={() => Haptics.selectionAsync()}
+          >
+            <Text style={[styles.customDurationText, { color: colors.onSurface }]}>
+              SET CUSTOM DURATION
+            </Text>
+            <MaterialIcons name="edit" size={18} color={colors.onSurface} />
+          </TouchableOpacity>
         </Animated.View>
 
-        {/* Start Session CTA */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(300).springify()} style={ctaStyle}>
-          <TouchableOpacity
-            style={[styles.startCta, { backgroundColor: colors.primary }]}
-            activeOpacity={0.85}
-            onPressIn={() => {
-              ctaScale.value = withSpring(0.96, { damping: 12 });
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            }}
-            onPressOut={() => { ctaScale.value = withSpring(1, { damping: 12 }); }}
-          >
-            <MaterialIcons name="play-arrow" size={24} color={colors.primaryForeground} />
-            <Text style={[styles.startCtaText, { color: colors.primaryForeground }]}>
-              Start {duration} Min Session
-            </Text>
-          </TouchableOpacity>
+        {/* Restricted Access */}
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(240).springify()}
+          style={styles.section}
+        >
+          <View style={styles.restrictedHeader}>
+            <Text style={[styles.sectionLabel, { color: colors.outline }]}>RESTRICTED ACCESS</Text>
+            <View style={[styles.blockedBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
+              <Text style={[styles.blockedBadgeText, { color: colors.onSurface }]}>
+                {blockedApps.length} APPS BLOCKED
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.appsCard, { backgroundColor: colors.card }]}>
+            {blockedApps.length === 0 ? (
+              <Text style={[styles.noAppsText, { color: colors.outline }]}>No apps blocked</Text>
+            ) : (
+              blockedApps.map((app, i) => (
+                <AppBlockRow
+                  key={app.name}
+                  app={app}
+                  isLast={i === blockedApps.length - 1}
+                  onRemove={() => removeApp(app.name)}
+                />
+              ))
+            )}
+          </View>
+        </Animated.View>
+
+        {/* Start Button */}
+        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(300).springify()}>
+          <StartButton duration={duration} />
         </Animated.View>
       </ScrollView>
     </View>
   );
 }
 
-function FocusTypeCard({
-  type,
-  index,
-  isSelected,
-  isLast,
-  onSelect,
+function DurationPill({
+  value,
+  isActive,
+  onPress,
 }: {
-  type: { label: string; icon: React.ComponentProps<typeof MaterialIcons>["name"] };
-  index: number;
-  isSelected: boolean;
-  isLast: boolean;
-  onSelect: () => void;
+  value: number;
+  isActive: boolean;
+  onPress: () => void;
 }) {
   const colors = useColors();
   const scale = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
-    <Animated.View
-      style={[
-        pressStyle,
-        styles.typeCard,
-        {
-          backgroundColor: isSelected ? colors.primary : colors.card,
-          marginLeft: index === 0 ? 16 : 10,
-          marginRight: isLast ? 16 : 0,
-        },
-      ]}
-    >
+    <Animated.View style={pressStyle}>
       <TouchableOpacity
-        style={{ alignItems: "center", gap: 10 }}
-        onPressIn={() => { scale.value = withSpring(0.94, { damping: 12 }); }}
-        onPressOut={() => {
-          scale.value = withSpring(1, { damping: 12 });
-          onSelect();
-        }}
+        style={[
+          styles.durationPill,
+          { backgroundColor: isActive ? colors.primary : colors.card },
+        ]}
+        onPressIn={() => { scale.value = withSpring(0.92, { damping: 12 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 12 }); }}
+        onPress={onPress}
         activeOpacity={1}
       >
-        <MaterialIcons
-          name={type.icon}
-          size={28}
-          color={isSelected ? colors.primaryForeground : colors.onSurface}
-        />
         <Text
-          style={[styles.typeLabel, { color: isSelected ? colors.primaryForeground : colors.onSurface }]}
+          style={[
+            styles.durationPillText,
+            { color: isActive ? "#fff" : colors.onSurface },
+          ]}
         >
-          {type.label}
+          {value}
         </Text>
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
-function AllowedAppCard({
+function AppBlockRow({
   app,
-  isAllowed,
-  onToggle,
+  isLast,
+  onRemove,
 }: {
   app: { name: string; icon: React.ComponentProps<typeof MaterialIcons>["name"] };
-  isAllowed: boolean;
-  onToggle: () => void;
+  isLast: boolean;
+  onRemove: () => void;
 }) {
   const colors = useColors();
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(isAllowed ? 1 : 0.45);
-  const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
+  return (
+    <View style={[styles.appRow, !isLast && { marginBottom: 16 }]}>
+      <View style={styles.appIconWrap}>
+        <MaterialIcons name={app.icon} size={20} color={colors.onSurface} />
+      </View>
+      <Text style={[styles.appName, { color: colors.onSurface }]}>{app.name}</Text>
+      <TouchableOpacity
+        style={styles.removeBtn}
+        onPress={onRemove}
+        activeOpacity={0.7}
+      >
+        <MaterialIcons name="remove-circle" size={26} color="#ef4444" />
+      </TouchableOpacity>
+    </View>
+  );
+}
 
-  const handlePress = () => {
-    scale.value = withSpring(0.9, { damping: 10 });
-    setTimeout(() => { scale.value = withSpring(1, { damping: 12 }); }, 100);
-    opacity.value = withSpring(isAllowed ? 0.45 : 1);
-    onToggle();
-  };
+function StartButton({ duration }: { duration: number }) {
+  const colors = useColors();
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
-    <Animated.View style={[pressStyle, styles.allowedApp, { backgroundColor: colors.card }]}>
-      <TouchableOpacity style={{ alignItems: "center", gap: 8 }} onPress={handlePress} activeOpacity={1}>
-        <View style={[styles.allowedIconWrap, { backgroundColor: colors.surfaceContainerHigh }]}>
-          <MaterialIcons name={app.icon} size={20} color={colors.onSurface} />
-        </View>
-        {!isAllowed && (
-          <View style={[styles.deniedBadge, { backgroundColor: colors.primary }]}>
-            <MaterialIcons name="block" size={9} color={colors.primaryForeground} />
-          </View>
-        )}
-        <Text style={[styles.allowedLabel, { color: colors.onSurface }]}>{app.name}</Text>
+    <Animated.View style={pressStyle}>
+      <TouchableOpacity
+        style={[styles.startBtn, { backgroundColor: colors.primary }]}
+        onPressIn={() => {
+          scale.value = withSpring(0.96, { damping: 12 });
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 12 }); }}
+        activeOpacity={1}
+      >
+        <MaterialIcons name="play-arrow" size={24} color="#fff" />
+        <Text style={styles.startBtnText}>Start {duration} Min Session</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -350,92 +349,190 @@ function AllowedAppCard({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-  },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, gap: 16 },
-  sectionLabel: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
-  durationCard: {
-    borderRadius: 28,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 24,
-    elevation: 2,
-    alignItems: "center",
-    gap: 20,
+  content: { paddingHorizontal: 20, gap: 24 },
+
+  headerTitle: {
+    fontSize: 24,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.5,
+    paddingTop: 4,
   },
-  durationRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 24 },
-  durationBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 2,
+
+  ringWrapper: {
+    alignItems: "center",
+    marginVertical: 4,
+  },
+  ringContainer: {
+    width: RING_SIZE,
+    height: RING_SIZE,
     alignItems: "center",
     justifyContent: "center",
   },
-  durationDisplay: { alignItems: "center" },
-  durationNumber: { fontSize: 56, fontFamily: "Inter_700Bold", letterSpacing: -2, lineHeight: 62 },
-  durationUnit: { fontSize: 16, fontFamily: "Inter_500Medium", marginTop: -4 },
-  typeCard: {
-    width: 110,
-    borderRadius: 28,
+  ringCenter: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ringTime: {
+    fontSize: 56,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -2,
+  },
+  ringSubLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+
+  intentionCard: {
+    borderRadius: 20,
+    flexDirection: "row",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  intentionAccent: {
+    width: 4,
+    borderRadius: 0,
+  },
+  intentionInner: {
+    flex: 1,
+    padding: 18,
+    gap: 12,
+  },
+  intentionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  intentionLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.2,
+  },
+  intentionInput: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+  },
+
+  section: { gap: 12 },
+  sectionLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.5,
+  },
+
+  durationPills: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  durationPill: {
+    width: (SCREEN_W - 40 - 30) / 4,
+    paddingVertical: 16,
+    borderRadius: 50,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  durationPillText: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+  },
+
+  customDurationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  customDurationText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1,
+  },
+
+  restrictedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  blockedBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  blockedBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.5,
+  },
+
+  appsCard: {
+    borderRadius: 20,
     padding: 18,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
-    shadowRadius: 24,
+    shadowRadius: 16,
     elevation: 2,
   },
-  typeLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center" },
-  card: {
-    borderRadius: 28,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 24,
-    elevation: 2,
+  noAppsText: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    paddingVertical: 8,
   },
-  blockRow: { flexDirection: "row", alignItems: "center", gap: 14 },
-  blockIconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  blockLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
-  toggle: { width: 48, height: 28, borderRadius: 14, justifyContent: "center" },
-  toggleKnob: { width: 22, height: 22, borderRadius: 11 },
-  allowedRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  allowedApp: {
-    width: 72,
-    borderRadius: 20,
-    padding: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 24,
-    elevation: 2,
-    position: "relative",
+  appRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
   },
-  allowedIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  deniedBadge: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+  appIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#000",
     alignItems: "center",
     justifyContent: "center",
   },
-  allowedLabel: { fontSize: 11, fontFamily: "Inter_500Medium", textAlign: "center" },
-  startCta: { height: 64, borderRadius: 32, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
-  startCtaText: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  appName: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: "Inter_500Medium",
+  },
+  removeBtn: {
+    padding: 2,
+  },
+
+  startBtn: {
+    height: 60,
+    borderRadius: 30,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  startBtnText: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    color: "#fff",
+  },
 });
