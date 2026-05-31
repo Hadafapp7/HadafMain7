@@ -42,6 +42,12 @@ const WEEK_DATA = [
   { day: "Sun", value: 0.3 },
 ];
 
+const GOALS_PREVIEW = [
+  { name: "Deep Work",       time: "9:00 AM – 11:00 AM",  progress: 0.68 },
+  { name: "Morning Reading", time: "7:00 AM – 8:00 AM",   progress: 1.0  },
+  { name: "Evening Journal", time: "9:00 PM – 9:30 PM",   progress: 0.0  },
+];
+
 const QUICK_ACTIONS = [
   { label: "Block Apps", icon: "block" as const },
   { label: "Set Limits", icon: "timelapse" as const },
@@ -88,6 +94,37 @@ function CounterNumber({ target, delay = 0, suffix = "" }: { target: number; del
     <Text style={[styles.statBigNumber, { color: colors.onSurface }]}>
       {display}{suffix}
     </Text>
+  );
+}
+
+function GoalProgressItem({ goal, index }: { goal: typeof GOALS_PREVIEW[0]; index: number }) {
+  const colors = useColors();
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withDelay(300 + index * 120, withSpring(goal.progress, { damping: 18, stiffness: 80 }));
+  }, []);
+
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%` as any,
+  }));
+
+  const pct = Math.round(goal.progress * 100);
+  const fillColor = goal.progress >= 1 ? "#16a34a" : colors.primary;
+
+  return (
+    <View style={styles.goalItem}>
+      <View style={styles.goalItemHeader}>
+        <Text style={[styles.goalItemName, { color: colors.onSurface }]}>{goal.name}</Text>
+        <Text style={[styles.goalItemPct, { color: goal.progress >= 1 ? "#16a34a" : colors.outline }]}>
+          {pct === 100 ? "✓" : `${pct}%`}
+        </Text>
+      </View>
+      <Text style={[styles.goalItemTime, { color: colors.outline }]}>{goal.time}</Text>
+      <View style={[styles.goalBar, { backgroundColor: colors.surfaceContainerHighest }]}>
+        <Animated.View style={[styles.goalBarFill, { backgroundColor: fillColor }, barStyle]} />
+      </View>
+    </View>
   );
 }
 
@@ -148,10 +185,6 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const topPad = isWeb ? 67 : insets.top;
-  const ctaScale = useSharedValue(1);
-
-  const ctaStyle = useAnimatedStyle(() => ({ transform: [{ scale: ctaScale.value }] }));
-
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <AnimatedBackground />
@@ -201,28 +234,18 @@ export default function HomeScreen() {
           </PressableCard>
         </View>
 
-        {/* Start Focus Session CTA */}
-        <Animated.View
-          entering={isWeb ? undefined : FadeInDown.delay(180).springify()}
-          style={ctaStyle}
-        >
-          <TouchableOpacity
-            style={[styles.focusCta, { backgroundColor: colors.primary }]}
-            activeOpacity={0.85}
-            onPressIn={() => {
-              ctaScale.value = withSpring(0.96, { damping: 12 });
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            }}
-            onPressOut={() => { ctaScale.value = withSpring(1, { damping: 12 }); }}
-          >
-            <View style={styles.focusCtaInner}>
-              <View style={styles.focusPlayBtn}>
-                <MaterialIcons name="play-arrow" size={26} color={colors.primary} />
-              </View>
-              <Text style={[styles.focusCtaText, { color: colors.primaryForeground }]}>Start Focus Session</Text>
-            </View>
-          </TouchableOpacity>
-        </Animated.View>
+        {/* Goals Progress */}
+        <PressableCard delay={180} style={[styles.card, { backgroundColor: colors.card }]}>
+          <View style={styles.cardHeader}>
+            <Text style={[styles.cardTitle, { color: colors.outline }]}>GOALS PROGRESS</Text>
+            <MaterialIcons name="flag" size={18} color={colors.outline} />
+          </View>
+          <View style={styles.goalsList}>
+            {GOALS_PREVIEW.map((goal, i) => (
+              <GoalProgressItem key={i} goal={goal} index={i} />
+            ))}
+          </View>
+        </PressableCard>
 
         {/* Most Used Apps */}
         <PressableCard delay={240} style={[styles.card, { backgroundColor: colors.card }]}>
@@ -379,17 +402,16 @@ const styles = StyleSheet.create({
   miniBarVert: { width: 10, borderRadius: 3 },
   progressTrack: { height: 8, borderRadius: 4, overflow: "hidden", marginTop: 4 },
   progressFill: { height: "100%", borderRadius: 4 },
-  focusCta: { height: 72, borderRadius: 36, justifyContent: "center", paddingHorizontal: 20 },
-  focusCtaInner: { flexDirection: "row", alignItems: "center", gap: 14 },
-  focusPlayBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  focusCtaText: { fontSize: 18, fontFamily: "Inter_700Bold", letterSpacing: -0.2 },
+  // Goals progress section
+  goalsList:       { gap: 14 },
+  goalItem:        { gap: 6 },
+  goalItemHeader:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  goalItemName:    { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  goalItemPct:     { fontSize: 12, fontFamily: "Inter_700Bold" },
+  goalItemTime:    { fontSize: 11, fontFamily: "Inter_400Regular" },
+  goalBar:         { height: 6, borderRadius: 3, overflow: "hidden", marginTop: 2 },
+  goalBarFill:     { height: "100%", borderRadius: 3 },
+
   card: {
     borderRadius: 28,
     padding: 20,
