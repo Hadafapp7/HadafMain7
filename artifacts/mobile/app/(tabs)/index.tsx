@@ -399,7 +399,7 @@ export default function HomeScreen() {
             iconColor="#2e7d32"
             icon="checklist"
             label1="DAILY"
-            label2="TASKS"
+            label2="GOALS"
             badgeText="3 LEFT"
             badgeBg="#2e7d32"
           />
