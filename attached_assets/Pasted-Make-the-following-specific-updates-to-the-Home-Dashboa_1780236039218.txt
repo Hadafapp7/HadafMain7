@@ -1,0 +1,57 @@
+Make the following specific updates to the Home/Dashboard page only. Do not change the color theme, typography, navigation, or any other page.
+
+1. Dashboard — 3D Progress Character
+Add a unique 3D animated progress character at the top of the Home page, above all existing cards:
+
+Character visually reflects the user's overall progress based on analytics data (e.g. more goals completed = character looks energetic/happy/powerful; poor progress = character looks tired/slouched)
+Use a 3D rendered or CSS 3D / Three.js character — must feel unique and polished, not a flat icon or generic avatar
+Swipe left or right on the character triggers a smooth rotation animation — character spins/rotates on its Y-axis in the swipe direction with momentum and spring easing
+Character should be contained in its own section at the top — appropriately sized, not too large
+All existing dashboard cards appear below the character section, in their original order
+
+
+2. Dashboard — Card Highlight Colors
+
+Add a subtle light highlight/tint color to each card on the dashboard
+Each card can have a slightly different tint (e.g. soft blue, soft purple, soft green, soft amber) that complements the existing theme
+Tints must be light and translucent — not solid fills — so existing card content remains clearly readable
+Card borders or backgrounds should feel elevated and polished, consistent with the overall theme
+
+
+3. Goals Progress Card — Swipeable Rows + Calendar Modal
+Row background:
+
+Add a subtle highlight background behind each row of day-circles inside the Goals Progress card (a light pill or rounded rectangle behind the 5 circles row)
+
+Swipeable history:
+
+Each row of circles must be horizontally swipeable
+Swiping left reveals previous days' results — show up to 4 additional circles maximum (so total visible history = up to 9 days, but only 4–5 visible at a time)
+Swiping right returns to most recent days
+Add smooth slide animation with snapping behavior
+
+Calendar Modal on tap:
+
+Tapping anywhere on the Goals Progress card (outside the swipe gesture) opens a medium-sized modal in the centre of the screen
+Modal has a blurred background behind it (backdrop blur)
+Inside the modal: a calendar view showing all historical goal results — each date marked with the same circle indicators (green tick, red cross, grey dash)
+Modal dismisses on tap outside or with a close button
+Modal entrance: scale-up + fade-in animation with spring easing
+
+
+4. Dashboard — Remove Bottom Quick-Action Buttons
+
+Remove all quick-action buttons at the very bottom of the Home page (e.g. "Block Apps", "Set Limits", and any similar shortcut buttons in that row/section)
+The space they occupied should either collapse cleanly or be left as minimal padding above the bottom navigation bar
+Do not remove or alter the bottom navigation bar itself
+
+
+Animations summary for this update:
+
+Character rotation on swipe: spring-eased Y-axis rotation with momentum
+Circle row swipe: smooth horizontal slide with snap points
+Calendar modal: backdrop blur + scale-up fade-in entrance, fade-out exit
+Card tints: no animation needed, static styling
+
+
+Do not change: any other page, the bottom navigation bar, the Focus Session flow, the Goals page, or the Analytics page.
