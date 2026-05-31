@@ -1,0 +1,112 @@
+Update two modal interactions inside the Goals page only. Do not change any other page or existing functionality.
+
+Modal 1 — "Add Goal" Button → Add New Task Modal
+When user taps the "Add Goal" button, open a modal that exactly matches Image 1 in design:
+Visual Design
+
+Modal: white background, large rounded corners (border-radius ~24px), centered on screen
+Backdrop: full screen blur behind the modal — dark blurred overlay of the page beneath
+Top-right: ✕ close button — thin, dark, no background
+Title: "ADD NEW TASK" — ultra-bold, large, black, uppercase, tight tracking
+Subtitle below title: "ARCHITECT YOUR DAY" — small, uppercase, wide letter-spacing, grey
+
+Form Fields
+Section 1 — Task Identification
+
+Label: "TASK IDENTIFICATION" — tiny, uppercase, bold, dark
+Input field below: large rounded pill shape, light grey background, placeholder text "What needs attention?" in grey italic/light weight
+
+Section 2 — Scheduling Window
+
+Label: "SCHEDULING WINDOW" — tiny, uppercase, bold, dark — on the left
+Right side of same row: "PRIORITY HIGH" — tiny uppercase, orange color
+Two sub-columns below:
+
+Left — Duration:
+
+Label: "DURATION" — tiny uppercase bold
+Below: rounded pill display showing "1.5 Hours" — grey background, medium bold text
+On tap: open a scroll drum / slot-machine style duration picker:
+
+Two scrollable columns — Hours and Minutes
+Smooth momentum scrolling with snap-to-value
+Tactile feel, like a native iOS picker
+Hours: 0–12, Minutes: 00, 05, 10... 55
+
+
+
+Right — Start Time:
+
+Label: "START TIME" — tiny uppercase bold
+Below: rounded pill display showing "10:00 AM" — grey background, medium bold text
+On tap: open a scroll drum / slot-machine style time picker:
+
+Three scrollable columns — Hours, Minutes, AM/PM
+Smooth momentum scrolling with snap-to-value
+Exactly like the native iOS clock/timer picker in feel and appearance
+
+
+
+Submit Button
+
+Full-width pill button at the bottom: solid black background, "COMMIT TASK" in white, uppercase, bold, medium size
+Subtle press/scale animation on tap
+
+Modal Animation
+
+Entrance: scale up from center + fade in with spring easing
+Exit (on ✕ or outside tap): scale down + fade out
+
+
+Modal 2 — Goal Card Tap → Goal Detail Sheet
+When user taps any existing goal card on the Goals page, open a bottom sheet modal that exactly matches Image 2 in design:
+Visual Design
+
+Sheet slides up from the bottom of the screen, large rounded top corners
+White background, full width
+Backdrop blur behind the sheet — dark blurred overlay of the page beneath
+Small grey drag handle pill centered at the very top of the sheet
+
+Content Layout — Top to Bottom
+
+Section label: "CURRENT FOCUS" — tiny, uppercase, grey, bold, left-aligned
+Goal title: "Finish project proposal" — very large, ultra-bold black text, left-aligned, wraps to two lines naturally
+Time row: clock icon + "10:00 AM - 11:30 AM" — medium size, dark grey, left-aligned
+Two info cards side by side (light grey background, rounded-xl):
+
+Left card: label "DURATION" tiny uppercase grey + value "1.5 Hours" bold black below
+Right card: label "PRIORITY" tiny uppercase grey + value "Critical" bold black below
+
+
+Notes/description card (light grey background, rounded-xl, full width):
+
+Left: horizontal lines icon (≡) in grey
+Right: descriptive text — "Review the final budget allocations and ensure the timeline matches the engineering roadmap for Q4." — regular weight, dark grey
+
+
+Two action buttons at the bottom:
+
+"DONE" — full-width, solid black pill, white uppercase bold text
+"RESCHEDULE" — full-width, white pill with black border, black uppercase bold text
+Subtle gap between the two buttons
+
+
+
+Sheet Animation
+
+Entrance: slides up from bottom with spring easing + slight scale from 0.95
+Exit (on drag down or outside tap): slides back down
+Drag handle is functional — dragging down dismisses the sheet
+
+
+Typography & Style Rules (both modals):
+
+Font: Inter, weights 700–900 for headings, 400–500 for body
+All labels: tiny, uppercase, wide letter-spacing
+Pill shapes: large border-radius (rounded-full or rounded-2xl)
+Colors: black, white, light grey (#f0f0f0), orange for priority accent
+No drop shadows on inner elements — clean flat layering
+Both modals must feel native, polished, and snappy
+
+
+Do not change: any other page, the bottom navigation bar, Focus page, Analytics page, Home page, or goal card list styling.
