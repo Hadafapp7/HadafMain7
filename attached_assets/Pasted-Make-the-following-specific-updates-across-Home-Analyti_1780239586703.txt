@@ -1,0 +1,123 @@
+Make the following specific updates across Home, Analytics, Focus, and Goals pages. Do not change the color theme or any untouched functionality.
+
+HOME PAGE
+Card Sizing & Styling
+
+Screen Time card and Doom Scroll card: make these the largest cards on the page — increase height and padding significantly. Set background to solid black with white text throughout both cards. These are the hero cards.
+Goals Progress card and all other remaining cards: make these smaller — reduce padding and height so hierarchy is clear between hero cards and secondary cards
+Remove the Weekly Focus card from the Home page entirely (it moves to Analytics — see below)
+
+Goals Progress Card — Interactive Calendar Modal
+
+Tapping the Goals Progress card still opens the calendar modal with backdrop blur
+Upgrade the calendar to a fully interactive calendar:
+
+User can change the month using left/right arrow buttons
+User can change the year using a year selector (dropdown or up/down arrows)
+Calendar must correctly reflect the selected month/year
+Each date shows a single dot: 🟢 green (completed), 🔴 red (missed), ⚫ grey (terminated mid-session)
+Smooth slide animation when navigating between months
+
+
+Modal closes on tap outside or X button
+
+
+ANALYTICS PAGE
+Weekly Focus Card
+
+Add the Weekly Focus card (moved from Home page) to the Analytics page in an appropriate position
+
+Usage Trends Chart — X-Axis Labels
+
+When chart is set to Week: x-axis shows day abbreviations — Mon, Tue, Wed, Thu, Fri, Sat, Sun
+When chart is set to Month: x-axis shows month names — Jan, Feb, Mar, Apr... Dec
+When chart is set to Year: display a 5-year range on the x-axis (e.g. 2021, 2022, 2023, 2024, 2025)
+
+Top Apps Card — Tap to Expand
+
+Tapping the Top Apps card opens a centered modal with backdrop blur
+Modal contains a list of the top 5 apps by screen time, each showing:
+
+App name
+App icon (or placeholder)
+Total screen time duration
+
+
+Modal closes on tap outside or X button
+Entrance animation: scale-up + fade-in with spring easing
+
+Header Label Update
+
+Change the label "Total Screen Time" on the top card to "Today's Screen Time"
+
+
+FOCUS PAGE
+Validation Before Starting Session
+
+Before allowing the session to start, validate that all required fields are filled:
+
+Timer duration is set
+Intention/goal is entered
+Blocked apps are selected
+
+
+If any field is empty when user taps "Start Session":
+
+Do not start the session
+Highlight each empty field with a visible indicator (e.g. red border, shake animation, warning label)
+Highlight only the fields that are missing — pre-filled fields stay normal
+
+
+
+Start Session — Confirmation Modal
+
+If all fields are filled and user taps "Start Session":
+
+Open a centered confirmation modal with backdrop blur
+Modal contains a checkbox or toggle asking "Are you ready to focus?" with a confirm button
+User must check the checkbox and confirm to actually start the session
+Entrance animation: card scales up from center with spring easing + fade-in — must feel satisfying and polished
+If user cancels or dismisses, return to Focus page with no session started
+
+
+
+
+GOALS PAGE
+Delete Goal
+
+Add a delete icon/button (e.g. trash icon or ✕) on each goal card
+Tapping delete removes that goal card with a smooth slide-out animation (slide left or fade+collapse downward)
+No confirmation needed — instant removal with animation
+
+"Add Goal" Button — Scroll-Reactive Behavior
+
+Button is normally full-width or full pill shape with a "+" icon and "Add Goal" label at the bottom of the page, just above the navigation bar
+When user scrolls up (toward top of page): button collapses into a circular "+" icon only, positioned on the bottom-right corner of the screen (floating action button style)
+When user scrolls down (toward bottom of page): button expands back to its original full shape and label
+Transition must be smooth with spring easing — size, border-radius, and label all animate together
+
+Add Goal Form — Scroll Drum Timer Picker
+
+In the Add Goal form, for the "Active From" and "Active To" time fields:
+
+Replace any existing input with a scroll drum / slot-machine style time picker
+Hours and minutes in separate scrollable columns
+Smooth momentum scrolling with snap-to-value behavior
+Must feel native and tactile — like iOS time picker
+Apply to both Daily (two pickers) and Scheduled (one time picker + date picker) goal types
+
+
+
+
+Animations summary:
+
+Goals card delete: slide-out + height-collapse
+Add Goal button: spring-animated morph between pill and circle FAB
+Drum timer: smooth momentum scroll with snap
+Focus confirmation modal: spring scale-up + fade-in
+Focus field validation: shake + red highlight on empty fields
+Calendar month navigation: horizontal slide transition
+Top Apps modal: scale-up + fade-in
+
+
+Do not change: Goals page card content/styling beyond what is specified, the bottom navigation bar, character/3D elements (already removed), or any page not listed above.

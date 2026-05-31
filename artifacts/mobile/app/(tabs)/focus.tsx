@@ -1,4 +1,5 @@
 import { MaterialIcons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -21,6 +22,7 @@ import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -30,7 +32,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
 
-const isWeb = Platform.OS === "web";
+const isWeb    = Platform.OS === "web";
 const SCREEN_W = Dimensions.get("window").width;
 
 // ── Session states ─────────────────────────────────────────────────────────────
@@ -97,8 +99,8 @@ function TimerRing({
   sessionState: SessionState;
   duration: number;
 }) {
-  const colors   = useColors();
-  const fillPct  = useSharedValue(0);
+  const colors  = useColors();
+  const fillPct = useSharedValue(0);
 
   useEffect(() => {
     const pct = totalSecs > 0 ? 1 - remainingSecs / totalSecs : 0;
@@ -107,12 +109,9 @@ function TimerRing({
 
   const animatedProps = useAnimatedProps(() => {
     const filled = fillPct.value * ARC_LENGTH;
-    return {
-      strokeDasharray: `${filled} ${CIRCUMFERENCE - filled}`,
-    };
+    return { strokeDasharray: `${filled} ${CIRCUMFERENCE - filled}` };
   });
 
-  const isActive  = sessionState === "running" || sessionState === "paused";
   const displayTime = sessionState === "idle"
     ? `${String(duration).padStart(2, "0")}:00`
     : formatTime(remainingSecs);
@@ -120,12 +119,7 @@ function TimerRing({
   return (
     <View style={styles.ringWrapper}>
       <View style={styles.ringContainer}>
-        <Svg
-          width={RING_SIZE}
-          height={RING_SIZE}
-          style={{ transform: [{ rotate: `${RING_ROTATION}deg` }] }}
-        >
-          {/* Track */}
+        <Svg width={RING_SIZE} height={RING_SIZE} style={{ transform: [{ rotate: `${RING_ROTATION}deg` }] }}>
           <Circle
             cx={CENTER} cy={CENTER} r={RADIUS}
             fill="none"
@@ -134,7 +128,6 @@ function TimerRing({
             strokeDasharray={`${ARC_LENGTH} ${GAP_LENGTH}`}
             strokeLinecap="round"
           />
-          {/* Progress */}
           <AnimatedCircle
             cx={CENTER} cy={CENTER} r={RADIUS}
             fill="none"
@@ -144,14 +137,12 @@ function TimerRing({
             animatedProps={animatedProps}
           />
         </Svg>
-
-        {/* Center: time + label */}
         <View style={styles.ringCenter} pointerEvents="none">
           <Text style={[styles.ringTime, { color: colors.onSurface }]}>{displayTime}</Text>
           <Text style={[styles.ringSubLabel, { color: colors.outline }]}>
-            {sessionState === "idle"    ? "MINUTES"   :
-             sessionState === "paused"  ? "PAUSED"    :
-             sessionState === "done"    ? "COMPLETE"  : "REMAINING"}
+            {sessionState === "idle"   ? "MINUTES"  :
+             sessionState === "paused" ? "PAUSED"   :
+             sessionState === "done"   ? "COMPLETE" : "REMAINING"}
           </Text>
         </View>
       </View>
@@ -161,19 +152,13 @@ function TimerRing({
 
 // ── App picker modal ───────────────────────────────────────────────────────────
 function AppPickerModal({
-  visible,
-  blockedApps,
-  onToggle,
-  onClose,
+  visible, blockedApps, onToggle, onClose,
 }: {
-  visible: boolean;
-  blockedApps: string[];
-  onToggle: (name: string) => void;
-  onClose: () => void;
+  visible: boolean; blockedApps: string[];
+  onToggle: (name: string) => void; onClose: () => void;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose} />
@@ -185,9 +170,7 @@ function AppPickerModal({
             <MaterialIcons name="close" size={22} color={colors.outline} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.modalSub, { color: colors.outline }]}>
-          Block distracting apps during your session
-        </Text>
+        <Text style={[styles.modalSub, { color: colors.outline }]}>Block distracting apps during your session</Text>
         <ScrollView style={{ marginTop: 12 }} showsVerticalScrollIndicator={false}>
           {ALL_APPS.map((app, i) => {
             const isBlocked = blockedApps.includes(app.name);
@@ -205,7 +188,7 @@ function AppPickerModal({
                   <MaterialIcons name={app.icon} size={18} color={isBlocked ? "#fff" : colors.outline} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.appPickerName, { color: colors.onSurface }]}>{app.name}</Text>
+                  <Text style={[styles.appPickerName,     { color: colors.onSurface }]}>{app.name}</Text>
                   <Text style={[styles.appPickerCategory, { color: colors.outline }]}>{app.category}</Text>
                 </View>
                 <View style={[styles.appPickerToggle, { backgroundColor: isBlocked ? colors.primary : colors.surfaceContainerHigh }]}>
@@ -221,14 +204,8 @@ function AppPickerModal({
 }
 
 // ── Session complete overlay ───────────────────────────────────────────────────
-function SessionCompleteOverlay({
-  duration,
-  intention,
-  onDismiss,
-}: {
-  duration: number;
-  intention: string;
-  onDismiss: () => void;
+function SessionCompleteOverlay({ duration, intention, onDismiss }: {
+  duration: number; intention: string; onDismiss: () => void;
 }) {
   const colors = useColors();
   return (
@@ -240,8 +217,7 @@ function SessionCompleteOverlay({
       <Text style={styles.completeEmoji}>🎉</Text>
       <Text style={[styles.completeTitle, { color: colors.onSurface }]}>Session Complete!</Text>
       <Text style={[styles.completeSub, { color: colors.outline }]}>
-        You focused for {duration} minutes
-        {intention ? ` on "${intention}"` : ""}.
+        You focused for {duration} minutes{intention ? ` on "${intention}"` : ""}.
       </Text>
       <View style={styles.completeStats}>
         <View style={[styles.completeStat, { backgroundColor: colors.card }]}>
@@ -269,16 +245,8 @@ function SessionCompleteOverlay({
 }
 
 // ── Duration card ─────────────────────────────────────────────────────────────
-function DurationCard({
-  option,
-  isActive,
-  cardWidth,
-  onPress,
-}: {
-  option: (typeof DURATION_OPTIONS)[0];
-  isActive: boolean;
-  cardWidth: number;
-  onPress: () => void;
+function DurationCard({ option, isActive, cardWidth, onPress }: {
+  option: (typeof DURATION_OPTIONS)[0]; isActive: boolean; cardWidth: number; onPress: () => void;
 }) {
   const colors = useColors();
   const scale  = useSharedValue(1);
@@ -292,14 +260,85 @@ function DurationCard({
         onPress={onPress}
         activeOpacity={1}
       >
-        <Text style={[styles.durationMins, { color: isActive ? "#fff" : colors.onSurface }]}>
-          {option.minutes}
-        </Text>
-        <Text style={[styles.durationLabel, { color: isActive ? "rgba(255,255,255,0.7)" : colors.outline }]}>
-          {option.label}
-        </Text>
+        <Text style={[styles.durationMins, { color: isActive ? "#fff" : colors.onSurface }]}>{option.minutes}</Text>
+        <Text style={[styles.durationLabel, { color: isActive ? "rgba(255,255,255,0.7)" : colors.outline }]}>{option.label}</Text>
       </TouchableOpacity>
     </Animated.View>
+  );
+}
+
+// ── Confirm modal ─────────────────────────────────────────────────────────────
+function ConfirmModal({ visible, duration, onConfirm, onClose }: {
+  visible: boolean; duration: number; onConfirm: () => void; onClose: () => void;
+}) {
+  const colors  = useColors();
+  const scale   = useSharedValue(0.85);
+  const opacity = useSharedValue(0);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      scale.value   = withSpring(1, { damping: 16, stiffness: 120 });
+      opacity.value = withTiming(1, { duration: 200 });
+      setChecked(false);
+    } else {
+      scale.value   = 0.85;
+      opacity.value = 0;
+    }
+  }, [visible]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity:   opacity.value,
+  }));
+
+  return (
+    <Modal visible={visible} transparent animationType="none">
+      <View style={styles.confirmOuter}>
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <Animated.View
+          style={[styles.confirmSheet, { backgroundColor: colors.card }, sheetStyle]}
+          onStartShouldSetResponder={() => true}
+        >
+          <View style={[styles.confirmIconRing, { backgroundColor: colors.surfaceContainerHigh }]}>
+            <MaterialIcons name="bolt" size={32} color={colors.onSurface} />
+          </View>
+          <Text style={[styles.confirmTitle, { color: colors.onSurface }]}>Ready to Focus?</Text>
+          <Text style={[styles.confirmSub, { color: colors.outline }]}>
+            You're starting a {duration}-minute focused session.{"\n"}Apps will be blocked. Notifications silenced.
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.checkRow, { backgroundColor: colors.surfaceContainerHigh }]}
+            onPress={() => { Haptics.selectionAsync(); setChecked((v) => !v); }}
+            activeOpacity={0.8}
+          >
+            <View style={[
+              styles.checkbox,
+              { borderColor: checked ? colors.primary : colors.outline },
+              checked && { backgroundColor: colors.primary },
+            ]}>
+              {checked && <MaterialIcons name="check" size={13} color="#fff" />}
+            </View>
+            <Text style={[styles.checkLabel, { color: colors.onSurface }]}>I'm ready to focus</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.confirmBtn,
+              { backgroundColor: checked ? colors.primary : colors.surfaceContainerHighest },
+            ]}
+            onPress={() => { if (checked) onConfirm(); }}
+            disabled={!checked}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="play-arrow" size={22} color={checked ? "#fff" : colors.outline} />
+            <Text style={[styles.confirmBtnText, { color: checked ? "#fff" : colors.outline }]}>Start Session</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 }
 
@@ -308,7 +347,7 @@ export default function FocusScreen() {
   const colors    = useColors();
   const insets    = useSafeAreaInsets();
   const topPad    = isWeb ? 67 : insets.top;
-  const bottomPad = isWeb ? 34 : insets.bottom;
+  const tabBarH   = isWeb ? 84 : 62 + insets.bottom;
 
   const [duration,    setDuration]    = useState(30);
   const [intention,   setIntention]   = useState("");
@@ -322,7 +361,15 @@ export default function FocusScreen() {
   const [remaining,    setRemaining]    = useState(duration * 60);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const totalSecs   = duration * 60;
-  const tabBarH     = isWeb ? 84 : 62 + insets.bottom;
+
+  // Validation errors + shake
+  const [errors,      setErrors]      = useState({ intention: false, blockedApps: false });
+  const [showConfirm, setShowConfirm] = useState(false);
+  const shakeIntentionX = useSharedValue(0);
+  const shakeAppsX      = useSharedValue(0);
+
+  const intentionShakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shakeIntentionX.value }] }));
+  const appsShakeStyle      = useAnimatedStyle(() => ({ transform: [{ translateX: shakeAppsX.value      }] }));
 
   useEffect(() => {
     if (sessionState === "idle") setRemaining(duration * 60);
@@ -349,45 +396,51 @@ export default function FocusScreen() {
 
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setShowConfirm(false);
     setRemaining(duration * 60);
     setSessionState("running");
     startTick();
   };
 
-  const handlePause = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    clearTimer();
-    setSessionState("paused");
+  // Attempt to start: validate first
+  const handleAttemptStart = () => {
+    const intentionOk = intention.trim().length > 0;
+    const appsOk      = blockedApps.length > 0;
+    const newErrors   = { intention: !intentionOk, blockedApps: !appsOk };
+    setErrors(newErrors);
+
+    if (!intentionOk) {
+      shakeIntentionX.value = withSequence(
+        withTiming(-10, { duration: 60 }), withTiming(10, { duration: 60 }),
+        withTiming(-8,  { duration: 60 }), withTiming(8,  { duration: 60 }),
+        withTiming(0,   { duration: 60 })
+      );
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+    if (!appsOk) {
+      shakeAppsX.value = withSequence(
+        withTiming(-10, { duration: 60 }), withTiming(10, { duration: 60 }),
+        withTiming(-8,  { duration: 60 }), withTiming(8,  { duration: 60 }),
+        withTiming(0,   { duration: 60 })
+      );
+      if (intentionOk) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+    if (intentionOk && appsOk) setShowConfirm(true);
   };
 
-  const handleResume = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSessionState("running");
-    startTick();
-  };
-
-  const handleStop = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    clearTimer();
-    setSessionState("idle");
-    setRemaining(duration * 60);
-  };
-
-  const handleDone = () => {
-    setSessionState("idle");
-    setRemaining(duration * 60);
-    setIntention("");
-  };
+  const handlePause  = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); clearTimer(); setSessionState("paused"); };
+  const handleResume = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setSessionState("running"); startTick(); };
+  const handleStop   = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); clearTimer(); setSessionState("idle"); setRemaining(duration * 60); };
+  const handleDone   = () => { setSessionState("idle"); setRemaining(duration * 60); setIntention(""); };
 
   useEffect(() => () => clearTimer(), [clearTimer]);
 
   const isActive = sessionState === "running" || sessionState === "paused";
   const cardW    = (SCREEN_W - 40 - 9 * 3) / 4;
 
-  // ── Scroll-reactive Start Session button ──────────────────────────────────
+  // Scroll-reactive Start button
   const scrollY  = useSharedValue(0);
   const isIdleSV = useSharedValue(sessionState === "idle");
-
   useEffect(() => { isIdleSV.value = sessionState === "idle"; }, [sessionState]);
 
   const scrollHandler = useAnimatedScrollHandler({
@@ -424,9 +477,16 @@ export default function FocusScreen() {
   });
 
   const toggleApp = (name: string) => {
-    setBlockedApps((prev) =>
-      prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]
-    );
+    setBlockedApps((prev) => {
+      const next = prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name];
+      if (next.length > 0 && errors.blockedApps) setErrors((e) => ({ ...e, blockedApps: false }));
+      return next;
+    });
+  };
+
+  const handleIntentionChange = (text: string) => {
+    setIntention(text);
+    if (text.trim().length > 0 && errors.intention) setErrors((e) => ({ ...e, intention: false }));
   };
 
   const handleCustomConfirm = () => {
@@ -444,12 +504,19 @@ export default function FocusScreen() {
         <SessionCompleteOverlay duration={duration} intention={intention} onDismiss={handleDone} />
       )}
 
+      <ConfirmModal
+        visible={showConfirm}
+        duration={duration}
+        onConfirm={handleStart}
+        onClose={() => setShowConfirm(false)}
+      />
+
       <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <Animated.ScrollView
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
-            { paddingTop: topPad + 12, paddingBottom: (isWeb ? 84 : 62 + insets.bottom) + 90 },
+            { paddingTop: topPad + 12, paddingBottom: tabBarH + 90 },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -473,32 +540,47 @@ export default function FocusScreen() {
             />
           </Animated.View>
 
-          {/* Config sections — hidden while active */}
+          {/* Config — hidden while active */}
           {!isActive && (
             <>
-              {/* Intention */}
-              <Animated.View
-                entering={isWeb ? undefined : FadeInDown.delay(80).springify()}
-                style={[styles.intentionCard, { backgroundColor: colors.card }]}
-              >
-                <View style={[styles.intentionAccent, { backgroundColor: colors.primary }]} />
-                <View style={styles.intentionInner}>
-                  <View style={styles.intentionHeader}>
-                    <MaterialIcons name="lightbulb" size={16} color={colors.onSurface} />
-                    <Text style={[styles.intentionLabel, { color: colors.onSurface }]}>SET AN INTENTION</Text>
+              {/* Intention — shake + red border on error */}
+              <Animated.View entering={isWeb ? undefined : FadeInDown.delay(80).springify()}>
+                <Animated.View style={intentionShakeStyle}>
+                  <View style={[
+                    styles.intentionCard,
+                    { backgroundColor: colors.card },
+                    errors.intention && { borderWidth: 1.5, borderColor: "#ef4444" },
+                  ]}>
+                    <View style={[styles.intentionAccent, { backgroundColor: errors.intention ? "#ef4444" : colors.primary }]} />
+                    <View style={styles.intentionInner}>
+                      <View style={styles.intentionHeader}>
+                        <MaterialIcons
+                          name="lightbulb"
+                          size={16}
+                          color={errors.intention ? "#ef4444" : colors.onSurface}
+                        />
+                        <Text style={[
+                          styles.intentionLabel,
+                          { color: errors.intention ? "#ef4444" : colors.onSurface },
+                        ]}>
+                          {errors.intention ? "INTENTION REQUIRED" : "SET AN INTENTION"}
+                        </Text>
+                      </View>
+                      <TextInput
+                        style={[
+                          styles.intentionInput,
+                          { backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface },
+                          errors.intention && { borderWidth: 1, borderColor: "#ef444440" },
+                        ]}
+                        placeholder="What are you working on?"
+                        placeholderTextColor={errors.intention ? "#ef444480" : colors.outline}
+                        value={intention}
+                        onChangeText={handleIntentionChange}
+                        returnKeyType="done"
+                      />
+                    </View>
                   </View>
-                  <TextInput
-                    style={[
-                      styles.intentionInput,
-                      { backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface },
-                    ]}
-                    placeholder="What are you working on?"
-                    placeholderTextColor={colors.outline}
-                    value={intention}
-                    onChangeText={setIntention}
-                    returnKeyType="done"
-                  />
-                </View>
+                </Animated.View>
               </Animated.View>
 
               {/* Duration */}
@@ -507,7 +589,6 @@ export default function FocusScreen() {
                 style={styles.section}
               >
                 <Text style={[styles.sectionLabel, { color: colors.outline }]}>DURATION</Text>
-
                 <View style={styles.durationRow}>
                   {DURATION_OPTIONS.map((opt) => (
                     <DurationCard
@@ -525,7 +606,6 @@ export default function FocusScreen() {
                   ))}
                 </View>
 
-                {/* Custom duration row — matches reference style */}
                 <TouchableOpacity
                   style={[styles.customRow, { backgroundColor: colors.card }]}
                   onPress={() => {
@@ -567,99 +647,103 @@ export default function FocusScreen() {
                 )}
               </Animated.View>
 
-              {/* Restricted access */}
-              <Animated.View
-                entering={isWeb ? undefined : FadeInDown.delay(160).springify()}
-                style={styles.section}
-              >
-                <View style={styles.restrictedHeader}>
-                  <Text style={[styles.sectionLabel, { color: colors.outline }]}>RESTRICTED ACCESS</Text>
-                  <View style={styles.restrictedRight}>
-                    {blockedApps.length > 0 && (
-                      <View style={[styles.blockedBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
-                        <Text style={[styles.blockedBadgeText, { color: colors.onSurface }]}>
-                          {blockedApps.length} APPS BLOCKED
-                        </Text>
-                      </View>
-                    )}
+              {/* Restricted access — shake + red border on error */}
+              <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()}>
+                <Animated.View style={[styles.section, appsShakeStyle]}>
+                  <View style={styles.restrictedHeader}>
+                    <Text style={[
+                      styles.sectionLabel,
+                      { color: errors.blockedApps ? "#ef4444" : colors.outline },
+                    ]}>
+                      {errors.blockedApps ? "SELECT AT LEAST 1 APP" : "RESTRICTED ACCESS"}
+                    </Text>
+                    <View style={styles.restrictedRight}>
+                      {blockedApps.length > 0 && (
+                        <View style={[styles.blockedBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
+                          <Text style={[styles.blockedBadgeText, { color: colors.onSurface }]}>
+                            {blockedApps.length} APPS BLOCKED
+                          </Text>
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        style={[styles.addBtnSmall, { backgroundColor: colors.primary }]}
+                        onPress={() => { Haptics.selectionAsync(); setShowPicker(true); }}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialIcons name="add" size={16} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {blockedApps.length === 0 ? (
                     <TouchableOpacity
-                      style={[styles.addBtnSmall, { backgroundColor: colors.primary }]}
-                      onPress={() => { Haptics.selectionAsync(); setShowPicker(true); }}
+                      style={[
+                        styles.emptyAppsCard,
+                        { backgroundColor: colors.card, borderColor: errors.blockedApps ? "#ef4444" : colors.surfaceContainerHigh },
+                        errors.blockedApps && { borderWidth: 1.5 },
+                      ]}
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPicker(true); }}
                       activeOpacity={0.8}
                     >
-                      <MaterialIcons name="add" size={16} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {blockedApps.length === 0 ? (
-                  <TouchableOpacity
-                    style={[styles.emptyAppsCard, { backgroundColor: colors.card, borderColor: colors.surfaceContainerHigh }]}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPicker(true); }}
-                    activeOpacity={0.8}
-                  >
-                    <View style={[styles.emptyAppsIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-                      <MaterialIcons name="block" size={24} color={colors.outline} />
-                    </View>
-                    <Text style={[styles.emptyAppsTitle, { color: colors.onSurface }]}>No apps blocked</Text>
-                    <Text style={[styles.emptyAppsSub, { color: colors.outline }]}>
-                      Block distracting apps during your focus session
-                    </Text>
-                    <View style={[styles.emptyAppsBtn, { backgroundColor: colors.primary }]}>
-                      <MaterialIcons name="add" size={16} color="#fff" />
-                      <Text style={styles.emptyAppsBtnText}>Choose Apps</Text>
-                    </View>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={[styles.appsCard, { backgroundColor: colors.card }]}>
-                    {ALL_APPS.filter((a) => blockedApps.includes(a.name)).map((app, i, arr) => (
-                      <View
-                        key={app.name}
-                        style={[
-                          styles.appRow,
-                          i < arr.length - 1 && {
-                            borderBottomWidth: 1,
-                            borderBottomColor: colors.surfaceContainerHigh,
-                            paddingBottom: 14,
-                            marginBottom: 14,
-                          },
-                        ]}
-                      >
-                        <View style={[styles.appIconWrap, { backgroundColor: colors.primary }]}>
-                          <MaterialIcons name={app.icon} size={18} color="#fff" />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.appName, { color: colors.onSurface }]}>{app.name}</Text>
-                          <Text style={[styles.appCategory, { color: colors.outline }]}>{app.category}</Text>
-                        </View>
-                        <TouchableOpacity
-                          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); toggleApp(app.name); }}
-                          hitSlop={8}
-                        >
-                          <MaterialIcons name="remove-circle" size={26} color="#ef4444" />
-                        </TouchableOpacity>
+                      <View style={[styles.emptyAppsIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
+                        <MaterialIcons name="block" size={24} color={errors.blockedApps ? "#ef4444" : colors.outline} />
                       </View>
-                    ))}
-                  </View>
-                )}
+                      <Text style={[styles.emptyAppsTitle, { color: colors.onSurface }]}>No apps blocked</Text>
+                      <Text style={[styles.emptyAppsSub, { color: colors.outline }]}>
+                        Block distracting apps during your focus session
+                      </Text>
+                      <View style={[styles.emptyAppsBtn, { backgroundColor: colors.primary }]}>
+                        <MaterialIcons name="add" size={16} color="#fff" />
+                        <Text style={styles.emptyAppsBtnText}>Choose Apps</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[styles.appsCard, { backgroundColor: colors.card }]}>
+                      {ALL_APPS.filter((a) => blockedApps.includes(a.name)).map((app, i, arr) => (
+                        <View
+                          key={app.name}
+                          style={[
+                            styles.appRow,
+                            i < arr.length - 1 && {
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.surfaceContainerHigh,
+                              paddingBottom: 14,
+                              marginBottom: 14,
+                            },
+                          ]}
+                        >
+                          <View style={[styles.appIconWrap, { backgroundColor: colors.primary }]}>
+                            <MaterialIcons name={app.icon} size={18} color="#fff" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.appName,     { color: colors.onSurface }]}>{app.name}</Text>
+                            <Text style={[styles.appCategory, { color: colors.outline }]}>{app.category}</Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); toggleApp(app.name); }}
+                            hitSlop={8}
+                          >
+                            <MaterialIcons name="remove-circle" size={26} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </Animated.View>
               </Animated.View>
             </>
           )}
 
-          {/* During session — show intention reminder */}
+          {/* During session — intention + blocked reminder */}
           {isActive && intention.length > 0 && (
             <Animated.View
               entering={isWeb ? undefined : FadeInDown.springify()}
               style={[styles.intentionPill, { backgroundColor: colors.card }]}
             >
               <MaterialIcons name="lightbulb" size={14} color={colors.outline} />
-              <Text style={[styles.intentionPillText, { color: colors.outline }]} numberOfLines={1}>
-                {intention}
-              </Text>
+              <Text style={[styles.intentionPillText, { color: colors.outline }]} numberOfLines={1}>{intention}</Text>
             </Animated.View>
           )}
-
-          {/* During session — blocked apps reminder */}
           {isActive && blockedApps.length > 0 && (
             <Animated.View
               entering={isWeb ? undefined : FadeInDown.delay(40).springify()}
@@ -674,13 +758,13 @@ export default function FocusScreen() {
         </Animated.ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Floating button — scroll-reactive */}
+      {/* Floating Start / active buttons */}
       <Animated.View style={[styles.stickyBottom, stickyAnimStyle]}>
         {sessionState === "idle" && (
           <Animated.View style={[styles.startBtn, { backgroundColor: colors.primary }, startBtnAnimStyle]}>
             <TouchableOpacity
               style={styles.startBtnInner}
-              onPress={handleStart}
+              onPress={handleAttemptStart}
               activeOpacity={0.85}
             >
               <MaterialIcons name="play-arrow" size={24} color="#fff" />
@@ -732,7 +816,6 @@ export default function FocusScreen() {
         )}
       </Animated.View>
 
-      {/* App picker modal */}
       <AppPickerModal
         visible={showPicker}
         blockedApps={blockedApps}
@@ -750,25 +833,25 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, gap: 22 },
 
-  headerRow:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  headerTitle:  { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
+  headerRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
 
   // Ring
-  ringWrapper:    { alignItems: "center" },
-  ringContainer:  { width: RING_SIZE, height: RING_SIZE, alignItems: "center", justifyContent: "center" },
-  ringCenter:     { position: "absolute", alignItems: "center" },
-  ringTime:       { fontSize: 48, fontFamily: "Inter_700Bold", letterSpacing: -2 },
-  ringSubLabel:   { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 2.5, marginTop: 2 },
-  stickyBottom: {
-    position: "absolute",
-  },
+  ringWrapper:   { alignItems: "center" },
+  ringContainer: { width: RING_SIZE, height: RING_SIZE, alignItems: "center", justifyContent: "center" },
+  ringCenter:    { position: "absolute", alignItems: "center" },
+  ringTime:      { fontSize: 48, fontFamily: "Inter_700Bold", letterSpacing: -2 },
+  ringSubLabel:  { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 2.5, marginTop: 2 },
+
+  // Floating button
+  stickyBottom:  { position: "absolute" },
   startBtn:      { shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8, overflow: "hidden" },
   startBtnInner: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   startBtnText:  { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
-  activeActions:       { flexDirection: "row", gap: 12 },
-  actionBtnSecondary:  { height: 58, flex: 0.38, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  activeActions:        { flexDirection: "row", gap: 12 },
+  actionBtnSecondary:   { height: 58, flex: 0.38, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   actionBtnSecondaryText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  actionBtnPrimary:    { height: 58, flex: 0.62, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 4 },
+  actionBtnPrimary:     { height: 58, flex: 0.62, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 4 },
   actionBtnPrimaryText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 
   // Intention
@@ -779,11 +862,11 @@ const styles = StyleSheet.create({
   intentionLabel:  { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
   intentionInput:  { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, fontFamily: "Inter_400Regular" },
 
-  // Session info pills
+  // Session pills
   intentionPill:      { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14 },
   intentionPillText:  { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular" },
   blockedReminder:    { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14 },
-  blockedReminderText: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  blockedReminderText:{ fontSize: 13, fontFamily: "Inter_400Regular" },
 
   // Section
   section:      { gap: 12 },
@@ -791,48 +874,14 @@ const styles = StyleSheet.create({
 
   // Duration
   durationRow: { flexDirection: "row", gap: 9 },
-  durationCard: {
-    paddingVertical: 16,
-    borderRadius: 18,
-    alignItems: "center",
-    gap: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 1,
-  },
+  durationCard: { paddingVertical: 16, borderRadius: 18, alignItems: "center", gap: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
   durationMins:  { fontSize: 24, fontFamily: "Inter_700Bold" },
   durationLabel: { fontSize: 10, fontFamily: "Inter_500Medium", letterSpacing: 0.2 },
 
   // Custom duration
-  customRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  customRowText: { fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 1 },
-  customInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
+  customRow:       { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 16, paddingHorizontal: 18, paddingVertical: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
+  customRowText:   { fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 1 },
+  customInputRow:  { flexDirection: "row", alignItems: "center", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, gap: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
   customInputField:  { width: 72, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 18, fontFamily: "Inter_700Bold", textAlign: "center" },
   customInputUnit:   { fontSize: 14, fontFamily: "Inter_400Regular" },
   customConfirmBtn:  { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
@@ -870,6 +919,18 @@ const styles = StyleSheet.create({
   appPickerName:     { fontSize: 14, fontFamily: "Inter_500Medium" },
   appPickerCategory: { fontSize: 11, fontFamily: "Inter_400Regular" },
   appPickerToggle:   { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+
+  // Confirm modal
+  confirmOuter: { flex: 1, alignItems: "center", justifyContent: "center" },
+  confirmSheet: { width: SCREEN_W * 0.88, borderRadius: 28, padding: 28, alignItems: "center", gap: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.20, shadowRadius: 32, elevation: 16 },
+  confirmIconRing: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  confirmTitle:    { fontSize: 22, fontFamily: "Inter_700Bold", textAlign: "center" },
+  confirmSub:      { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20 },
+  checkRow:        { flexDirection: "row", alignItems: "center", gap: 12, width: "100%", paddingHorizontal: 16, paddingVertical: 14, borderRadius: 16 },
+  checkbox:        { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  checkLabel:      { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  confirmBtn:      { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 56, width: "100%", borderRadius: 28 },
+  confirmBtnText:  { fontSize: 16, fontFamily: "Inter_700Bold" },
 
   // Session complete
   completeOverlay:     { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, zIndex: 100 },

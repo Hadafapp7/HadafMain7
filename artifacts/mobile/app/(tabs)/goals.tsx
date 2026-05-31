@@ -2,10 +2,10 @@ import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,15 +13,24 @@ import {
   View,
 } from "react-native";
 import Animated, {
-  FadeIn,
   FadeInDown,
+  FadeOut,
+  LinearTransition,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
 
-const isWeb = Platform.OS === "web";
+const isWeb    = Platform.OS === "web";
+const SCREEN_W = Dimensions.get("window").width;
+const FAB_SIZE  = 56;
+const FAB_RIGHT = 20;
+const THRESHOLD = 60;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type GoalType = "daily" | "scheduled";
@@ -81,28 +90,15 @@ const PERIODS = ["AM","PM"];
 const ITEM_H  = 46;
 
 // ── DrumColumn ─────────────────────────────────────────────────────────────────
-function DrumColumn({
-  items,
-  selected,
-  onSelect,
-  width = 54,
-}: {
-  items: string[];
-  selected: string;
-  onSelect: (v: string) => void;
-  width?: number;
+function DrumColumn({ items, selected, onSelect, width = 54 }: {
+  items: string[]; selected: string; onSelect: (v: string) => void; width?: number;
 }) {
-  const colors   = useColors();
-  const scrollRef = useRef<ScrollView>(null);
+  const colors    = useColors();
+  const scrollRef = useRef<Animated.ScrollView>(null);
 
   useEffect(() => {
     const idx = items.indexOf(selected);
-    if (idx >= 0) {
-      // Small delay ensures the ScrollView is mounted
-      setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: idx * ITEM_H, animated: false });
-      }, 50);
-    }
+    if (idx >= 0) setTimeout(() => (scrollRef.current as any)?.scrollTo({ y: idx * ITEM_H, animated: false }), 50);
   }, []);
 
   const handleEnd = useCallback((e: any) => {
@@ -114,23 +110,16 @@ function DrumColumn({
 
   return (
     <View style={{ width, height: ITEM_H * 3, overflow: "hidden" }}>
-      {/* center-item highlight rail */}
       <View
         pointerEvents="none"
         style={{
-          position: "absolute",
-          top: ITEM_H,
-          left: 6,
-          right: 6,
-          height: ITEM_H,
-          borderTopWidth: 1,
-          borderBottomWidth: 1,
-          borderColor: colors.outline + "40",
-          borderRadius: 8,
+          position: "absolute", top: ITEM_H, left: 6, right: 6, height: ITEM_H,
+          borderTopWidth: 1, borderBottomWidth: 1,
+          borderColor: colors.outline + "40", borderRadius: 8,
         }}
       />
-      <ScrollView
-        ref={scrollRef}
+      <Animated.ScrollView
+        ref={scrollRef as any}
         snapToInterval={ITEM_H}
         decelerationRate="fast"
         showsVerticalScrollIndicator={false}
@@ -145,56 +134,40 @@ function DrumColumn({
               key={i}
               style={{ height: ITEM_H, alignItems: "center", justifyContent: "center" }}
               onPress={() => {
-                scrollRef.current?.scrollTo({ y: i * ITEM_H, animated: true });
+                (scrollRef.current as any)?.scrollTo({ y: i * ITEM_H, animated: true });
                 Haptics.selectionAsync();
                 onSelect(item);
               }}
               activeOpacity={0.6}
             >
-              <Text
-                style={{
-                  fontSize: isSel ? 18 : 14,
-                  fontFamily: isSel ? "Inter_700Bold" : "Inter_400Regular",
-                  color: isSel ? colors.onSurface : colors.outline,
-                  opacity: isSel ? 1 : 0.45,
-                }}
-              >
+              <Text style={{
+                fontSize: isSel ? 18 : 14,
+                fontFamily: isSel ? "Inter_700Bold" : "Inter_400Regular",
+                color: isSel ? colors.onSurface : colors.outline,
+                opacity: isSel ? 1 : 0.45,
+              }}>
                 {item}
               </Text>
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
 
 // ── DrumTimePicker ─────────────────────────────────────────────────────────────
-function DrumTimePicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const colors = useColors();
-
-  const parsed = value.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+function DrumTimePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const colors  = useColors();
+  const parsed  = value.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
   const [hour,   setHour]   = useState(parsed ? parsed[1] : "9");
   const [minute, setMinute] = useState(parsed ? parsed[2] : "00");
   const [period, setPeriod] = useState(parsed ? parsed[3].toUpperCase() : "AM");
 
-  useEffect(() => {
-    onChange(`${hour}:${minute} ${period}`);
-  }, [hour, minute, period]);
+  useEffect(() => { onChange(`${hour}:${minute} ${period}`); }, [hour, minute, period]);
 
   return (
-    <View
-      style={[
-        styles.drumContainer,
-        { backgroundColor: colors.surfaceContainerHigh },
-      ]}
-    >
+    <View style={[styles.drumContainer, { backgroundColor: colors.surfaceContainerHigh }]}>
       <DrumColumn items={HOURS}   selected={hour}   onSelect={setHour}   width={54} />
       <Text style={[styles.drumColon, { color: colors.outline }]}>:</Text>
       <DrumColumn items={MINUTES} selected={minute} onSelect={setMinute} width={46} />
@@ -204,17 +177,27 @@ function DrumTimePicker({
   );
 }
 
-// ── Goal card (simplified — no progress bar) ───────────────────────────────────
-function GoalCard({ goal, delay = 0 }: { goal: Goal; delay?: number }) {
+// ── Goal card ─────────────────────────────────────────────────────────────────
+function GoalCard({ goal, delay = 0, onDelete }: { goal: Goal; delay?: number; onDelete: () => void }) {
   const colors = useColors();
-
   return (
     <Animated.View
       entering={isWeb ? undefined : FadeInDown.delay(delay).springify()}
+      exiting={isWeb ? undefined : FadeOut.duration(240)}
+      layout={isWeb ? undefined : LinearTransition.springify()}
       style={[styles.goalCard, { backgroundColor: colors.card }]}
     >
       <View style={[styles.goalCardAccent, { backgroundColor: colors.primary }]} />
       <View style={styles.goalCardInner}>
+        {/* Delete button */}
+        <TouchableOpacity
+          style={[styles.deleteBtn, { backgroundColor: colors.surfaceContainerHigh }]}
+          onPress={onDelete}
+          hitSlop={8}
+        >
+          <MaterialIcons name="delete-outline" size={16} color="#ef4444" />
+        </TouchableOpacity>
+
         {/* Type badge */}
         <View style={[styles.typeBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
           <MaterialIcons
@@ -227,13 +210,9 @@ function GoalCard({ goal, delay = 0 }: { goal: Goal; delay?: number }) {
           </Text>
         </View>
 
-        {/* Name */}
-        <Text style={[styles.goalName, { color: colors.onSurface }]}>{goal.name}</Text>
-
-        {/* Intent */}
+        <Text style={[styles.goalName,   { color: colors.onSurface }]}>{goal.name}</Text>
         <Text style={[styles.goalIntent, { color: colors.outline }]}>{goal.intent}</Text>
 
-        {/* Time window */}
         <View style={[styles.timeChip, { backgroundColor: colors.surfaceContainerHigh }]}>
           <MaterialIcons name="schedule" size={15} color={colors.onSurface} />
           <Text style={[styles.timeChipText, { color: colors.onSurface }]}>
@@ -250,14 +229,8 @@ function GoalCard({ goal, delay = 0 }: { goal: Goal; delay?: number }) {
 }
 
 // ── Add Goal modal ─────────────────────────────────────────────────────────────
-function AddGoalModal({
-  visible,
-  onClose,
-  onSave,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSave: (goal: Goal) => void;
+function AddGoalModal({ visible, onClose, onSave }: {
+  visible: boolean; onClose: () => void; onSave: (goal: Goal) => void;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -301,16 +274,8 @@ function AddGoalModal({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={handleClose} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.modalKAV}
-      >
-        <View
-          style={[
-            styles.modalSheet,
-            { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 },
-          ]}
-        >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalKAV}>
+        <View style={[styles.modalSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
           <View style={[styles.modalHandle, { backgroundColor: colors.surfaceContainerHighest }]} />
 
           <View style={styles.modalHeader}>
@@ -320,8 +285,7 @@ function AddGoalModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {/* Goal Name */}
+          <Animated.ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={styles.fieldGroup}>
               <Text style={[styles.fieldLabel, { color: colors.outline }]}>GOAL NAME</Text>
               <TextInput
@@ -334,7 +298,6 @@ function AddGoalModal({
               />
             </View>
 
-            {/* Intent */}
             <View style={styles.fieldGroup}>
               <Text style={[styles.fieldLabel, { color: colors.outline }]}>INTENT</Text>
               <TextInput
@@ -349,7 +312,6 @@ function AddGoalModal({
               />
             </View>
 
-            {/* Type toggle */}
             <View style={styles.fieldGroup}>
               <Text style={[styles.fieldLabel, { color: colors.outline }]}>TYPE</Text>
               <View style={[styles.typeToggle, { backgroundColor: colors.surfaceContainerHigh }]}>
@@ -372,7 +334,6 @@ function AddGoalModal({
               </View>
             </View>
 
-            {/* Daily: drum pickers for from / to */}
             {type === "daily" && (
               <View style={styles.drumFieldRow}>
                 <View style={[styles.fieldGroup, { flex: 1 }]}>
@@ -386,7 +347,6 @@ function AddGoalModal({
               </View>
             )}
 
-            {/* Scheduled: date text + drum picker for time */}
             {type === "scheduled" && (
               <>
                 <View style={styles.fieldGroup}>
@@ -405,22 +365,16 @@ function AddGoalModal({
                 </View>
               </>
             )}
-          </ScrollView>
+          </Animated.ScrollView>
 
-          {/* Save */}
           <TouchableOpacity
-            style={[
-              styles.saveBtn,
-              { backgroundColor: canSave ? colors.primary : colors.surfaceContainerHigh },
-            ]}
+            style={[styles.saveBtn, { backgroundColor: canSave ? colors.primary : colors.surfaceContainerHigh }]}
             onPress={handleSave}
             disabled={!canSave}
             activeOpacity={0.85}
           >
             <MaterialIcons name="check" size={20} color={canSave ? "#fff" : colors.outline} />
-            <Text style={[styles.saveBtnText, { color: canSave ? "#fff" : colors.outline }]}>
-              Save Goal
-            </Text>
+            <Text style={[styles.saveBtnText, { color: canSave ? "#fff" : colors.outline }]}>Save Goal</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -438,6 +392,30 @@ export default function GoalsScreen() {
   const [goals,     setGoals]     = useState<Goal[]>(DEFAULT_GOALS);
   const [showModal, setShowModal] = useState(false);
 
+  const scrollY       = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => { scrollY.value = e.contentOffset.y; },
+  });
+
+  // Scroll-reactive FAB: at top → circle (right=20, width=56); scrolled → full pill (left=20, right=20)
+  const fabContainerStyle = useAnimatedStyle(() => ({
+    left: withSpring(
+      scrollY.value > THRESHOLD ? 20 : SCREEN_W - FAB_SIZE - FAB_RIGHT,
+      { damping: 18, stiffness: 90 }
+    ),
+  }));
+
+  const fabLabelStyle = useAnimatedStyle(() => ({
+    opacity:  withSpring(scrollY.value > THRESHOLD ? 1 : 0, { damping: 18, stiffness: 90 }),
+    maxWidth: withSpring(scrollY.value > THRESHOLD ? 120 : 0, { damping: 18, stiffness: 90 }),
+    overflow: "hidden" as const,
+  }));
+
+  const handleDeleteGoal = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setGoals((prev) => prev.filter((g) => g.id !== id));
+  };
+
   const handleAddGoal = (goal: Goal) => {
     setGoals((prev) => [...prev, goal]);
   };
@@ -446,27 +424,32 @@ export default function GoalsScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <AnimatedBackground />
 
-      <ScrollView
+      <Animated.ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
           { paddingTop: topPad + 12, paddingBottom: tabBarH + 90 },
         ]}
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
       >
-        {/* Header */}
         <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()}>
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>GOALS</Text>
         </Animated.View>
 
-        {/* All goal cards stacked */}
         {goals.map((g, i) => (
-          <GoalCard key={g.id} goal={g} delay={60 + i * 80} />
+          <GoalCard
+            key={g.id}
+            goal={g}
+            delay={60 + i * 80}
+            onDelete={() => handleDeleteGoal(g.id)}
+          />
         ))}
-      </ScrollView>
+      </Animated.ScrollView>
 
-      {/* Floating "Add Goal" button */}
-      <View style={[styles.floatingBtn, { bottom: tabBarH + 16 }]}>
+      {/* Scroll-reactive Add Goal button */}
+      <Animated.View style={[styles.floatingBtn, { bottom: tabBarH + 16, right: FAB_RIGHT }, fabContainerStyle]}>
         <TouchableOpacity
           style={[styles.addGoalBtn, { backgroundColor: colors.primary }]}
           onPress={() => {
@@ -476,9 +459,11 @@ export default function GoalsScreen() {
           activeOpacity={0.85}
         >
           <MaterialIcons name="add" size={22} color="#fff" />
-          <Text style={styles.addGoalBtnText}>Add Goal</Text>
+          <Animated.View style={fabLabelStyle}>
+            <Text style={styles.addGoalBtnText} numberOfLines={1}>Add Goal</Text>
+          </Animated.View>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
       <AddGoalModal
         visible={showModal}
@@ -499,17 +484,14 @@ const styles = StyleSheet.create({
 
   // Goal card
   goalCard: {
-    borderRadius: 24,
-    flexDirection: "row",
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    elevation: 2,
+    borderRadius: 24, flexDirection: "row", overflow: "hidden",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06, shadowRadius: 20, elevation: 2,
   },
   goalCardAccent: { width: 5 },
   goalCardInner:  { flex: 1, padding: 20, gap: 12 },
+
+  deleteBtn: { position: "absolute", top: 12, right: 12, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
 
   typeBadge:     { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, alignSelf: "flex-start" },
   typeBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
@@ -525,8 +507,8 @@ const styles = StyleSheet.create({
   drumColon:     { fontSize: 22, fontFamily: "Inter_700Bold", marginBottom: 2 },
 
   // Floating button
-  floatingBtn:    { position: "absolute", left: 20, right: 20 },
-  addGoalBtn:     { height: 56, borderRadius: 28, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
+  floatingBtn: { position: "absolute", right: FAB_RIGHT, height: FAB_SIZE },
+  addGoalBtn:  { flex: 1, borderRadius: 28, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
   addGoalBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 
   // Modal
