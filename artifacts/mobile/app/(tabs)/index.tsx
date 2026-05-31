@@ -37,62 +37,18 @@ const MONTH_NAMES = [
 ];
 const DAY_HDRS = ["M","T","W","T","F","S","S"];
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
-
-const APPS = [
-  { name: "Instagram", category: "SOCIAL",       time: "2h 15m", percent: 0.85, icon: "photo-camera"      as const },
-  { name: "TikTok",    category: "ENTERTAINMENT", time: "1h 45m", percent: 0.66, icon: "music-video"       as const },
-  { name: "YouTube",   category: "VIDEO",         time: "45m",    percent: 0.28, icon: "play-circle-filled" as const },
-];
+const TODAY_YEAR  = 2026;
+const TODAY_MONTH = 4;
+const TODAY_DAY   = 31;
 
 type DayState = "complete" | "missed" | "partial";
 
-const GOAL_MATCH_DATA = [
-  {
-    name: "Deep Work",
-    time: "9:00 AM – 11:00 AM",
-    days: [
-      { day: "Mon", state: "complete" as DayState },
-      { day: "Tue", state: "complete" as DayState },
-      { day: "Wed", state: "partial"  as DayState },
-      { day: "Thu", state: "missed"   as DayState },
-      { day: "Fri", state: "complete" as DayState },
-    ],
-  },
-  {
-    name: "Morning Reading",
-    time: "7:00 AM – 8:00 AM",
-    days: [
-      { day: "Mon", state: "complete" as DayState },
-      { day: "Tue", state: "complete" as DayState },
-      { day: "Wed", state: "complete" as DayState },
-      { day: "Thu", state: "complete" as DayState },
-      { day: "Fri", state: "complete" as DayState },
-    ],
-  },
-  {
-    name: "Evening Journal",
-    time: "9:00 PM – 9:30 PM",
-    days: [
-      { day: "Mon", state: "missed"   as DayState },
-      { day: "Tue", state: "missed"   as DayState },
-      { day: "Wed", state: "partial"  as DayState },
-      { day: "Thu", state: "complete" as DayState },
-      { day: "Fri", state: "partial"  as DayState },
-    ],
-  },
-];
-
-const TODAY_YEAR  = 2026;
-const TODAY_MONTH = 4;   // May
-const TODAY_DAY   = 31;
-
 // ─── Calendar helpers ─────────────────────────────────────────────────────────
 
-function getMonthStart(year: number, month: number): number {
-  return (new Date(year, month, 1).getDay() + 6) % 7; // Mon=0
+function getMonthStart(year: number, month: number) {
+  return (new Date(year, month, 1).getDay() + 6) % 7;
 }
-function getDaysInMonth(year: number, month: number): number {
+function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
 }
 function getDotState(year: number, mIdx: number, day: number): DayState | null {
@@ -104,7 +60,7 @@ function getDotState(year: number, mIdx: number, day: number): DayState | null {
   return "complete";
 }
 
-// ─── Interactive Calendar Modal ───────────────────────────────────────────────
+// ─── Calendar Modal (kept from previous — accessible via Goals Progress) ──────
 
 function CalDot({ state }: { state: DayState }) {
   const c = state === "complete" ? "#16a34a" : state === "missed" ? "#dc2626" : "#a3a3a3";
@@ -142,10 +98,10 @@ function CalendarModal({ visible, onClose }: { visible: boolean; onClose: () => 
   }));
 
   const stepMonth = (dir: number) => {
-    setViewMonth(prev => {
+    setViewMonth((prev) => {
       const next = prev + dir;
-      if (next < 0)  { setViewYear(y => y - 1); return 11; }
-      if (next > 11) { setViewYear(y => y + 1); return 0;  }
+      if (next < 0)  { setViewYear((y) => y - 1); return 11; }
+      if (next > 11) { setViewYear((y) => y + 1); return 0;  }
       return next;
     });
   };
@@ -158,8 +114,8 @@ function CalendarModal({ visible, onClose }: { visible: boolean; onClose: () => 
     });
   };
 
-  const startDay  = getMonthStart(viewYear, viewMonth);
-  const dayCount  = getDaysInMonth(viewYear, viewMonth);
+  const startDay = getMonthStart(viewYear, viewMonth);
+  const dayCount = getDaysInMonth(viewYear, viewMonth);
   const cells: (number | null)[] = [];
   for (let i = 0; i < startDay; i++) cells.push(null);
   for (let d = 1; d <= dayCount; d++) cells.push(d);
@@ -174,38 +130,30 @@ function CalendarModal({ visible, onClose }: { visible: boolean; onClose: () => 
           style={[styles.calSheet, { backgroundColor: colors.card }, sheetStyle]}
           onStartShouldSetResponder={() => true}
         >
-          {/* Year + month navigation row */}
           <View style={styles.calNavRow}>
-            {/* Year selector */}
             <View style={styles.yearSelector}>
-              <TouchableOpacity onPress={() => setViewYear(y => y - 1)} hitSlop={12}>
-                <MaterialIcons name="keyboard-arrow-up" size={18} color={colors.outline} />
+              <TouchableOpacity onPress={() => setViewYear((y) => y - 1)} hitSlop={12}>
+                <MaterialIcons name="keyboard-arrow-up"   size={18} color={colors.outline} />
               </TouchableOpacity>
               <Text style={[styles.calYearTxt, { color: colors.onSurface }]}>{viewYear}</Text>
-              <TouchableOpacity onPress={() => setViewYear(y => y + 1)} hitSlop={12}>
+              <TouchableOpacity onPress={() => setViewYear((y) => y + 1)} hitSlop={12}>
                 <MaterialIcons name="keyboard-arrow-down" size={18} color={colors.outline} />
               </TouchableOpacity>
             </View>
-
-            {/* Month navigation */}
             <View style={styles.monthNav}>
               <TouchableOpacity onPress={() => navigate(-1)} hitSlop={12}>
-                <MaterialIcons name="chevron-left" size={26} color={colors.onSurface} />
+                <MaterialIcons name="chevron-left"  size={26} color={colors.onSurface} />
               </TouchableOpacity>
-              <Text style={[styles.calMonthTxt, { color: colors.onSurface }]}>
-                {MONTH_NAMES[viewMonth]}
-              </Text>
+              <Text style={[styles.calMonthTxt, { color: colors.onSurface }]}>{MONTH_NAMES[viewMonth]}</Text>
               <TouchableOpacity onPress={() => navigate(1)} hitSlop={12}>
                 <MaterialIcons name="chevron-right" size={26} color={colors.onSurface} />
               </TouchableOpacity>
             </View>
-
             <TouchableOpacity onPress={onClose} hitSlop={14}>
               <MaterialIcons name="close" size={20} color={colors.outline} />
             </TouchableOpacity>
           </View>
 
-          {/* Legend */}
           <View style={styles.calLegend}>
             {(["complete","missed","partial"] as DayState[]).map((s) => (
               <View key={s} style={styles.calLegendItem}>
@@ -217,20 +165,18 @@ function CalendarModal({ visible, onClose }: { visible: boolean; onClose: () => 
             ))}
           </View>
 
-          {/* Weekday headers */}
           <View style={styles.calDayHdrs}>
             {DAY_HDRS.map((l, i) => (
               <Text key={i} style={[styles.calDayHdr, { color: colors.outline, width: CELL_W }]}>{l}</Text>
             ))}
           </View>
 
-          {/* Sliding grid */}
           <View style={{ overflow: "hidden" }}>
             <Animated.View style={[styles.calGrid, gridStyle]}>
               {cells.map((day, idx) => {
                 if (!day) return <View key={idx} style={[styles.calCell, { width: CELL_W }]} />;
-                const dot     = getDotState(viewYear, viewMonth, day);
-                const isToday = viewYear === TODAY_YEAR && viewMonth === TODAY_MONTH && day === TODAY_DAY;
+                const dot      = getDotState(viewYear, viewMonth, day);
+                const isToday  = viewYear === TODAY_YEAR && viewMonth === TODAY_MONTH && day === TODAY_DAY;
                 const isFuture = (viewYear > TODAY_YEAR)
                   || (viewYear === TODAY_YEAR && viewMonth > TODAY_MONTH)
                   || (viewYear === TODAY_YEAR && viewMonth === TODAY_MONTH && day > TODAY_DAY);
@@ -241,7 +187,7 @@ function CalendarModal({ visible, onClose }: { visible: boolean; onClose: () => 
                   ]}>
                     <Text style={[
                       styles.calDayNum,
-                      { color: isFuture ? colors.outlineVariant : colors.onSurface },
+                      { color: isFuture ? "#ccc" : colors.onSurface },
                       isToday && { color: colors.primary, fontFamily: "Inter_700Bold" },
                     ]}>
                       {day}
@@ -258,127 +204,100 @@ function CalendarModal({ visible, onClose }: { visible: boolean; onClose: () => 
   );
 }
 
-// ─── Animated helpers ─────────────────────────────────────────────────────────
+// ─── Animated progress bar ────────────────────────────────────────────────────
 
-function AnimatedProgressBar({ percent, delay = 0, trackColor, fillColor }: {
-  percent: number; delay?: number; trackColor?: string; fillColor?: string;
+function AnimatedProgressBar({ percent, delay = 0, trackColor, fillColor, height = 5, radius = 3 }: {
+  percent: number; delay?: number; trackColor?: string; fillColor?: string; height?: number; radius?: number;
 }) {
-  const colors   = useColors();
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withDelay(delay, withSpring(percent, { damping: 20, stiffness: 90 }));
   }, []);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as any }));
   return (
-    <View style={[styles.progressTrack, { backgroundColor: trackColor ?? colors.surfaceContainerHighest }]}>
-      <Animated.View style={[styles.progressFill, { backgroundColor: fillColor ?? colors.primary }, barStyle]} />
+    <View style={[styles.progressTrack, { backgroundColor: trackColor ?? "#e8e8e8", height, borderRadius: radius }]}>
+      <Animated.View style={[{ height: "100%", borderRadius: radius, backgroundColor: fillColor ?? "#222" }, barStyle]} />
     </View>
   );
 }
 
-function CounterNumber({ target, delay = 0, color }: { target: number; delay?: number; color?: string }) {
-  const colors  = useColors();
-  const count   = useSharedValue(0);
-  const [display, setDisplay] = useState(0);
+// ─── Counter number ───────────────────────────────────────────────────────────
+
+function CounterNumber({ target, delay = 0, style: textStyle }: { target: number; delay?: number; style?: any }) {
+  const count = useSharedValue(isWeb ? target : 0);
+  const [display, setDisplay] = useState(isWeb ? target : 0);
   useAnimatedReaction(
     () => Math.round(count.value),
     (cur, prev) => { if (cur !== prev) runOnJS(setDisplay)(cur); }
   );
   useEffect(() => {
-    count.value = withDelay(delay, withTiming(target, { duration: 1000 }));
+    if (!isWeb) count.value = withDelay(delay, withTiming(target, { duration: 1000 }));
   }, []);
-  return <Text style={[styles.heroNumber, { color: color ?? colors.onSurface }]}>{display}</Text>;
-}
-
-// ─── Day dot ─────────────────────────────────────────────────────────────────
-
-function DayDot({ state, dayLabel }: { state: DayState; dayLabel: string }) {
-  const colors    = useColors();
-  const bgColor   = state === "complete" ? "#16a34a" : state === "missed" ? "#dc2626" : colors.surfaceContainerHighest;
-  const iconName  = state === "complete" ? "check"   : state === "missed" ? "close"   : "remove";
-  const iconColor = state === "partial"  ? colors.outline : "#fff";
-  return (
-    <View style={styles.dayDotWrap}>
-      <View style={[styles.dayDot, { backgroundColor: bgColor }]}>
-        <MaterialIcons name={iconName as any} size={13} color={iconColor} />
-      </View>
-      <Text style={[styles.dayLabel, { color: colors.outline }]}>{dayLabel}</Text>
-    </View>
-  );
-}
-
-function DayRow({ days }: { days: typeof GOAL_MATCH_DATA[0]["days"] }) {
-  const colors = useColors();
-  return (
-    <View style={[styles.dayRowPill, { backgroundColor: colors.surfaceContainerHigh + "55" }]}>
-      <View style={styles.dayDots}>
-        {days.map((d, i) => <DayDot key={i} state={d.state} dayLabel={d.day} />)}
-      </View>
-    </View>
-  );
-}
-
-function GoalMatchTracker({ goal, goalIndex }: { goal: typeof GOAL_MATCH_DATA[0]; goalIndex: number }) {
-  const colors = useColors();
-  return (
-    <View style={[
-      styles.matchRow,
-      goalIndex < GOAL_MATCH_DATA.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
-    ]}>
-      <View style={styles.matchHeader}>
-        <Text style={[styles.goalItemName, { color: colors.onSurface }]}>{goal.name}</Text>
-        <Text style={[styles.goalItemTime, { color: colors.outline }]}>{goal.time}</Text>
-      </View>
-      <DayRow days={goal.days} />
-    </View>
-  );
+  return <Text style={textStyle}>{display}</Text>;
 }
 
 // ─── App row ──────────────────────────────────────────────────────────────────
 
-function AppRow({ app, index }: { app: typeof APPS[0]; index: number }) {
-  const colors   = useColors();
+const APPS = [
+  { name: "Instagram", category: "SOCIAL",       time: "2h 15m", percent: 0.85, icon: "photo-camera"  as const },
+  { name: "TikTok",    category: "ENTERTAINMENT", time: "1h 45m", percent: 0.66, icon: "music-video"   as const },
+];
+
+function AppRow({ app, index, last }: { app: typeof APPS[0]; index: number; last: boolean }) {
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withDelay(400 + index * 120, withSpring(app.percent, { damping: 20 }));
   }, []);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as any }));
   return (
-    <Animated.View entering={isWeb ? undefined : FadeInDown.delay(300 + index * 80).springify()}>
+    <View>
       <View style={styles.appRow}>
-        <View style={[styles.appIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-          <MaterialIcons name={app.icon} size={20} color={colors.onSurface} />
+        <View style={styles.appIconWrap}>
+          <MaterialIcons name={app.icon} size={20} color="#fff" />
         </View>
         <View style={styles.appInfo}>
-          <Text style={[styles.appName,     { color: colors.onSurface }]}>{app.name}</Text>
-          <Text style={[styles.appCategory, { color: colors.outline }]}>{app.category}</Text>
+          <Text style={styles.appName}>{app.name}</Text>
+          <Text style={styles.appCategory}>{app.category}</Text>
         </View>
         <View style={styles.appRight}>
-          <Text style={[styles.appTime, { color: colors.onSurface }]}>{app.time}</Text>
-          <View style={[styles.miniBarTrack, { backgroundColor: colors.surfaceContainerHighest }]}>
-            <Animated.View style={[styles.miniBarFill, { backgroundColor: colors.primary }, barStyle]} />
+          <Text style={styles.appTime}>{app.time}</Text>
+          <View style={styles.appBarTrack}>
+            <Animated.View style={[styles.appBarFill, barStyle]} />
           </View>
         </View>
       </View>
-    </Animated.View>
+      {!last && <View style={styles.appDivider} />}
+    </View>
   );
 }
 
-// ─── Pressable card ───────────────────────────────────────────────────────────
+// ─── Oval accent card (Daily Tasks / Mood Check / Streaks) ────────────────────
 
-function PressableCard({ children, style, delay = 0 }: { children: React.ReactNode; style?: any; delay?: number }) {
+function OvalCard({ bg, iconColor, icon, label1, label2, badgeText, badgeBg }: {
+  bg: string; iconColor: string;
+  icon: React.ComponentProps<typeof MaterialIcons>["name"];
+  label1: string; label2?: string;
+  badgeText?: string; badgeBg?: string;
+}) {
   const scale      = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
-    <Animated.View entering={isWeb ? undefined : FadeInDown.delay(delay).springify()}>
-      <Animated.View
-        style={[pressStyle, style]}
-        onTouchStart={()  => { scale.value = withSpring(0.97, { damping: 12 }); }}
-        onTouchEnd={()    => { scale.value = withSpring(1,    { damping: 12 }); }}
-        onTouchCancel={() => { scale.value = withSpring(1,    { damping: 12 }); }}
-      >
-        {children}
-      </Animated.View>
+    <Animated.View
+      style={[styles.ovalCard, { backgroundColor: bg }, pressStyle]}
+      onTouchStart={() => { scale.value = withSpring(0.94, { damping: 12 }); }}
+      onTouchEnd={()   => { scale.value = withSpring(1,    { damping: 12 }); }}
+      onTouchCancel={() => { scale.value = withSpring(1,   { damping: 12 }); }}
+    >
+      <MaterialIcons name={icon} size={30} color={iconColor} />
+      <Text style={[styles.ovalLabel, { color: iconColor }]}>{label1}</Text>
+      {label2 ? <Text style={[styles.ovalLabel, { color: iconColor }]}>{label2}</Text> : null}
+      {badgeText ? (
+        <View style={[styles.ovalBadge, { backgroundColor: badgeBg ?? iconColor }]}>
+          <Text style={styles.ovalBadgeText}>{badgeText}</Text>
+        </View>
+      ) : (
+        <Text style={[styles.ovalEmpty, { color: iconColor }]}>EMPTY</Text>
+      )}
     </Animated.View>
   );
 }
@@ -390,10 +309,9 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const topPad = isWeb ? 24 : insets.top;
   const [showCal, setShowCal] = useState(false);
-  const cardBg = colors.surfaceContainerLow;
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
+    <View style={[styles.root, { backgroundColor: "#f5f5f5" }]}>
       <AnimatedBackground />
       <CalendarModal visible={showCal} onClose={() => setShowCal(false)} />
 
@@ -401,70 +319,107 @@ export default function HomeScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: topPad + 16, paddingBottom: isWeb ? 34 + 84 : 90 },
+          { paddingTop: topPad + 20, paddingBottom: isWeb ? 34 + 84 : 100 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero stat cards — solid black, largest cards ── */}
-        <View style={styles.statsGrid}>
-          <PressableCard delay={40} style={styles.heroCard}>
-            <Text style={styles.heroLabel}>Screen Time</Text>
-            <Text style={styles.heroNumber}>4h 32m</Text>
-            <View style={styles.heroBadge}>
-              <MaterialIcons name="south-east" size={12} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.heroBadgeText}>23%</Text>
-            </View>
-            <View style={styles.miniBars}>
-              {[0.7, 1.0].map((h, i) => (
-                <View key={i} style={[styles.miniBarVert, {
-                  height: h * 28,
-                  backgroundColor: i === 1 ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.22)",
-                }]} />
-              ))}
-            </View>
-          </PressableCard>
 
-          <PressableCard delay={100} style={styles.heroCard}>
-            <Text style={styles.heroLabel}>Doomscroll</Text>
-            <CounterNumber target={68} delay={200} color="#fff" />
-            <Text style={styles.heroSubLabel}>Better +4 pts</Text>
-            <AnimatedProgressBar
-              percent={0.68} delay={400}
-              trackColor="rgba(255,255,255,0.15)"
-              fillColor="rgba(255,255,255,0.75)"
-            />
-          </PressableCard>
-        </View>
-
-        {/* ── Goals Progress — tap to open interactive calendar ── */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => setShowCal(true)}
-            style={[styles.card, { backgroundColor: cardBg }]}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={[styles.cardTitle, { color: colors.outline }]}>GOALS PROGRESS</Text>
-              <MaterialIcons name="flag" size={15} color={colors.outline} />
-            </View>
-            <View style={styles.goalsList}>
-              {GOAL_MATCH_DATA.map((goal, i) => (
-                <GoalMatchTracker key={i} goal={goal} goalIndex={i} />
-              ))}
-            </View>
+        {/* ── Header ── */}
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(0).springify()}
+          style={styles.headerRow}
+        >
+          <View style={styles.headerLeft}>
+            <Text style={styles.greeting}>Good Evening, Alex 👋</Text>
+            <Text style={styles.focusStatus}>FOCUS MODE: OFF</Text>
+          </View>
+          <TouchableOpacity style={styles.avatar} activeOpacity={0.8}>
+            <MaterialIcons name="person" size={28} color="#fff" />
           </TouchableOpacity>
         </Animated.View>
 
+        {/* ── Two stat cards ── */}
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
+          style={styles.statRow}
+        >
+          {/* Screen Time */}
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>SCREEN TIME</Text>
+            <Text style={styles.statNumber}>4h 32m</Text>
+            <View style={styles.statCardBottom}>
+              <View style={styles.statBadge}>
+                <MaterialIcons name="south-east" size={11} color="#666" />
+                <Text style={styles.statBadgeText}> 23%</Text>
+              </View>
+              <View style={styles.sparkBars}>
+                <View style={[styles.sparkBar, { height: 14, backgroundColor: "#ccc" }]} />
+                <View style={[styles.sparkBar, { height: 24, backgroundColor: "#333" }]} />
+              </View>
+            </View>
+          </View>
+
+          {/* DoomScore */}
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>DOOMSCORE</Text>
+            <CounterNumber
+              target={68}
+              delay={200}
+              style={styles.statNumber}
+            />
+            <View style={styles.doomRow}>
+              <Text style={styles.doomBetter}>BETTER</Text>
+              <Text style={styles.doomPts}>+4 PTS</Text>
+            </View>
+            <AnimatedProgressBar percent={0.68} delay={350} height={5} radius={3} />
+          </View>
+        </Animated.View>
+
         {/* ── Most Used Apps ── */}
-        <PressableCard delay={220} style={[styles.card, { backgroundColor: cardBg }]}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, { color: colors.outline }]}>MOST USED APPS</Text>
-            <MaterialIcons name="more-horiz" size={16} color={colors.outline} />
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(120).springify()}
+          style={styles.appsCard}
+        >
+          <View style={styles.appsHeader}>
+            <Text style={styles.appsHeaderLabel}>MOST USED APPS</Text>
+            <Text style={styles.appsHeaderDots}>···</Text>
           </View>
-          <View style={styles.appList}>
-            {APPS.map((app, i) => <AppRow key={i} app={app} index={i} />)}
-          </View>
-        </PressableCard>
+          {APPS.map((app, i) => (
+            <AppRow key={app.name} app={app} index={i} last={i === APPS.length - 1} />
+          ))}
+        </Animated.View>
+
+        {/* ── Three oval accent cards ── */}
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(180).springify()}
+          style={styles.ovalRow}
+        >
+          <OvalCard
+            bg="#e8f5e9"
+            iconColor="#2e7d32"
+            icon="checklist"
+            label1="DAILY"
+            label2="TASKS"
+            badgeText="3 LEFT"
+            badgeBg="#2e7d32"
+          />
+          <OvalCard
+            bg="#fff3e0"
+            iconColor="#d84315"
+            icon="self-improvement"
+            label1="MOOD"
+            label2="CHECK"
+          />
+          <OvalCard
+            bg="#fff3e0"
+            iconColor="#d84315"
+            icon="local-fire-department"
+            label1="STREAKS"
+            badgeText="7 DAYS"
+            badgeBg="#d84315"
+          />
+        </Animated.View>
+
       </ScrollView>
     </View>
   );
@@ -473,84 +428,108 @@ export default function HomeScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root:    { flex: 1 },
-  scroll:  { flex: 1 },
-  content: { paddingHorizontal: 16, gap: 12 },
+  root:   { flex: 1 },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 20, gap: 16 },
 
-  // Hero stat grid
-  statsGrid: { flexDirection: "row", gap: 12 },
-  heroCard: {
-    flex: 1, borderRadius: 28, padding: 22, minHeight: 176,
-    backgroundColor: "#000",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.30, shadowRadius: 24, elevation: 8,
-    gap: 8, justifyContent: "flex-end",
+  // Header
+  headerRow:   { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  headerLeft:  { flex: 1, gap: 4 },
+  greeting:    { fontSize: 26, fontFamily: "Inter_700Bold", color: "#111", letterSpacing: -0.3 },
+  focusStatus: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#888", letterSpacing: 1.5 },
+  avatar:      { width: 50, height: 50, borderRadius: 25, backgroundColor: "#333", alignItems: "center", justifyContent: "center" },
+
+  // Stat cards (side by side)
+  statRow: { flexDirection: "row", gap: 12 },
+  statCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    padding: 18,
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  heroLabel:     { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 1, color: "rgba(255,255,255,0.5)" },
-  heroNumber:    { fontSize: 36, fontFamily: "Inter_700Bold", letterSpacing: -1.5, color: "#fff" },
-  heroBadge:     { flexDirection: "row", alignItems: "center", gap: 3, alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.12)", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
-  heroBadgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.8)" },
-  heroSubLabel:  { fontSize: 10, fontFamily: "Inter_500Medium", color: "rgba(255,255,255,0.55)" },
-  miniBars:      { flexDirection: "row", alignItems: "flex-end", gap: 4, height: 28, marginTop: 4 },
-  miniBarVert:   { width: 10, borderRadius: 3 },
-  progressTrack: { height: 5, borderRadius: 3, overflow: "hidden", marginTop: 2 },
-  progressFill:  { height: "100%", borderRadius: 3 },
+  statLabel:  { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#888", letterSpacing: 1.4 },
+  statNumber: { fontSize: 32, fontFamily: "Inter_700Bold",    color: "#111", letterSpacing: -1 },
 
-  // Secondary card
-  card: {
-    borderRadius: 22, padding: 14,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04, shadowRadius: 20, elevation: 2,
+  // Screen Time card bottom row
+  statCardBottom: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
+  statBadge:      { flexDirection: "row", alignItems: "center", backgroundColor: "#f0f0f0", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  statBadgeText:  { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#555" },
+  sparkBars:      { flexDirection: "row", alignItems: "flex-end", gap: 4 },
+  sparkBar:       { width: 5, borderRadius: 3 },
+
+  // DoomScore card
+  doomRow:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  doomBetter: { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#888", letterSpacing: 1 },
+  doomPts:    { fontSize: 10, fontFamily: "Inter_700Bold",    color: "#555", letterSpacing: 0.5 },
+  progressTrack: { overflow: "hidden" },
+
+  // Most Used Apps card
+  appsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    padding: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+    gap: 0,
   },
-  cardHeader: {
-    flexDirection: "row", alignItems: "center",
-    justifyContent: "space-between", marginBottom: 10,
+  appsHeader:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  appsHeaderLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 1.4 },
+  appsHeaderDots:  { fontSize: 18, color: "#aaa", letterSpacing: 2, lineHeight: 20 },
+
+  appRow:      { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+  appIconWrap: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#2a2a2a", alignItems: "center", justifyContent: "center" },
+  appInfo:     { flex: 1, gap: 2 },
+  appName:     { fontSize: 14, fontFamily: "Inter_700Bold", color: "#111" },
+  appCategory: { fontSize: 10, fontFamily: "Inter_500Medium", color: "#888", letterSpacing: 0.8 },
+  appRight:    { alignItems: "flex-end", gap: 5 },
+  appTime:     { fontSize: 14, fontFamily: "Inter_700Bold", color: "#111" },
+  appBarTrack: { width: 64, height: 4, borderRadius: 2, backgroundColor: "#ececec", overflow: "hidden" },
+  appBarFill:  { height: "100%", borderRadius: 2, backgroundColor: "#222" },
+  appDivider:  { height: 1, backgroundColor: "#f0f0f0" },
+
+  // Oval accent cards
+  ovalRow: { flexDirection: "row", gap: 10 },
+  ovalCard: {
+    flex: 1,
+    borderRadius: 60,
+    paddingVertical: 28,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    gap: 8,
   },
-  cardTitle: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
-
-  // Goals tracker
-  goalsList:    { gap: 0 },
-  matchRow:     { paddingVertical: 9, gap: 7 },
-  matchHeader:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  goalItemName: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  goalItemTime: { fontSize: 10, fontFamily: "Inter_400Regular" },
-  dayRowPill:   { borderRadius: 10, overflow: "hidden", paddingVertical: 4 },
-  dayDots:      { flexDirection: "row" },
-  dayDotWrap:   { alignItems: "center", gap: 4, flex: 1 },
-  dayDot:       { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  dayLabel:     { fontSize: 9, fontFamily: "Inter_500Medium" },
-
-  // Apps
-  appList:      { gap: 11 },
-  appRow:       { flexDirection: "row", alignItems: "center", gap: 11 },
-  appIcon:      { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  appInfo:      { flex: 1 },
-  appName:      { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  appCategory:  { fontSize: 10, fontFamily: "Inter_500Medium", letterSpacing: 0.5, marginTop: 1 },
-  appRight:     { alignItems: "flex-end", gap: 4, minWidth: 58 },
-  appTime:      { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  miniBarTrack: { height: 4, width: 48, borderRadius: 2, overflow: "hidden" },
-  miniBarFill:  { height: "100%", borderRadius: 2 },
+  ovalLabel:     { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.2, textAlign: "center" },
+  ovalEmpty:     { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 },
+  ovalBadge:     { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
+  ovalBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 0.5 },
 
   // Calendar modal
-  calOuter:   { flex: 1, alignItems: "center", justifyContent: "center" },
-  calSheet:   {
+  calOuter: { flex: 1, alignItems: "center", justifyContent: "center" },
+  calSheet: {
     width: CAL_W, borderRadius: 24, padding: 20,
     shadowColor: "#000", shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.2, shadowRadius: 32, elevation: 16,
   },
-  calNavRow:    { flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 6 },
-  yearSelector: { flexDirection: "column", alignItems: "center", gap: 0 },
-  calYearTxt:   { fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center", minWidth: 38 },
-  monthNav:     { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
-  calMonthTxt:  { fontSize: 16, fontFamily: "Inter_700Bold", minWidth: 100, textAlign: "center" },
-  calLegend:    { flexDirection: "row", gap: 10, marginBottom: 10 },
-  calLegendItem:{ flexDirection: "row", alignItems: "center", gap: 4 },
-  calLegendTxt: { fontSize: 10, fontFamily: "Inter_500Medium" },
-  calDayHdrs:   { flexDirection: "row", marginBottom: 2 },
-  calDayHdr:    { textAlign: "center", fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 0.3 },
-  calGrid:      { flexDirection: "row", flexWrap: "wrap" },
-  calCell:      { alignItems: "center", paddingVertical: 5, gap: 2 },
-  calDayNum:    { fontSize: 12, fontFamily: "Inter_500Medium" },
-  calDot:       { width: 5, height: 5, borderRadius: 2.5 },
+  calNavRow:   { flexDirection: "row", alignItems: "center", marginBottom: 12, gap: 6 },
+  yearSelector:{ flexDirection: "column", alignItems: "center", gap: 1, marginRight: 4 },
+  calYearTxt:  { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  monthNav:    { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  calMonthTxt: { fontSize: 17, fontFamily: "Inter_700Bold", minWidth: 110, textAlign: "center" },
+  calLegend:   { flexDirection: "row", gap: 16, marginBottom: 10 },
+  calLegendItem:{ flexDirection: "row", alignItems: "center", gap: 5 },
+  calLegendTxt: { fontSize: 11 },
+  calDot:      { width: 8, height: 8, borderRadius: 4 },
+  calDayHdrs:  { flexDirection: "row", marginBottom: 6 },
+  calDayHdr:   { textAlign: "center", fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  calGrid:     { flexDirection: "row", flexWrap: "wrap" },
+  calCell:     { alignItems: "center", paddingVertical: 6, gap: 3 },
+  calDayNum:   { fontSize: 13, fontFamily: "Inter_400Regular" },
 });
