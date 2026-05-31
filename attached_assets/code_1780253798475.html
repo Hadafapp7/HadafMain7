@@ -1,0 +1,222 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Account Profile - Stark Editorial</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#f9f9f9",
+                        "surface-container": "#eeeeee",
+                        "on-surface": "#1a1c1c",
+                        "on-primary-container": "#ffffff",
+                        "inverse-surface": "#2f3131",
+                        "surface-tint": "#5e5e5e",
+                        "surface-container-low": "#f3f3f3",
+                        "on-primary-fixed-variant": "#e2e2e2",
+                        "tertiary-container": "#747474",
+                        "surface-container-high": "#e8e8e8",
+                        "secondary-fixed": "#c8c6c8",
+                        "secondary": "#5f5e60",
+                        "inverse-on-surface": "#f1f1f1",
+                        "primary-fixed": "#5e5e5e",
+                        "primary-container": "#3b3b3b",
+                        "on-tertiary": "#e3e2e2",
+                        "on-error-container": "#410002",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed-dim": "#464747",
+                        "on-tertiary-fixed-variant": "#e3e2e2",
+                        "outline-variant": "#c6c6c6",
+                        "secondary-fixed-dim": "#acaaad",
+                        "tertiary": "#3b3b3c",
+                        "on-secondary": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-fixed": "#1b1b1d",
+                        "background": "#f9f9f9",
+                        "on-secondary-fixed-variant": "#3b3b3d",
+                        "inverse-primary": "#c6c6c6",
+                        "surface-container-highest": "#e2e2e2",
+                        "primary": "#000000",
+                        "surface-dim": "#dadada",
+                        "outline": "#777777",
+                        "surface": "#f9f9f9",
+                        "tertiary-fixed": "#5e5e5e",
+                        "on-tertiary-fixed": "#ffffff",
+                        "on-surface-variant": "#474747",
+                        "on-primary": "#e2e2e2",
+                        "surface-variant": "#e2e2e2",
+                        "on-secondary-container": "#1b1b1d",
+                        "error-container": "#ffdad6",
+                        "on-primary-fixed": "#ffffff",
+                        "secondary-container": "#d6d3d6",
+                        "on-tertiary-container": "#ffffff",
+                        "on-background": "#1a1c1c",
+                        "on-error": "#ffffff",
+                        "primary-fixed-dim": "#474747"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 flex items-center px-6 h-16 w-full max-w-none ml-0 bg-[#f9f9f9] dark:bg-black bg-[#f3f3f3] dark:bg-zinc-900">
+<div class="flex items-center gap-4 w-full">
+<span class="material-symbols-outlined text-black dark:text-white" data-icon="star" style="">star</span>
+<h1 class="font-['Inter'] font-black uppercase tracking-tighter text-black dark:text-white text-xl" style="">ACCOUNT</h1>
+</div>
+</header>
+<main class="pt-24 px-6 max-w-2xl mx-auto">
+<!-- Profile Identity -->
+<section class="flex flex-col items-center mb-12">
+<div class="relative mb-6">
+<div class="w-32 h-32 rounded-xl overflow-hidden bg-surface-container-highest">
+<img alt="User Profile" class="w-full h-full object-cover grayscale" data-alt="Close up studio portrait of a man with minimalist style against a solid light grey background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDngCgtYkfLnPmtHGqXhSdzzStoRgSe6uvIzLYPZqQh7AOfsmq6svpA2pC-HzKZOiVB2jqp1qaTGgYA2QJdgX7zMpiRHT3wskwL-rhkphJ-mhJPfZq9lXroGasol4nI3mvRIKAFucp2rQbmfclRGsY5WJ-5olx7IS8iwe7fGleQhXnwTtXrQqD0RMwzRZNlhm6wMEbrQdsCaaJNNKSCwwArLJj-KQOTHXZ2z8ydxzkW1nU6X57iThSBHKxD5FYoHoCw0Z17iZtW6-4" style="">
+</div>
+<div class="absolute -bottom-2 -right-2 bg-primary text-on-primary p-2 rounded-full border-4 border-surface">
+<span class="material-symbols-outlined text-sm" data-icon="verified" style="font-variation-settings: &quot;FILL&quot; 1;">verified</span>
+</div>
+</div>
+<h2 class="text-3xl font-black tracking-tighter uppercase mb-1" style="">ALEXANDER VANCE</h2>
+<p class="text-secondary font-medium tracking-tight" style="">alexander.v@stark.design</p>
+</section>
+<!-- Stats Row: Symmetrical Horizontal Row -->
+<section class="grid grid-cols-3 gap-4 mb-10">
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center justify-center text-center shadow-[0_32px_64px_rgba(0,0,0,0.04)]">
+<span class="text-xs font-black uppercase tracking-widest text-secondary mb-2" style="">Focus</span>
+<span class="text-2xl font-black" style="">128h</span>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center justify-center text-center shadow-[0_32px_64px_rgba(0,0,0,0.04)]">
+<span class="text-xs font-black uppercase tracking-widest text-secondary mb-2" style="">Streak</span>
+<span class="text-2xl font-black" style="">14d</span>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl flex flex-col items-center justify-center text-center shadow-[0_32px_64px_rgba(0,0,0,0.04)]">
+<span class="text-xs font-black uppercase tracking-widest text-secondary mb-2" style="">Score</span>
+<span class="text-2xl font-black" style="">942</span>
+</div>
+</section>
+<!-- Premium Upgrade Widget -->
+<section class="mb-10">
+<div class="bg-primary text-on-primary rounded-xl relative overflow-hidden group active:scale-[0.98] transition-transform duration-300 cursor-pointer p-6">
+<div class="absolute top-0 right-0 p-4 opacity-10">
+<span class="material-symbols-outlined text-8xl" data-icon="auto_awesome" style="">auto_awesome</span>
+</div>
+<div class="relative z-10">
+<div class="flex items-center gap-2 mb-2">
+<span class="bg-white/20 text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded-full" style="">Pro Tier</span>
+</div>
+<h3 class="font-black tracking-tighter mb-4 leading-tight text-xl" style="">MASTER YOUR PRODUCTIVITY<br>WITHOUT LIMITS.</h3>
+<button class="bg-on-primary text-primary px-6 rounded-full font-black text-xs tracking-widest uppercase hover:opacity-90 transition-opacity py-2" style="">
+                        UNLOCK PRO ACCESS
+                    </button>
+</div>
+</div>
+</section>
+<!-- Preferences Section -->
+<section class="space-y-4">
+<h4 class="text-xs font-black uppercase tracking-[0.2em] text-secondary mb-6 px-2" style="">PREFERENCES</h4>
+<div class="space-y-1">
+<!-- New Account Item -->
+<div class="group flex items-center justify-between p-6 bg-surface-container-lowest rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer shadow-[0_32px_64px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-primary" data-icon="account_circle" style="">account_circle</span>
+<span class="font-bold tracking-tight uppercase text-sm" style="">Account</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right" style="">chevron_right</span>
+</div><div class="group flex items-center justify-between p-6 bg-surface-container-lowest rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer shadow-[0_32px_64px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-primary" data-icon="credit_card" style="">credit_card</span>
+<span class="font-bold tracking-tight uppercase text-sm" style="">Subscription</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right" style="">chevron_right</span>
+</div>
+<div class="group flex items-center justify-between p-6 bg-surface-container-lowest rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer shadow-[0_32px_64px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-primary" data-icon="notifications" style="">notifications</span>
+<span class="font-bold tracking-tight uppercase text-sm" style="">Notifications</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right" style="">chevron_right</span>
+</div>
+<div class="group flex items-center justify-between p-6 bg-surface-container-lowest rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer shadow-[0_32px_64px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-primary" data-icon="lock" style="">lock</span>
+<span class="font-bold tracking-tight uppercase text-sm" style="">Privacy &amp; Security</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right" style="">chevron_right</span>
+</div><div class="group flex items-center justify-between p-6 bg-surface-container-lowest rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer shadow-[0_32px_64px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-primary" data-icon="help" style="">help</span>
+<span class="font-bold tracking-tight uppercase text-sm" style="">Help</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right" style="">chevron_right</span>
+</div>
+<div class="group flex items-center justify-between p-6 bg-surface-container-lowest rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer shadow-[0_32px_64px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-primary" data-icon="palette" style="">palette</span>
+<span class="font-bold tracking-tight uppercase text-sm" style="">Appearance</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-xs font-bold text-secondary uppercase tracking-widest" style="">LIGHT</span>
+<span class="material-symbols-outlined text-outline-variant group-hover:translate-x-1 transition-transform" data-icon="chevron_right" style="">chevron_right</span>
+</div>
+</div>
+<div class="group flex items-center justify-between p-6 bg-surface-container-lowest rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer shadow-[0_32px_64px_rgba(0,0,0,0.02)]">
+<div class="flex items-center gap-6 text-error">
+<span class="material-symbols-outlined" data-icon="logout" style="">logout</span>
+<span class="font-bold tracking-tight uppercase text-sm" style="">Sign Out</span>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<div class="fixed bottom-0 left-0 w-full z-50">
+<nav class="flex justify-around items-center px-6 py-4 pb-8 bg-white/90 backdrop-blur-xl border-t border-neutral-100">
+<a class="flex flex-col items-center justify-center text-neutral-400 hover:text-black transition-colors" href="#" style="">
+<span class="material-symbols-outlined" style="">home</span>
+<span class="text-[9px] font-black uppercase tracking-[0.2em] mt-1" style="">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-neutral-400 hover:text-black transition-colors" href="#" style="">
+<span class="material-symbols-outlined" style="">analytics</span>
+<span class="text-[9px] font-black uppercase tracking-[0.2em] mt-1" style="">Analytics</span>
+</a>
+<a class="flex flex-col items-center justify-center text-neutral-400 hover:text-black transition-colors" href="#" style="">
+<span class="material-symbols-outlined" style="">target</span>
+<span class="text-[9px] font-black uppercase tracking-[0.2em] mt-1" style="">Focus</span>
+</a>
+<a class="flex flex-col items-center justify-center text-black" href="#" style="">
+<span class="material-symbols-outlined" style="font-variation-settings: &quot;FILL&quot; 1;">person</span>
+<span class="text-[9px] font-black uppercase tracking-[0.2em] mt-1" style="">Profile</span>
+<div class="w-1 h-1 bg-black rounded-full mt-0.5"></div>
+</a>
+</nav>
+</div>
+</body></html>

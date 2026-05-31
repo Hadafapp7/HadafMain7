@@ -1,0 +1,82 @@
+Redesign the Profile/Account page to exactly match the provided screenshot and HTML source file. Replicate every visual detail precisely — layout, typography, spacing, card shapes, colors, and component styles.
+
+Reference Files
+
+Use the provided HTML file as the exact source of truth for structure, Tailwind classes, color tokens, typography, and component logic
+Use the provided screenshot as the visual reference for pixel-accurate layout and appearance
+
+
+Layout — Top to Bottom Order
+
+Top App Bar (fixed, top of screen)
+
+Left: outlined star icon + bold uppercase label "ACCOUNT" in heavy tracking-tight font
+Background: light grey (#f3f3f3), no shadow, full width
+
+
+Profile Identity Section (centered)
+
+Large rounded square avatar (w-32 h-32, rounded-xl) — dark grey background, greyscale portrait photo
+Small black circular badge bottom-right of avatar with a filled verified checkmark icon — bordered with surface color
+Name: "ALEXANDER VANCE" — very large, black, uppercase, ultra-bold, tight tracking
+Email below: "alexander.v@stark.design" — medium weight, secondary grey color
+
+
+Stats Row (3 equal cards side by side)
+
+Cards: light grey background (surface-container-low), rounded-xl, centered content, subtle shadow
+Each card: small uppercase bold label on top, large bold number below
+Focus → 128h | Streak → 14d | Score → 942
+
+
+Premium Upgrade Widget (full width)
+
+Background: solid black (bg-primary), rounded-xl, white text
+Top-left: small pill badge — "PRO TIER" in white/translucent background, tiny uppercase text
+Headline: "MASTER YOUR PRODUCTIVITY WITHOUT LIMITS." — ultra-bold, large, tight tracking, white
+Decorative sparkle/star icons top-right corner — large, low opacity, white
+Button: white pill button with black text — "UNLOCK PRO ACCESS" — uppercase, bold, small text
+Card has subtle active press scale animation (active:scale-[0.98])
+
+
+Preferences Section
+
+Section label: "PREFERENCES" — tiny, uppercase, wide letter-spacing, secondary grey
+List of menu rows, each: white card (surface-container-lowest), rounded-xl, subtle shadow, hover state lightens bg
+Each row: left side has Material icon + bold uppercase label; right side has chevron-right icon
+Rows in order:
+
+account_circle → Account
+credit_card → Subscription
+notifications → Notifications
+lock → Privacy & Security
+help → Help
+palette → Appearance (right side shows "LIGHT" label + chevron)
+logout → Sign Out (icon + text both in red/error color, no chevron)
+
+
+Chevron animates translate-x-1 on hover per row
+
+
+Bottom Navigation Bar (fixed, bottom)
+
+4 tabs: Home (house icon), Analytics (bar chart), Focus (target/circle), Profile (person icon — active)
+Active tab (Profile): black icon (filled), black label, small black dot indicator below label
+Inactive tabs: grey icons and labels
+Background: white with 90% opacity + backdrop-blur-xl, top border light grey
+Extra bottom padding for safe area (pb-8)
+
+
+
+
+Typography & Design Tokens
+
+Font: Inter — weights 400, 500, 700, 800, 900
+Icons: Material Symbols Outlined (Google Fonts)
+Color system: use exact Tailwind tokens from the HTML (primary, secondary, surface-container-low, on-surface, outline-variant, error, etc.)
+Border radius: rounded-xl for cards, rounded-full for pills and badges
+Page background: #f9f9f9 (surface)
+Body: pb-32 to account for fixed bottom nav
+
+
+Do not change: any other page, the bottom navigation bar tab order, or any existing functionality outside the Profile page.
