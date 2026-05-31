@@ -1,0 +1,48 @@
+Make the following specific updates to the existing application. Do not change the color theme, typography, or overall design language. Preserve all untouched functionality.
+
+1. Dashboard — Goal Progress: Football Match Style
+Replace the existing goal progress display on the dashboard with a football match day-tracker style component for each of the top 3 active goals:
+
+Show 5 circles in a row, each representing one day (e.g. last 5 days or current week)
+Each circle has one of three states:
+
+✅ Green circle, white tick — task completed on that day
+❌ Red circle, white cross — task missed or not completed on that day
+➖ Grey circle, white dash — task was started but terminated/abandoned mid-session
+
+
+Circles should be evenly spaced, clearly sized, and visually distinct
+Add a subtle label below each circle showing the day abbreviation (e.g. Mon, Tue, Wed...)
+Animate circles on load: stagger fade-in left to right
+
+
+2. Goals Page — UI Cleanup & Timer-Based Time Selection
+Remove the following from the Goals page:
+
+Remove the tab/button row at the top of the Goals page (e.g. "Deep Work", "Morning Reading" buttons — the category/tab switcher)
+Remove the progress bar from each individual goal card
+
+Goal card should now only show:
+
+Goal short name
+Intent
+Active time window
+
+Update the Add Goal form — time selection:
+
+Replace any text input or dropdown for time with a native-style drum/scroll timer picker (like iOS time picker) for both "Active From" and "Active To" fields (for Daily goals)
+For Scheduled goals, replace the time input with the same drum/scroll timer picker for time, alongside the existing date picker
+The timer picker must feel tactile and smooth — scroll wheel or drum-roll style interaction
+
+
+3. Focus Page — Scroll-Reactive "Start Session" Button
+Add a scroll-based animation to the "Start Session" button on the Focus page:
+
+When the user scrolls up (toward the top of the page): the button shrinks — reduces in size, potentially collapsing to a smaller pill or icon-only state, and floats toward the top of the screen
+When the user scrolls down (toward the bottom of the page): the button expands back to its full original size and shape, anchored in its normal position
+The transformation must be smooth and spring-animated — not abrupt
+Button should remain functional (tappable) in both states
+Do not change the button's color, label, or behavior — only its size and position respond to scroll
+
+
+Do not change: color palette, fonts, Focus Session page logic, existing dashboard layout beyond what is specified above, or the bottom navigation bar.

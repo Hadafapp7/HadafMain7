@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  FadeIn,
   FadeInDown,
   useAnimatedReaction,
   useAnimatedStyle,
@@ -42,10 +43,42 @@ const WEEK_DATA = [
   { day: "Sun", value: 0.3 },
 ];
 
-const GOALS_PREVIEW = [
-  { name: "Deep Work",       time: "9:00 AM – 11:00 AM",  progress: 0.68 },
-  { name: "Morning Reading", time: "7:00 AM – 8:00 AM",   progress: 1.0  },
-  { name: "Evening Journal", time: "9:00 PM – 9:30 PM",   progress: 0.0  },
+type DayState = "complete" | "missed" | "partial";
+
+const GOAL_MATCH_DATA = [
+  {
+    name: "Deep Work",
+    time: "9:00 AM – 11:00 AM",
+    days: [
+      { day: "Mon", state: "complete" as DayState },
+      { day: "Tue", state: "complete" as DayState },
+      { day: "Wed", state: "partial"  as DayState },
+      { day: "Thu", state: "missed"   as DayState },
+      { day: "Fri", state: "complete" as DayState },
+    ],
+  },
+  {
+    name: "Morning Reading",
+    time: "7:00 AM – 8:00 AM",
+    days: [
+      { day: "Mon", state: "complete" as DayState },
+      { day: "Tue", state: "complete" as DayState },
+      { day: "Wed", state: "complete" as DayState },
+      { day: "Thu", state: "complete" as DayState },
+      { day: "Fri", state: "complete" as DayState },
+    ],
+  },
+  {
+    name: "Evening Journal",
+    time: "9:00 PM – 9:30 PM",
+    days: [
+      { day: "Mon", state: "missed"   as DayState },
+      { day: "Tue", state: "missed"   as DayState },
+      { day: "Wed", state: "partial"  as DayState },
+      { day: "Thu", state: "complete" as DayState },
+      { day: "Fri", state: "partial"  as DayState },
+    ],
+  },
 ];
 
 const QUICK_ACTIONS = [
@@ -97,32 +130,64 @@ function CounterNumber({ target, delay = 0, suffix = "" }: { target: number; del
   );
 }
 
-function GoalProgressItem({ goal, index }: { goal: typeof GOALS_PREVIEW[0]; index: number }) {
+function DayDot({
+  state,
+  dayLabel,
+  delay,
+}: {
+  state: DayState;
+  dayLabel: string;
+  delay: number;
+}) {
   const colors = useColors();
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    progress.value = withDelay(300 + index * 120, withSpring(goal.progress, { damping: 18, stiffness: 80 }));
-  }, []);
-
-  const barStyle = useAnimatedStyle(() => ({
-    width: `${progress.value * 100}%` as any,
-  }));
-
-  const pct = Math.round(goal.progress * 100);
-  const fillColor = goal.progress >= 1 ? "#16a34a" : colors.primary;
+  const bgColor   = state === "complete" ? "#16a34a" : state === "missed" ? "#dc2626" : colors.surfaceContainerHighest;
+  const iconName  = state === "complete" ? "check" : state === "missed" ? "close" : "remove";
+  const iconColor = state === "partial"  ? colors.outline : "#fff";
 
   return (
-    <View style={styles.goalItem}>
-      <View style={styles.goalItemHeader}>
-        <Text style={[styles.goalItemName, { color: colors.onSurface }]}>{goal.name}</Text>
-        <Text style={[styles.goalItemPct, { color: goal.progress >= 1 ? "#16a34a" : colors.outline }]}>
-          {pct === 100 ? "✓" : `${pct}%`}
-        </Text>
+    <Animated.View
+      entering={isWeb ? undefined : FadeIn.delay(delay)}
+      style={styles.dayDotWrap}
+    >
+      <View style={[styles.dayDot, { backgroundColor: bgColor }]}>
+        <MaterialIcons name={iconName as any} size={14} color={iconColor} />
       </View>
-      <Text style={[styles.goalItemTime, { color: colors.outline }]}>{goal.time}</Text>
-      <View style={[styles.goalBar, { backgroundColor: colors.surfaceContainerHighest }]}>
-        <Animated.View style={[styles.goalBarFill, { backgroundColor: fillColor }, barStyle]} />
+      <Text style={[styles.dayLabel, { color: colors.outline }]}>{dayLabel}</Text>
+    </Animated.View>
+  );
+}
+
+function GoalMatchTracker({
+  goal,
+  goalIndex,
+}: {
+  goal: typeof GOAL_MATCH_DATA[0];
+  goalIndex: number;
+}) {
+  const colors = useColors();
+  return (
+    <View
+      style={[
+        styles.matchRow,
+        goalIndex < GOAL_MATCH_DATA.length - 1 && {
+          borderBottomWidth: 1,
+          borderBottomColor: colors.surfaceContainerHigh,
+        },
+      ]}
+    >
+      <View style={styles.matchHeader}>
+        <Text style={[styles.goalItemName, { color: colors.onSurface }]}>{goal.name}</Text>
+        <Text style={[styles.goalItemTime, { color: colors.outline }]}>{goal.time}</Text>
+      </View>
+      <View style={styles.dayDots}>
+        {goal.days.map((d, i) => (
+          <DayDot
+            key={d.day}
+            state={d.state}
+            dayLabel={d.day}
+            delay={goalIndex * 80 + i * 55}
+          />
+        ))}
       </View>
     </View>
   );
@@ -241,8 +306,8 @@ export default function HomeScreen() {
             <MaterialIcons name="flag" size={18} color={colors.outline} />
           </View>
           <View style={styles.goalsList}>
-            {GOALS_PREVIEW.map((goal, i) => (
-              <GoalProgressItem key={i} goal={goal} index={i} />
+            {GOAL_MATCH_DATA.map((goal, i) => (
+              <GoalMatchTracker key={i} goal={goal} goalIndex={i} />
             ))}
           </View>
         </PressableCard>
@@ -402,15 +467,16 @@ const styles = StyleSheet.create({
   miniBarVert: { width: 10, borderRadius: 3 },
   progressTrack: { height: 8, borderRadius: 4, overflow: "hidden", marginTop: 4 },
   progressFill: { height: "100%", borderRadius: 4 },
-  // Goals progress section
-  goalsList:       { gap: 14 },
-  goalItem:        { gap: 6 },
-  goalItemHeader:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  goalItemName:    { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  goalItemPct:     { fontSize: 12, fontFamily: "Inter_700Bold" },
-  goalItemTime:    { fontSize: 11, fontFamily: "Inter_400Regular" },
-  goalBar:         { height: 6, borderRadius: 3, overflow: "hidden", marginTop: 2 },
-  goalBarFill:     { height: "100%", borderRadius: 3 },
+  // Goals match tracker
+  goalsList:   { gap: 0 },
+  matchRow:    { paddingVertical: 14, gap: 10 },
+  matchHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  goalItemName: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  goalItemTime: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  dayDots:     { flexDirection: "row", justifyContent: "space-between" },
+  dayDotWrap:  { alignItems: "center", gap: 5, flex: 1 },
+  dayDot:      { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  dayLabel:    { fontSize: 10, fontFamily: "Inter_500Medium" },
 
   card: {
     borderRadius: 28,

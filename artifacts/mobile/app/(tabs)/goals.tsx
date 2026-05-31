@@ -1,6 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -15,10 +15,6 @@ import {
 import Animated, {
   FadeIn,
   FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withSpring,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -78,44 +74,143 @@ const DEFAULT_GOALS: Goal[] = [
   },
 ];
 
-// ── Animated progress bar ──────────────────────────────────────────────────────
-function GoalProgressBar({ progress, delay = 0 }: { progress: number; delay?: number }) {
-  const colors = useColors();
-  const width = useSharedValue(0);
+// ── Drum picker constants ───────────────────────────────────────────────────────
+const HOURS   = ["1","2","3","4","5","6","7","8","9","10","11","12"];
+const MINUTES = ["00","30"];
+const PERIODS = ["AM","PM"];
+const ITEM_H  = 46;
+
+// ── DrumColumn ─────────────────────────────────────────────────────────────────
+function DrumColumn({
+  items,
+  selected,
+  onSelect,
+  width = 54,
+}: {
+  items: string[];
+  selected: string;
+  onSelect: (v: string) => void;
+  width?: number;
+}) {
+  const colors   = useColors();
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    width.value = withDelay(delay, withSpring(progress, { damping: 20, stiffness: 80 }));
-  }, [progress]);
+    const idx = items.indexOf(selected);
+    if (idx >= 0) {
+      // Small delay ensures the ScrollView is mounted
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: idx * ITEM_H, animated: false });
+      }, 50);
+    }
+  }, []);
 
-  const barStyle = useAnimatedStyle(() => ({
-    width: `${width.value * 100}%` as any,
-  }));
-
-  const pct = Math.round(progress * 100);
-  const statusColor = progress >= 1 ? "#16a34a" : progress > 0 ? colors.primary : colors.outline;
+  const handleEnd = useCallback((e: any) => {
+    const idx     = Math.round(e.nativeEvent.contentOffset.y / ITEM_H);
+    const clamped = Math.max(0, Math.min(items.length - 1, idx));
+    Haptics.selectionAsync();
+    onSelect(items[clamped]);
+  }, [items, onSelect]);
 
   return (
-    <View style={{ gap: 8 }}>
-      <View style={[styles.progressTrack, { backgroundColor: colors.surfaceContainerHighest }]}>
-        <Animated.View style={[styles.progressFill, { backgroundColor: statusColor }, barStyle]} />
-      </View>
-      <View style={styles.progressFooter}>
-        <Text style={[styles.progressPct, { color: statusColor }]}>
-          {pct === 100 ? "✓ Complete" : pct === 0 ? "Not started" : `${pct}% complete`}
-        </Text>
-        <Text style={[styles.progressPct, { color: colors.outline }]}>{pct}%</Text>
-      </View>
+    <View style={{ width, height: ITEM_H * 3, overflow: "hidden" }}>
+      {/* center-item highlight rail */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: ITEM_H,
+          left: 6,
+          right: 6,
+          height: ITEM_H,
+          borderTopWidth: 1,
+          borderBottomWidth: 1,
+          borderColor: colors.outline + "40",
+          borderRadius: 8,
+        }}
+      />
+      <ScrollView
+        ref={scrollRef}
+        snapToInterval={ITEM_H}
+        decelerationRate="fast"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingVertical: ITEM_H }}
+        onMomentumScrollEnd={handleEnd}
+        onScrollEndDrag={handleEnd}
+      >
+        {items.map((item, i) => {
+          const isSel = item === selected;
+          return (
+            <TouchableOpacity
+              key={i}
+              style={{ height: ITEM_H, alignItems: "center", justifyContent: "center" }}
+              onPress={() => {
+                scrollRef.current?.scrollTo({ y: i * ITEM_H, animated: true });
+                Haptics.selectionAsync();
+                onSelect(item);
+              }}
+              activeOpacity={0.6}
+            >
+              <Text
+                style={{
+                  fontSize: isSel ? 18 : 14,
+                  fontFamily: isSel ? "Inter_700Bold" : "Inter_400Regular",
+                  color: isSel ? colors.onSurface : colors.outline,
+                  opacity: isSel ? 1 : 0.45,
+                }}
+              >
+                {item}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
 
-// ── Goal card ──────────────────────────────────────────────────────────────────
-function GoalCard({ goal }: { goal: Goal }) {
+// ── DrumTimePicker ─────────────────────────────────────────────────────────────
+function DrumTimePicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const colors = useColors();
+
+  const parsed = value.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  const [hour,   setHour]   = useState(parsed ? parsed[1] : "9");
+  const [minute, setMinute] = useState(parsed ? parsed[2] : "00");
+  const [period, setPeriod] = useState(parsed ? parsed[3].toUpperCase() : "AM");
+
+  useEffect(() => {
+    onChange(`${hour}:${minute} ${period}`);
+  }, [hour, minute, period]);
+
+  return (
+    <View
+      style={[
+        styles.drumContainer,
+        { backgroundColor: colors.surfaceContainerHigh },
+      ]}
+    >
+      <DrumColumn items={HOURS}   selected={hour}   onSelect={setHour}   width={54} />
+      <Text style={[styles.drumColon, { color: colors.outline }]}>:</Text>
+      <DrumColumn items={MINUTES} selected={minute} onSelect={setMinute} width={46} />
+      <View style={{ width: 14 }} />
+      <DrumColumn items={PERIODS} selected={period} onSelect={setPeriod} width={50} />
+    </View>
+  );
+}
+
+// ── Goal card (simplified — no progress bar) ───────────────────────────────────
+function GoalCard({ goal, delay = 0 }: { goal: Goal; delay?: number }) {
   const colors = useColors();
 
   return (
     <Animated.View
-      entering={FadeIn.duration(260)}
+      entering={isWeb ? undefined : FadeInDown.delay(delay).springify()}
       style={[styles.goalCard, { backgroundColor: colors.card }]}
     >
       <View style={[styles.goalCardAccent, { backgroundColor: colors.primary }]} />
@@ -148,15 +243,6 @@ function GoalCard({ goal }: { goal: Goal }) {
                 ? `${goal.scheduledDate}  ·  ${goal.scheduledTime}`
                 : "No schedule set"}
           </Text>
-        </View>
-
-        {/* Divider */}
-        <View style={[styles.divider, { backgroundColor: colors.surfaceContainerHigh }]} />
-
-        {/* Progress */}
-        <View style={styles.progressSection}>
-          <Text style={[styles.progressLabel, { color: colors.outline }]}>TODAY'S PROGRESS</Text>
-          <GoalProgressBar progress={goal.progress} delay={120} />
         </View>
       </View>
     </Animated.View>
@@ -286,33 +372,21 @@ function AddGoalModal({
               </View>
             </View>
 
-            {/* Daily: from / to */}
+            {/* Daily: drum pickers for from / to */}
             {type === "daily" && (
-              <View style={styles.timeFieldRow}>
+              <View style={styles.drumFieldRow}>
                 <View style={[styles.fieldGroup, { flex: 1 }]}>
                   <Text style={[styles.fieldLabel, { color: colors.outline }]}>ACTIVE FROM</Text>
-                  <TextInput
-                    style={[styles.textInput, { backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }]}
-                    placeholder="9:00 AM"
-                    placeholderTextColor={colors.outline}
-                    value={activeFrom}
-                    onChangeText={setActiveFrom}
-                  />
+                  <DrumTimePicker value={activeFrom} onChange={setActiveFrom} />
                 </View>
                 <View style={[styles.fieldGroup, { flex: 1 }]}>
                   <Text style={[styles.fieldLabel, { color: colors.outline }]}>ACTIVE TO</Text>
-                  <TextInput
-                    style={[styles.textInput, { backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }]}
-                    placeholder="11:00 AM"
-                    placeholderTextColor={colors.outline}
-                    value={activeTo}
-                    onChangeText={setActiveTo}
-                  />
+                  <DrumTimePicker value={activeTo} onChange={setActiveTo} />
                 </View>
               </View>
             )}
 
-            {/* Scheduled: date + time */}
+            {/* Scheduled: date text + drum picker for time */}
             {type === "scheduled" && (
               <>
                 <View style={styles.fieldGroup}>
@@ -327,13 +401,7 @@ function AddGoalModal({
                 </View>
                 <View style={styles.fieldGroup}>
                   <Text style={[styles.fieldLabel, { color: colors.outline }]}>TIME</Text>
-                  <TextInput
-                    style={[styles.textInput, { backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }]}
-                    placeholder="9:00 AM"
-                    placeholderTextColor={colors.outline}
-                    value={scheduledTime}
-                    onChangeText={setScheduledTime}
-                  />
+                  <DrumTimePicker value={scheduledTime} onChange={setScheduledTime} />
                 </View>
               </>
             )}
@@ -367,15 +435,11 @@ export default function GoalsScreen() {
   const topPad  = isWeb ? 67 : insets.top;
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
 
-  const [goals,      setGoals]      = useState<Goal[]>(DEFAULT_GOALS);
-  const [activeIdx,  setActiveIdx]  = useState(0);
-  const [showModal,  setShowModal]  = useState(false);
-
-  const activeGoal = goals[activeIdx] || goals[0];
+  const [goals,     setGoals]     = useState<Goal[]>(DEFAULT_GOALS);
+  const [showModal, setShowModal] = useState(false);
 
   const handleAddGoal = (goal: Goal) => {
     setGoals((prev) => [...prev, goal]);
-    setActiveIdx(goals.length);
   };
 
   return (
@@ -395,73 +459,10 @@ export default function GoalsScreen() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>GOALS</Text>
         </Animated.View>
 
-        {/* Goal tab pills */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(50).springify()}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabsContent}
-          >
-            {goals.map((g, i) => (
-              <TouchableOpacity
-                key={g.id}
-                style={[
-                  styles.tabPill,
-                  { backgroundColor: activeIdx === i ? colors.primary : colors.card },
-                ]}
-                onPress={() => { Haptics.selectionAsync(); setActiveIdx(i); }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.tabPillText,
-                    { color: activeIdx === i ? "#fff" : colors.outline },
-                  ]}
-                >
-                  {g.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </Animated.View>
-
-        {/* Goal card — key triggers re-enter animation on tab change */}
-        {activeGoal && <GoalCard key={activeGoal.id} goal={activeGoal} />}
-
-        {/* All goals summary strip */}
-        {goals.length > 1 && (
-          <Animated.View
-            entering={isWeb ? undefined : FadeInDown.delay(200).springify()}
-            style={[styles.summaryCard, { backgroundColor: colors.card }]}
-          >
-            <Text style={[styles.summaryTitle, { color: colors.outline }]}>ALL GOALS</Text>
-            {goals.map((g, i) => {
-              const pct = Math.round(g.progress * 100);
-              return (
-                <TouchableOpacity
-                  key={g.id}
-                  style={[
-                    styles.summaryRow,
-                    i < goals.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
-                  ]}
-                  onPress={() => { Haptics.selectionAsync(); setActiveIdx(i); }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.summaryLeft}>
-                    <Text style={[styles.summaryName, { color: colors.onSurface }]}>{g.name}</Text>
-                    <Text style={[styles.summaryTime, { color: colors.outline }]}>
-                      {g.type === "daily" ? `${g.activeFrom} – ${g.activeTo}` : g.scheduledDate || "Scheduled"}
-                    </Text>
-                  </View>
-                  <Text style={[styles.summaryPct, { color: pct === 100 ? "#16a34a" : colors.outline }]}>
-                    {pct}%
-                  </Text>
-                  <MaterialIcons name="chevron-right" size={18} color={colors.outlineVariant} />
-                </TouchableOpacity>
-              );
-            })}
-          </Animated.View>
-        )}
+        {/* All goal cards stacked */}
+        {goals.map((g, i) => (
+          <GoalCard key={g.id} goal={g} delay={60 + i * 80} />
+        ))}
       </ScrollView>
 
       {/* Floating "Add Goal" button */}
@@ -490,25 +491,11 @@ export default function GoalsScreen() {
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root:  { flex: 1 },
+  root:   { flex: 1 },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 20, gap: 20 },
+  content: { paddingHorizontal: 20, gap: 16 },
 
   headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
-
-  // Tab pills
-  tabsContent: { gap: 8, paddingRight: 4 },
-  tabPill: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 22,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 1,
-  },
-  tabPillText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 
   // Goal card
   goalCard: {
@@ -522,53 +509,39 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   goalCardAccent: { width: 5 },
-  goalCardInner:  { flex: 1, padding: 20, gap: 14 },
+  goalCardInner:  { flex: 1, padding: 20, gap: 12 },
 
   typeBadge:     { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, alignSelf: "flex-start" },
   typeBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
 
-  goalName:   { fontSize: 30, fontFamily: "Inter_700Bold", letterSpacing: -0.5, lineHeight: 36 },
-  goalIntent: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 21 },
+  goalName:   { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
+  goalIntent: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
 
   timeChip:     { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 14, alignSelf: "flex-start" },
   timeChipText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 
-  divider: { height: 1, marginVertical: 2 },
-
-  progressSection: { gap: 10 },
-  progressLabel:   { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
-  progressTrack:   { height: 8, borderRadius: 4, overflow: "hidden" },
-  progressFill:    { height: "100%", borderRadius: 4 },
-  progressFooter:  { flexDirection: "row", justifyContent: "space-between" },
-  progressPct:     { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-
-  // Summary strip
-  summaryCard:  { borderRadius: 24, padding: 18, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 16, elevation: 2 },
-  summaryTitle: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.5, marginBottom: 12 },
-  summaryRow:   { flexDirection: "row", alignItems: "center", paddingVertical: 12, gap: 8 },
-  summaryLeft:  { flex: 1 },
-  summaryName:  { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  summaryTime:  { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  summaryPct:   { fontSize: 12, fontFamily: "Inter_700Bold", minWidth: 36, textAlign: "right" },
+  // Drum picker
+  drumContainer: { flexDirection: "row", alignItems: "center", borderRadius: 16, paddingHorizontal: 10 },
+  drumColon:     { fontSize: 22, fontFamily: "Inter_700Bold", marginBottom: 2 },
 
   // Floating button
-  floatingBtn:   { position: "absolute", left: 20, right: 20 },
-  addGoalBtn:    { height: 56, borderRadius: 28, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
+  floatingBtn:    { position: "absolute", left: 20, right: 20 },
+  addGoalBtn:     { height: 56, borderRadius: 28, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
   addGoalBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
   modalKAV:     { justifyContent: "flex-end" },
-  modalSheet:   { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingTop: 16, maxHeight: "88%" },
+  modalSheet:   { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingTop: 16, maxHeight: "92%" },
   modalHandle:  { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 16 },
   modalHeader:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
   modalTitle:   { fontSize: 20, fontFamily: "Inter_700Bold" },
 
-  fieldGroup:      { marginBottom: 16 },
-  fieldLabel:      { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.5, marginBottom: 8 },
-  textInput:       { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, fontFamily: "Inter_400Regular" },
-  textInputMulti:  { minHeight: 80, paddingTop: 13 },
-  timeFieldRow:    { flexDirection: "row", gap: 12 },
+  fieldGroup:     { marginBottom: 16 },
+  fieldLabel:     { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.5, marginBottom: 8 },
+  textInput:      { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, fontFamily: "Inter_400Regular" },
+  textInputMulti: { minHeight: 72, paddingTop: 13 },
+  drumFieldRow:   { flexDirection: "row", gap: 12 },
 
   typeToggle:  { flexDirection: "row", borderRadius: 14, padding: 4, gap: 4 },
   typeBtn:     { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },

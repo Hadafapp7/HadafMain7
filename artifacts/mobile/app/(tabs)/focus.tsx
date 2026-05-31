@@ -18,6 +18,7 @@ import Animated, {
   FadeInDown,
   FadeOut,
   useAnimatedProps,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -383,6 +384,45 @@ export default function FocusScreen() {
   const isActive = sessionState === "running" || sessionState === "paused";
   const cardW    = (SCREEN_W - 40 - 9 * 3) / 4;
 
+  // ── Scroll-reactive Start Session button ──────────────────────────────────
+  const scrollY  = useSharedValue(0);
+  const isIdleSV = useSharedValue(sessionState === "idle");
+
+  useEffect(() => { isIdleSV.value = sessionState === "idle"; }, [sessionState]);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
+  });
+
+  const BTN_THRESHOLD = 60;
+  const MID_X = (SCREEN_W - 54) / 2;
+
+  const stickyAnimStyle = useAnimatedStyle(() => {
+    const atTop = isIdleSV.value && scrollY.value < BTN_THRESHOLD;
+    return {
+      bottom: withSpring(atTop ? tabBarH + 56 : tabBarH + 16, { damping: 18, stiffness: 90 }),
+      left:   withSpring(atTop ? MID_X : 20, { damping: 18, stiffness: 90 }),
+      right:  withSpring(atTop ? MID_X : 20, { damping: 18, stiffness: 90 }),
+    };
+  });
+
+  const startBtnAnimStyle = useAnimatedStyle(() => {
+    const atTop = isIdleSV.value && scrollY.value < BTN_THRESHOLD;
+    return {
+      height:       withSpring(atTop ? 54 : 58, { damping: 18, stiffness: 90 }),
+      borderRadius: withSpring(atTop ? 27 : 29, { damping: 18, stiffness: 90 }),
+    };
+  });
+
+  const startBtnTextAnimStyle = useAnimatedStyle(() => {
+    const atTop = isIdleSV.value && scrollY.value < BTN_THRESHOLD;
+    return {
+      opacity:  withSpring(atTop ? 0 : 1, { damping: 18, stiffness: 90 }),
+      maxWidth: withSpring(atTop ? 0 : 300, { damping: 18, stiffness: 90 }),
+      overflow: "hidden" as const,
+    };
+  });
+
   const toggleApp = (name: string) => {
     setBlockedApps((prev) =>
       prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]
@@ -405,7 +445,7 @@ export default function FocusScreen() {
       )}
 
       <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView
+        <Animated.ScrollView
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
@@ -413,6 +453,8 @@ export default function FocusScreen() {
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
         >
           {/* Header */}
           <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()}>
@@ -629,25 +671,24 @@ export default function FocusScreen() {
               </Text>
             </Animated.View>
           )}
-        </ScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Floating button — always above tab bar */}
-      <View
-        style={[
-          styles.stickyBottom,
-          { bottom: tabBarH + 16 },
-        ]}
-      >
+      {/* Floating button — scroll-reactive */}
+      <Animated.View style={[styles.stickyBottom, stickyAnimStyle]}>
         {sessionState === "idle" && (
-          <TouchableOpacity
-            style={[styles.startBtn, { backgroundColor: colors.primary }]}
-            onPress={handleStart}
-            activeOpacity={0.85}
-          >
-            <MaterialIcons name="play-arrow" size={24} color="#fff" />
-            <Text style={styles.startBtnText}>Start {duration} Min Session</Text>
-          </TouchableOpacity>
+          <Animated.View style={[styles.startBtn, { backgroundColor: colors.primary }, startBtnAnimStyle]}>
+            <TouchableOpacity
+              style={styles.startBtnInner}
+              onPress={handleStart}
+              activeOpacity={0.85}
+            >
+              <MaterialIcons name="play-arrow" size={24} color="#fff" />
+              <Animated.View style={startBtnTextAnimStyle}>
+                <Text style={styles.startBtnText}>Start {duration} Min Session</Text>
+              </Animated.View>
+            </TouchableOpacity>
+          </Animated.View>
         )}
         {sessionState === "running" && (
           <View style={styles.activeActions}>
@@ -689,7 +730,7 @@ export default function FocusScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </Animated.View>
 
       {/* App picker modal */}
       <AppPickerModal
@@ -720,11 +761,10 @@ const styles = StyleSheet.create({
   ringSubLabel:   { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 2.5, marginTop: 2 },
   stickyBottom: {
     position: "absolute",
-    left: 20,
-    right: 20,
   },
-  startBtn:            { height: 58, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
-  startBtnText:        { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
+  startBtn:      { shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8, overflow: "hidden" },
+  startBtnInner: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  startBtnText:  { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
   activeActions:       { flexDirection: "row", gap: 12 },
   actionBtnSecondary:  { height: 58, flex: 0.38, borderRadius: 29, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   actionBtnSecondaryText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
