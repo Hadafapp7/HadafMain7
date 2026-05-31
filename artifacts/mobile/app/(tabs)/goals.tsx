@@ -15,10 +15,8 @@ import {
   View,
 } from "react-native";
 import Animated, {
-  FadeIn,
   FadeInDown,
   FadeOut,
-  FadeOutDown,
   LinearTransition,
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -167,7 +165,7 @@ function DrumTimePicker({ value, onChange }: { value: string; onChange: (v: stri
   const parsed  = value.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
   const [hour,   setHour]   = useState(parsed ? parsed[1] : "10");
   const [minute, setMinute] = useState(parsed ? parsed[2] : "00");
-  const [period, setPeriod] = useState(parsed ? parsed[3].toUpperCase() : "AM");
+  const [period, setPeriod] = useState(parsed ? parsed[3]?.toUpperCase() ?? "AM" : "AM");
   useEffect(() => { onChange(`${hour}:${minute} ${period}`); }, [hour, minute, period]);
   return (
     <View style={styles.drumContainer}>
@@ -197,7 +195,6 @@ function DrumDurationPicker({ value, onChange }: { value: string; onChange: (v: 
   );
 }
 
-// helper: parse "1h 30m" → "1.5 Hours"
 function durLabel(raw: string) {
   const m = raw.match(/^(\d+)h\s*(\d+)m$/);
   if (!m) return raw;
@@ -207,23 +204,43 @@ function durLabel(raw: string) {
 }
 
 // ── AddTaskModal ───────────────────────────────────────────────────────────────
-function AddTaskModal({ visible, onClose, onSave }: {
-  visible: boolean; onClose: () => void; onSave: (goal: Goal) => void;
+function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
+  visible: boolean;
+  onClose: () => void;
+  onSave: (goal: Goal) => void;
+  editingGoal?: Goal | null;
+  onUpdate?: (goal: Goal) => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const insets     = useSafeAreaInsets();
+  const isEditMode = !!editingGoal;
 
   const [name,      setName]      = useState("");
+  const [goalType,  setGoalType]  = useState<GoalType>("daily");
   const [duration,  setDuration]  = useState("1h 30m");
   const [startTime, setStartTime] = useState("10:00 AM");
+  const [endTime,   setEndTime]   = useState("11:30 AM");
+  const [schedDate, setSchedDate] = useState("");
   const [showDrumDur,  setShowDrumDur]  = useState(false);
-  const [showDrumTime, setShowDrumTime] = useState(false);
+  const [showDrumFrom, setShowDrumFrom] = useState(false);
+  const [showDrumTo,   setShowDrumTo]   = useState(false);
 
   const scale   = useSharedValue(0.88);
   const opacity = useSharedValue(0);
 
+  // Sync fields when editing goal changes
+  useEffect(() => {
+    if (editingGoal) {
+      setName(editingGoal.name);
+      setGoalType(editingGoal.type);
+      setStartTime(editingGoal.activeFrom || "10:00 AM");
+      setEndTime(editingGoal.activeTo || "11:30 AM");
+      setSchedDate(editingGoal.scheduledDate || "");
+    }
+  }, [editingGoal?.id]);
+
   useEffect(() => {
     if (visible) {
-      scale.value   = withSpring(1,   { damping: 18, stiffness: 180 });
+      scale.value   = withSpring(1,    { damping: 18, stiffness: 180 });
       opacity.value = withTiming(1, { duration: 180 });
     } else {
       scale.value   = withSpring(0.88, { damping: 18, stiffness: 180 });
@@ -237,24 +254,33 @@ function AddTaskModal({ visible, onClose, onSave }: {
   }));
 
   const reset = () => {
-    setName(""); setDuration("1h 30m"); setStartTime("10:00 AM");
-    setShowDrumDur(false); setShowDrumTime(false);
+    setName(""); setGoalType("daily");
+    setDuration("1h 30m"); setStartTime("10:00 AM"); setEndTime("11:30 AM");
+    setSchedDate("");
+    setShowDrumDur(false); setShowDrumFrom(false); setShowDrumTo(false);
   };
+
   const handleClose = () => { reset(); onClose(); };
-  const handleSave  = () => {
+
+  const handleSave = () => {
     if (!name.trim()) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onSave({
-      id: Date.now().toString(),
+    const goalData: Goal = {
+      id: editingGoal?.id ?? Date.now().toString(),
       name: name.trim(),
-      intent: "",
-      type: "daily",
+      intent: editingGoal?.intent ?? "",
+      type: goalType,
       activeFrom: startTime,
-      activeTo: startTime,
-      scheduledDate: "",
-      scheduledTime: "",
-      progress: 0,
-    });
+      activeTo: goalType === "daily" ? endTime : "",
+      scheduledDate: goalType === "scheduled" ? schedDate : "",
+      scheduledTime: goalType === "scheduled" ? startTime : "",
+      progress: editingGoal?.progress ?? 0,
+    };
+    if (isEditMode && onUpdate) {
+      onUpdate(goalData);
+    } else {
+      onSave(goalData);
+    }
     reset(); onClose();
   };
 
@@ -270,82 +296,162 @@ function AddTaskModal({ visible, onClose, onSave }: {
 
       <View style={styles.addModalCentered} pointerEvents="box-none">
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} pointerEvents="box-none">
-          <Animated.View style={[styles.addModalCard, modalAnim]}>
+          <Animated.ScrollView
+            style={styles.addModalScroll}
+            contentContainerStyle={styles.addModalScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Animated.View style={[styles.addModalCard, modalAnim]}>
 
-            {/* Close button */}
-            <TouchableOpacity style={styles.addModalClose} onPress={handleClose} hitSlop={12}>
-              <MaterialIcons name="close" size={20} color="#000" />
-            </TouchableOpacity>
+              {/* Close button */}
+              <TouchableOpacity style={styles.addModalClose} onPress={handleClose} hitSlop={12}>
+                <MaterialIcons name="close" size={20} color="#000" />
+              </TouchableOpacity>
 
-            {/* Title */}
-            <Text style={styles.addModalTitle}>ADD NEW TASK</Text>
-            <Text style={styles.addModalSub}>ARCHITECT YOUR DAY</Text>
+              {/* Title */}
+              <Text style={styles.addModalTitle}>
+                {isEditMode ? "EDIT TASK" : "ADD NEW TASK"}
+              </Text>
+              <Text style={styles.addModalSub}>
+                {isEditMode ? "UPDATE YOUR COMMITMENT" : "ARCHITECT YOUR DAY"}
+              </Text>
 
-            {/* Task Identification */}
-            <Text style={styles.formLabel}>TASK IDENTIFICATION</Text>
-            <TextInput
-              style={styles.addModalInput}
-              placeholder="What needs attention?"
-              placeholderTextColor="#b0b0b0"
-              value={name}
-              onChangeText={setName}
-              returnKeyType="done"
-            />
+              {/* Task Identification */}
+              <Text style={styles.formLabel}>TASK IDENTIFICATION</Text>
+              <TextInput
+                style={styles.addModalInput}
+                placeholder="What needs attention?"
+                placeholderTextColor="#b0b0b0"
+                value={name}
+                onChangeText={setName}
+                returnKeyType="done"
+              />
 
-            {/* Scheduling Window */}
-            <View style={styles.schedRow}>
-              <Text style={styles.formLabel}>SCHEDULING WINDOW</Text>
-              <Text style={styles.priorityBadge}>PRIORITY HIGH</Text>
-            </View>
-
-            <View style={styles.schedCols}>
-              {/* Duration */}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.schedColLabel}>DURATION</Text>
+              {/* Type toggle */}
+              <Text style={[styles.formLabel, { marginBottom: 10 }]}>TASK TYPE</Text>
+              <View style={styles.typeToggleRow}>
                 <TouchableOpacity
-                  style={styles.schedPill}
-                  activeOpacity={0.75}
-                  onPress={() => { Haptics.selectionAsync(); setShowDrumDur(v => !v); setShowDrumTime(false); }}
+                  style={[styles.typeToggleBtn, goalType === "daily" && styles.typeToggleBtnActive]}
+                  onPress={() => { Haptics.selectionAsync(); setGoalType("daily"); }}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.schedPillText}>{durLabel(duration)}</Text>
+                  <MaterialIcons name="repeat" size={14} color={goalType === "daily" ? "#fff" : "#555"} />
+                  <Text style={[styles.typeToggleBtnText, goalType === "daily" && styles.typeToggleBtnTextActive]}>Daily</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.typeToggleBtn, goalType === "scheduled" && styles.typeToggleBtnActive]}
+                  onPress={() => { Haptics.selectionAsync(); setGoalType("scheduled"); }}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons name="event" size={14} color={goalType === "scheduled" ? "#fff" : "#555"} />
+                  <Text style={[styles.typeToggleBtnText, goalType === "scheduled" && styles.typeToggleBtnTextActive]}>Scheduled</Text>
                 </TouchableOpacity>
               </View>
-              {/* Start Time */}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.schedColLabel}>START TIME</Text>
-                <TouchableOpacity
-                  style={styles.schedPill}
-                  activeOpacity={0.75}
-                  onPress={() => { Haptics.selectionAsync(); setShowDrumTime(v => !v); setShowDrumDur(false); }}
-                >
-                  <Text style={styles.schedPillText}>{startTime}</Text>
-                </TouchableOpacity>
+
+              {/* Scheduling Window */}
+              <View style={styles.schedRow}>
+                <Text style={styles.formLabel}>SCHEDULING WINDOW</Text>
+                <Text style={styles.priorityBadge}>PRIORITY HIGH</Text>
               </View>
-            </View>
 
-            {/* Inline drum pickers */}
-            {showDrumDur && (
-              <Animated.View entering={FadeInDown.duration(200)} style={styles.drumBox}>
-                <DrumDurationPicker value={duration} onChange={setDuration} />
-              </Animated.View>
-            )}
-            {showDrumTime && (
-              <Animated.View entering={FadeInDown.duration(200)} style={styles.drumBox}>
-                <DrumTimePicker value={startTime} onChange={setStartTime} />
-              </Animated.View>
-            )}
+              <View style={styles.schedCols}>
+                {/* Duration */}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.schedColLabel}>DURATION</Text>
+                  <TouchableOpacity
+                    style={styles.schedPill}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setShowDrumDur(v => !v);
+                      setShowDrumFrom(false); setShowDrumTo(false);
+                    }}
+                  >
+                    <Text style={styles.schedPillText}>{durLabel(duration)}</Text>
+                  </TouchableOpacity>
+                </View>
+                {/* Start Time */}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.schedColLabel}>START TIME</Text>
+                  <TouchableOpacity
+                    style={styles.schedPill}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setShowDrumFrom(v => !v);
+                      setShowDrumDur(false); setShowDrumTo(false);
+                    }}
+                  >
+                    <Text style={styles.schedPillText}>{startTime}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-            {/* Submit */}
-            <TouchableOpacity
-              style={[styles.commitBtn, !name.trim() && { opacity: 0.45 }]}
-              onPress={handleSave}
-              disabled={!name.trim()}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.commitBtnText}>COMMIT TASK</Text>
-            </TouchableOpacity>
+              {/* End Time (Daily only) */}
+              {goalType === "daily" && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.schedColLabel}>END TIME</Text>
+                  <TouchableOpacity
+                    style={styles.schedPill}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setShowDrumTo(v => !v);
+                      setShowDrumDur(false); setShowDrumFrom(false);
+                    }}
+                  >
+                    <Text style={styles.schedPillText}>{endTime}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-          </Animated.View>
+              {/* Scheduled date field */}
+              {goalType === "scheduled" && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.schedColLabel}>SELECT DATE</Text>
+                  <TextInput
+                    style={styles.addModalInput}
+                    placeholder="e.g. Dec 25, 2026"
+                    placeholderTextColor="#b0b0b0"
+                    value={schedDate}
+                    onChangeText={setSchedDate}
+                    returnKeyType="done"
+                  />
+                </View>
+              )}
+
+              {/* Inline drum pickers */}
+              {showDrumDur && (
+                <Animated.View style={styles.drumBox}>
+                  <DrumDurationPicker value={duration} onChange={setDuration} />
+                </Animated.View>
+              )}
+              {showDrumFrom && (
+                <Animated.View style={styles.drumBox}>
+                  <DrumTimePicker value={startTime} onChange={setStartTime} />
+                </Animated.View>
+              )}
+              {showDrumTo && (
+                <Animated.View style={styles.drumBox}>
+                  <DrumTimePicker value={endTime} onChange={setEndTime} />
+                </Animated.View>
+              )}
+
+              {/* Submit */}
+              <TouchableOpacity
+                style={[styles.commitBtn, !name.trim() && { opacity: 0.45 }]}
+                onPress={handleSave}
+                disabled={!name.trim()}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.commitBtnText}>
+                  {isEditMode ? "UPDATE GOAL" : "COMMIT TASK"}
+                </Text>
+              </TouchableOpacity>
+
+            </Animated.View>
+          </Animated.ScrollView>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -362,10 +468,10 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
 
   useEffect(() => {
     if (goal) {
-      translateY.value = withSpring(0,          { damping: 22, stiffness: 200 });
+      translateY.value = withSpring(0,        { damping: 22, stiffness: 200 });
       opacity.value    = withTiming(1, { duration: 200 });
     } else {
-      translateY.value = withSpring(SCREEN_H,   { damping: 22, stiffness: 200 });
+      translateY.value = withSpring(SCREEN_H, { damping: 22, stiffness: 200 });
       opacity.value    = withTiming(0, { duration: 180 });
     }
   }, [goal]);
@@ -379,55 +485,38 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
     ? `${goal.activeFrom} - ${goal.activeTo}`
     : goal.scheduledDate ? `${goal.scheduledDate} · ${goal.scheduledTime}` : "No schedule set";
 
-  const durStr = "1.5 Hours";
-
   return (
     <Modal visible={!!goal} transparent animationType="none" onRequestClose={onClose}>
-      {/* Blur backdrop */}
       <TouchableWithoutFeedback onPress={onClose}>
         <Animated.View style={[StyleSheet.absoluteFill, overlayAnim]}>
           <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
         </Animated.View>
       </TouchableWithoutFeedback>
 
-      {/* Sheet */}
       <Animated.View style={[styles.detailSheet, { paddingBottom: insets.bottom + 20 }, sheetAnim]}>
-        {/* Drag handle */}
         <View style={styles.dragHandle} />
-
-        {/* CURRENT FOCUS label */}
         <Text style={styles.detailFocusLabel}>CURRENT FOCUS</Text>
-
-        {/* Goal title */}
         <Text style={styles.detailTitle}>{goal.name}</Text>
-
-        {/* Time row */}
         <View style={styles.detailTimeRow}>
           <MaterialIcons name="schedule" size={16} color="#555" />
           <Text style={styles.detailTimeText}>{timeStr}</Text>
         </View>
-
-        {/* Duration + Priority cards */}
         <View style={styles.detailCards}>
           <View style={styles.detailInfoCard}>
             <Text style={styles.detailCardLabel}>DURATION</Text>
-            <Text style={styles.detailCardValue}>{durStr}</Text>
+            <Text style={styles.detailCardValue}>1.5 Hours</Text>
           </View>
           <View style={styles.detailInfoCard}>
             <Text style={styles.detailCardLabel}>PRIORITY</Text>
             <Text style={styles.detailCardValue}>Critical</Text>
           </View>
         </View>
-
-        {/* Notes card */}
         {!!goal.intent && (
           <View style={styles.detailNotesCard}>
             <MaterialIcons name="menu" size={20} color="#999" style={{ marginTop: 2 }} />
             <Text style={styles.detailNotesText}>{goal.intent}</Text>
           </View>
         )}
-
-        {/* Actions */}
         <View style={styles.detailActions}>
           <TouchableOpacity
             style={styles.doneBtn}
@@ -450,8 +539,8 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
 }
 
 // ── Goal card ──────────────────────────────────────────────────────────────────
-function GoalCard({ goal, delay = 0, onDelete, onPress }: {
-  goal: Goal; delay?: number; onDelete: () => void; onPress: () => void;
+function GoalCard({ goal, delay = 0, onDelete, onPress, onEdit }: {
+  goal: Goal; delay?: number; onDelete: () => void; onPress: () => void; onEdit: () => void;
 }) {
   const colors = useColors();
   return (
@@ -464,14 +553,23 @@ function GoalCard({ goal, delay = 0, onDelete, onPress }: {
       <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={{ flex: 1, flexDirection: "row" }}>
         <View style={[styles.goalCardAccent, { backgroundColor: colors.primary }]} />
         <View style={styles.goalCardInner}>
-          {/* Delete button */}
-          <TouchableOpacity
-            style={[styles.deleteBtn, { backgroundColor: colors.surfaceContainerHigh }]}
-            onPress={onDelete}
-            hitSlop={8}
-          >
-            <MaterialIcons name="delete-outline" size={16} color="#ef4444" />
-          </TouchableOpacity>
+          {/* Action buttons row */}
+          <View style={styles.cardActions}>
+            <TouchableOpacity
+              style={[styles.cardActionBtn, { backgroundColor: colors.surfaceContainerHigh }]}
+              onPress={onEdit}
+              hitSlop={8}
+            >
+              <MaterialIcons name="edit" size={15} color={colors.onSurface} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.cardActionBtn, { backgroundColor: colors.surfaceContainerHigh }]}
+              onPress={onDelete}
+              hitSlop={8}
+            >
+              <MaterialIcons name="delete-outline" size={15} color="#ef4444" />
+            </TouchableOpacity>
+          </View>
 
           {/* Type badge */}
           <View style={[styles.typeBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
@@ -511,9 +609,10 @@ export default function GoalsScreen() {
   const topPad  = isWeb ? 67 : insets.top;
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
 
-  const [goals,       setGoals]       = useState<Goal[]>(DEFAULT_GOALS);
+  const [goals,        setGoals]        = useState<Goal[]>(DEFAULT_GOALS);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [detailGoal,  setDetailGoal]  = useState<Goal | null>(null);
+  const [editingGoal,  setEditingGoal]  = useState<Goal | null>(null);
+  const [detailGoal,   setDetailGoal]   = useState<Goal | null>(null);
 
   const scrollY       = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -535,10 +634,25 @@ export default function GoalsScreen() {
 
   const handleDeleteGoal = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setGoals((prev) => prev.filter((g) => g.id !== id));
+    setGoals(prev => prev.filter(g => g.id !== id));
   };
 
-  const handleAddGoal = (goal: Goal) => setGoals((prev) => [...prev, goal]);
+  const handleAddGoal = (goal: Goal) => setGoals(prev => [...prev, goal]);
+
+  const handleUpdateGoal = (updated: Goal) => {
+    setGoals(prev => prev.map(g => g.id === updated.id ? updated : g));
+  };
+
+  const handleEditGoal = (goal: Goal) => {
+    Haptics.selectionAsync();
+    setEditingGoal(goal);
+    setShowAddModal(true);
+  };
+
+  const handleModalClose = () => {
+    setShowAddModal(false);
+    setEditingGoal(null);
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -564,10 +678,8 @@ export default function GoalsScreen() {
             goal={g}
             delay={60 + i * 80}
             onDelete={() => handleDeleteGoal(g.id)}
-            onPress={() => {
-              Haptics.selectionAsync();
-              setDetailGoal(g);
-            }}
+            onPress={() => { Haptics.selectionAsync(); setDetailGoal(g); }}
+            onEdit={() => handleEditGoal(g)}
           />
         ))}
       </Animated.ScrollView>
@@ -578,6 +690,7 @@ export default function GoalsScreen() {
           style={[styles.addGoalBtn, { backgroundColor: colors.primary }]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setEditingGoal(null);
             setShowAddModal(true);
           }}
           activeOpacity={0.85}
@@ -589,11 +702,13 @@ export default function GoalsScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Modal 1 — Add New Task */}
+      {/* Modal 1 — Add / Edit Task */}
       <AddTaskModal
         visible={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={handleModalClose}
         onSave={handleAddGoal}
+        editingGoal={editingGoal}
+        onUpdate={handleUpdateGoal}
       />
 
       {/* Modal 2 — Goal Detail Sheet */}
@@ -617,7 +732,8 @@ const styles = StyleSheet.create({
   goalCard:       { borderRadius: 24, flexDirection: "row", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 20, elevation: 2 },
   goalCardAccent: { width: 5 },
   goalCardInner:  { flex: 1, padding: 20, gap: 12 },
-  deleteBtn:      { position: "absolute", top: 12, right: 12, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  cardActions:    { position: "absolute", top: 12, right: 12, flexDirection: "row", gap: 8 },
+  cardActionBtn:  { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   typeBadge:      { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, alignSelf: "flex-start" },
   typeBadgeText:  { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.2 },
   goalName:       { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
@@ -634,14 +750,22 @@ const styles = StyleSheet.create({
   addGoalBtn:     { flex: 1, borderRadius: 28, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
   addGoalBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 
+  // Type toggle
+  typeToggleRow: { flexDirection: "row", backgroundColor: "#f0f0f0", borderRadius: 14, padding: 4, gap: 4, marginBottom: 18 },
+  typeToggleBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },
+  typeToggleBtnActive: { backgroundColor: "#000" },
+  typeToggleBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#555" },
+  typeToggleBtnTextActive: { color: "#fff" },
+
   // ── Add Task Modal ──
   addModalCentered: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 },
+  addModalScroll:   { width: "100%" },
+  addModalScrollContent: { alignItems: "center", justifyContent: "center", flexGrow: 1 },
   addModalCard: {
     width: "100%",
     backgroundColor: "#fff",
     borderRadius: 28,
     padding: 28,
-    gap: 0,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.2,
@@ -669,13 +793,7 @@ const styles = StyleSheet.create({
   priorityBadge: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#E07B00", letterSpacing: 1.5 },
   schedCols:     { flexDirection: "row", gap: 12, marginBottom: 0 },
   schedColLabel: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.8, color: "#555", marginBottom: 8 },
-  schedPill:     {
-    backgroundColor: "#f0f0f0",
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
+  schedPill:     { backgroundColor: "#f0f0f0", borderRadius: 999, paddingHorizontal: 18, paddingVertical: 14, alignItems: "center" },
   schedPillText: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#000" },
 
   drumBox: { marginTop: 14, borderRadius: 16, overflow: "hidden" },
@@ -706,54 +824,20 @@ const styles = StyleSheet.create({
     shadowRadius: 32,
     elevation: 16,
   },
-  dragHandle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: "#ddd",
-    alignSelf: "center",
-    marginBottom: 8,
-  },
+  dragHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "#ddd", alignSelf: "center", marginBottom: 8 },
   detailFocusLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2 },
   detailTitle:      { fontSize: 30, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: -0.5, lineHeight: 36 },
   detailTimeRow:    { flexDirection: "row", alignItems: "center", gap: 8 },
   detailTimeText:   { fontSize: 14, fontFamily: "Inter_500Medium", color: "#444" },
-
-  detailCards:    { flexDirection: "row", gap: 12 },
-  detailInfoCard: {
-    flex: 1,
-    backgroundColor: "#f2f2f2",
-    borderRadius: 18,
-    padding: 18,
-    gap: 6,
-  },
-  detailCardLabel: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2 },
-  detailCardValue: { fontSize: 16, fontFamily: "Inter_700Bold", color: "#000" },
-
-  detailNotesCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 14,
-    backgroundColor: "#f2f2f2",
-    borderRadius: 18,
-    padding: 18,
-  },
-  detailNotesText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", color: "#444", lineHeight: 21 },
-
-  detailActions: { gap: 10 },
-  doneBtn: {
-    backgroundColor: "#000",
-    borderRadius: 999,
-    height: 54,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  doneBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 2 },
-  rescheduleBtn: {
-    borderRadius: 999,
-    height: 54,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "#000",
-  },
-  rescheduleBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: 2 },
+  detailCards:      { flexDirection: "row", gap: 12 },
+  detailInfoCard:   { flex: 1, backgroundColor: "#f2f2f2", borderRadius: 18, padding: 18, gap: 6 },
+  detailCardLabel:  { fontSize: 9, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2 },
+  detailCardValue:  { fontSize: 16, fontFamily: "Inter_700Bold", color: "#000" },
+  detailNotesCard:  { flexDirection: "row", alignItems: "flex-start", gap: 14, backgroundColor: "#f2f2f2", borderRadius: 18, padding: 18 },
+  detailNotesText:  { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", color: "#444", lineHeight: 21 },
+  detailActions:    { gap: 10 },
+  doneBtn:          { backgroundColor: "#000", borderRadius: 999, height: 54, alignItems: "center", justifyContent: "center" },
+  doneBtnText:      { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 2 },
+  rescheduleBtn:    { borderRadius: 999, height: 54, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#000" },
+  rescheduleBtnText:{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: 2 },
 });

@@ -99,7 +99,7 @@ function ActivityChart({ range }: { range: string }) {
   const dotCfg = DOT_CONFIG[range] ?? DOT_CONFIG.WEEK;
   const labels = X_LABELS[range] ?? [];
 
-  const chartW = SCREEN_W - 40;
+  const chartW = SCREEN_W - 80;
   const chartH = 220;
 
   const { line, area, points, padB } = buildPaths(data, chartW, chartH);
@@ -321,24 +321,6 @@ export default function AnalyticsScreen() {
           ))}
         </Animated.View>
 
-        {/* TODAY'S Screen Time — big black card */}
-        <Animated.View
-          entering={isWeb ? undefined : FadeInDown.delay(120).springify()}
-          style={[styles.totalCard, { backgroundColor: colors.primary }]}
-        >
-          <Text style={styles.totalLabel}>TODAY'S SCREEN TIME</Text>
-          <View style={styles.totalTimeRow}>
-            <Text style={styles.totalHours}>4</Text>
-            <Text style={styles.totalHUnit}>h</Text>
-            <Text style={styles.totalMins}>32</Text>
-            <Text style={styles.totalMUnit}>m</Text>
-          </View>
-          <View style={styles.totalTrendRow}>
-            <MaterialIcons name="south-west" size={16} color="#9ca3af" />
-            <Text style={styles.totalTrendText}> 12% less than last {activeRange.toLowerCase()}</Text>
-          </View>
-        </Animated.View>
-
         {/* 3-column KPIs */}
         <Animated.View entering={isWeb ? undefined : FadeInDown.delay(180).springify()} style={styles.kpiRow}>
           <KpiCard icon="alarm"  label="PEAK TIME"  value="8 PM"    />
@@ -363,39 +345,7 @@ export default function AnalyticsScreen() {
           <ActivityChart range={activeRange} />
         </Animated.View>
 
-        {/* Top Apps — tap to expand */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(300).springify()}>
-          <TouchableOpacity
-            activeOpacity={0.88}
-            onPress={() => setShowTopApps(true)}
-            style={[styles.topAppsCard, { backgroundColor: colors.card }]}
-          >
-            <View style={styles.chartHeader}>
-              <View>
-                <Text style={[styles.chartSubLabel, { color: colors.outline }]}>SCREEN TIME</Text>
-                <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Top Apps</Text>
-              </View>
-              <View style={[styles.yearlyBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
-                <MaterialIcons name="open-in-new" size={14} color={colors.onSurface} />
-              </View>
-            </View>
-            {TOP_APPS.slice(0, 3).map((app, i) => (
-              <View key={app.name} style={[
-                styles.topAppRow,
-                i < 2 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
-              ]}>
-                <View style={[styles.topAppIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-                  <MaterialIcons name={app.icon} size={18} color={colors.onSurface} />
-                </View>
-                <Text style={[styles.topAppName, { color: colors.onSurface, flex: 1 }]}>{app.name}</Text>
-                <Text style={[styles.topAppTime, { color: colors.onSurface }]}>{app.time}</Text>
-              </View>
-            ))}
-            <Text style={[styles.tapToExpand, { color: colors.outline }]}>Tap to see all 5 apps →</Text>
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* Weekly Focus (moved from Home) */}
+        {/* Weekly Focus */}
         <Animated.View
           entering={isWeb ? undefined : FadeInDown.delay(360).springify()}
           style={[styles.chartCard, { backgroundColor: colors.card }]}

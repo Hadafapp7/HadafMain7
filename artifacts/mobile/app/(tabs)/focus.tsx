@@ -19,7 +19,6 @@ import Animated, {
   FadeInDown,
   FadeOut,
   useAnimatedProps,
-  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -438,44 +437,6 @@ export default function FocusScreen() {
   const isActive = sessionState === "running" || sessionState === "paused";
   const cardW    = (SCREEN_W - 40 - 9 * 3) / 4;
 
-  // Scroll-reactive Start button
-  const scrollY  = useSharedValue(0);
-  const isIdleSV = useSharedValue(sessionState === "idle");
-  useEffect(() => { isIdleSV.value = sessionState === "idle"; }, [sessionState]);
-
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
-  });
-
-  const BTN_THRESHOLD = 60;
-  const MID_X = (SCREEN_W - 54) / 2;
-
-  const stickyAnimStyle = useAnimatedStyle(() => {
-    const atTop = isIdleSV.value && scrollY.value < BTN_THRESHOLD;
-    return {
-      bottom: withSpring(atTop ? tabBarH + 56 : tabBarH + 16, { damping: 18, stiffness: 90 }),
-      left:   withSpring(atTop ? MID_X : 20, { damping: 18, stiffness: 90 }),
-      right:  withSpring(atTop ? MID_X : 20, { damping: 18, stiffness: 90 }),
-    };
-  });
-
-  const startBtnAnimStyle = useAnimatedStyle(() => {
-    const atTop = isIdleSV.value && scrollY.value < BTN_THRESHOLD;
-    return {
-      height:       withSpring(atTop ? 54 : 58, { damping: 18, stiffness: 90 }),
-      borderRadius: withSpring(atTop ? 27 : 29, { damping: 18, stiffness: 90 }),
-    };
-  });
-
-  const startBtnTextAnimStyle = useAnimatedStyle(() => {
-    const atTop = isIdleSV.value && scrollY.value < BTN_THRESHOLD;
-    return {
-      opacity:  withSpring(atTop ? 0 : 1, { damping: 18, stiffness: 90 }),
-      maxWidth: withSpring(atTop ? 0 : 300, { damping: 18, stiffness: 90 }),
-      overflow: "hidden" as const,
-    };
-  });
-
   const toggleApp = (name: string) => {
     setBlockedApps((prev) => {
       const next = prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name];
@@ -520,8 +481,6 @@ export default function FocusScreen() {
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          onScroll={scrollHandler}
-          scrollEventThrottle={16}
         >
           {/* Header */}
           <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()}>
@@ -759,20 +718,18 @@ export default function FocusScreen() {
       </KeyboardAvoidingView>
 
       {/* Floating Start / active buttons */}
-      <Animated.View style={[styles.stickyBottom, stickyAnimStyle]}>
+      <View style={[styles.stickyBottom, { bottom: tabBarH + 16, left: 20, right: 20 }]}>
         {sessionState === "idle" && (
-          <Animated.View style={[styles.startBtn, { backgroundColor: colors.primary }, startBtnAnimStyle]}>
+          <View style={[styles.startBtn, { backgroundColor: colors.primary, height: 58, borderRadius: 29 }]}>
             <TouchableOpacity
               style={styles.startBtnInner}
               onPress={handleAttemptStart}
               activeOpacity={0.85}
             >
               <MaterialIcons name="play-arrow" size={24} color="#fff" />
-              <Animated.View style={startBtnTextAnimStyle}>
-                <Text style={styles.startBtnText}>Start {duration} Min Session</Text>
-              </Animated.View>
+              <Text style={styles.startBtnText}>Start {duration} Min Session</Text>
             </TouchableOpacity>
-          </Animated.View>
+          </View>
         )}
         {sessionState === "running" && (
           <View style={styles.activeActions}>
@@ -814,7 +771,7 @@ export default function FocusScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </Animated.View>
+      </View>
 
       <AppPickerModal
         visible={showPicker}
@@ -825,6 +782,7 @@ export default function FocusScreen() {
     </View>
   );
 }
+
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({

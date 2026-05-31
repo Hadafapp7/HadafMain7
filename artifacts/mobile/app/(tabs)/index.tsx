@@ -271,13 +271,78 @@ function AppRow({ app, index, last }: { app: typeof APPS[0]; index: number; last
   );
 }
 
+// ─── Goals Status Modal ───────────────────────────────────────────────────────
+
+const GOAL_STATUS = [
+  { name: "Finish project proposal", done: true  },
+  { name: "Morning Reading",          done: true  },
+  { name: "Evening Journal",          done: false },
+];
+
+function GoalsStatusModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const scale   = useSharedValue(0.88);
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    if (visible) {
+      scale.value   = withSpring(1,    { damping: 18, stiffness: 160 });
+      opacity.value = withTiming(1, { duration: 180 });
+    } else {
+      scale.value   = withSpring(0.88, { damping: 18, stiffness: 160 });
+      opacity.value = withTiming(0,  { duration: 140 });
+    }
+  }, [visible]);
+  const cardStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
+
+  if (!visible) return null;
+
+  const done    = GOAL_STATUS.filter(g => g.done).length;
+  const total   = GOAL_STATUS.length;
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.calOuter} activeOpacity={1} onPress={onClose}>
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+        <Animated.View
+          style={[styles.goalsSheet, cardStyle]}
+          onStartShouldSetResponder={() => true}
+          onTouchEnd={e => e.stopPropagation()}
+        >
+          <View style={styles.goalsSheetHeader}>
+            <Text style={styles.goalsSheetTitle}>DAILY GOALS</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={14}>
+              <MaterialIcons name="close" size={20} color="#777" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.goalsSheetSub}>
+            {done} of {total} completed today
+          </Text>
+          <View style={styles.goalsList}>
+            {GOAL_STATUS.map((g, i) => (
+              <View key={i} style={[styles.goalsListRow, i < GOAL_STATUS.length - 1 && styles.goalsListDivider]}>
+                <View style={[styles.goalsListDot, { backgroundColor: g.done ? "#16a34a" : "#e5e7eb" }]}>
+                  {g.done && <MaterialIcons name="check" size={12} color="#fff" />}
+                </View>
+                <Text style={[styles.goalsListName, { color: g.done ? "#111" : "#555" }]}>{g.name}</Text>
+                <Text style={[styles.goalsListStatus, { color: g.done ? "#16a34a" : "#aaa" }]}>
+                  {g.done ? "Done" : "Pending"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </Animated.View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 // ─── Oval accent card (Daily Tasks / Mood Check / Streaks) ────────────────────
 
-function OvalCard({ bg, iconColor, icon, label1, label2, badgeText, badgeBg }: {
+function OvalCard({ bg, iconColor, icon, label1, label2, badgeText, badgeBg, onPress }: {
   bg: string; iconColor: string;
   icon: React.ComponentProps<typeof MaterialIcons>["name"];
   label1: string; label2?: string;
   badgeText?: string; badgeBg?: string;
+  onPress?: () => void;
 }) {
   const scale      = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -285,8 +350,11 @@ function OvalCard({ bg, iconColor, icon, label1, label2, badgeText, badgeBg }: {
     <Animated.View
       style={[styles.ovalCard, { backgroundColor: bg }, pressStyle]}
       onTouchStart={() => { scale.value = withSpring(0.94, { damping: 12 }); }}
-      onTouchEnd={()   => { scale.value = withSpring(1,    { damping: 12 }); }}
-      onTouchCancel={() => { scale.value = withSpring(1,   { damping: 12 }); }}
+      onTouchEnd={() => {
+        scale.value = withSpring(1, { damping: 12 });
+        onPress?.();
+      }}
+      onTouchCancel={() => { scale.value = withSpring(1, { damping: 12 }); }}
     >
       <MaterialIcons name={icon} size={30} color={iconColor} />
       <Text style={[styles.ovalLabel, { color: iconColor }]}>{label1}</Text>
@@ -308,12 +376,14 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const topPad = isWeb ? 24 : insets.top;
-  const [showCal, setShowCal] = useState(false);
+  const [showCal,   setShowCal]   = useState(false);
+  const [showGoals, setShowGoals] = useState(false);
 
   return (
     <View style={[styles.root, { backgroundColor: "#f5f5f5" }]}>
       <AnimatedBackground />
       <CalendarModal visible={showCal} onClose={() => setShowCal(false)} />
+      <GoalsStatusModal visible={showGoals} onClose={() => setShowGoals(false)} />
 
       <ScrollView
         style={styles.scroll}
@@ -349,12 +419,12 @@ export default function HomeScreen() {
             <Text style={styles.statNumber}>4h 32m</Text>
             <View style={styles.statCardBottom}>
               <View style={styles.statBadge}>
-                <MaterialIcons name="south-east" size={11} color="#666" />
+                <MaterialIcons name="south-east" size={11} color="rgba(255,255,255,0.7)" />
                 <Text style={styles.statBadgeText}> 23%</Text>
               </View>
               <View style={styles.sparkBars}>
-                <View style={[styles.sparkBar, { height: 14, backgroundColor: "#ccc" }]} />
-                <View style={[styles.sparkBar, { height: 24, backgroundColor: "#333" }]} />
+                <View style={[styles.sparkBar, { height: 14, backgroundColor: "rgba(255,255,255,0.3)" }]} />
+                <View style={[styles.sparkBar, { height: 24, backgroundColor: "#fff" }]} />
               </View>
             </View>
           </View>
@@ -371,7 +441,14 @@ export default function HomeScreen() {
               <Text style={styles.doomBetter}>BETTER</Text>
               <Text style={styles.doomPts}>+4 PTS</Text>
             </View>
-            <AnimatedProgressBar percent={0.68} delay={350} height={5} radius={3} />
+            <AnimatedProgressBar
+              percent={0.68}
+              delay={350}
+              height={5}
+              radius={3}
+              trackColor="rgba(255,255,255,0.2)"
+              fillColor="#fff"
+            />
           </View>
         </Animated.View>
 
@@ -402,6 +479,7 @@ export default function HomeScreen() {
             label2="GOALS"
             badgeText="3 LEFT"
             badgeBg="#2e7d32"
+            onPress={() => setShowGoals(true)}
           />
           <OvalCard
             bg="#fff3e0"
@@ -443,30 +521,31 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: "row", gap: 12 },
   statCard: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#000",
     borderRadius: 22,
-    padding: 18,
-    gap: 8,
+    padding: 20,
+    paddingBottom: 22,
+    gap: 10,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 6,
   },
-  statLabel:  { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#888", letterSpacing: 1.4 },
-  statNumber: { fontSize: 32, fontFamily: "Inter_700Bold",    color: "#111", letterSpacing: -1 },
+  statLabel:  { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.55)", letterSpacing: 1.4 },
+  statNumber: { fontSize: 34, fontFamily: "Inter_700Bold",    color: "#fff", letterSpacing: -1 },
 
   // Screen Time card bottom row
   statCardBottom: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
-  statBadge:      { flexDirection: "row", alignItems: "center", backgroundColor: "#f0f0f0", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
-  statBadgeText:  { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#555" },
+  statBadge:      { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.14)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  statBadgeText:  { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#fff" },
   sparkBars:      { flexDirection: "row", alignItems: "flex-end", gap: 4 },
   sparkBar:       { width: 5, borderRadius: 3 },
 
   // DoomScore card
   doomRow:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  doomBetter: { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#888", letterSpacing: 1 },
-  doomPts:    { fontSize: 10, fontFamily: "Inter_700Bold",    color: "#555", letterSpacing: 0.5 },
+  doomBetter: { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.6)", letterSpacing: 1 },
+  doomPts:    { fontSize: 10, fontFamily: "Inter_700Bold",    color: "#fff", letterSpacing: 0.5 },
   progressTrack: { overflow: "hidden" },
 
   // Most Used Apps card
@@ -510,6 +589,28 @@ const styles = StyleSheet.create({
   ovalEmpty:     { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 },
   ovalBadge:     { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
   ovalBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 0.5 },
+
+  // Goals Status Modal
+  goalsSheet: {
+    width: SCREEN_W * 0.9,
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 32,
+    elevation: 16,
+  },
+  goalsSheetHeader:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  goalsSheetTitle:   { fontSize: 18, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: 1 },
+  goalsSheetSub:     { fontSize: 13, fontFamily: "Inter_400Regular", color: "#888", marginBottom: 18 },
+  goalsList:         { gap: 0 },
+  goalsListRow:      { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
+  goalsListDivider:  { borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
+  goalsListDot:      { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  goalsListName:     { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
+  goalsListStatus:   { fontSize: 12, fontFamily: "Inter_600SemiBold" },
 
   // Calendar modal
   calOuter: { flex: 1, alignItems: "center", justifyContent: "center" },
