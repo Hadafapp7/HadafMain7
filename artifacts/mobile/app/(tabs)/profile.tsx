@@ -1,5 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import React from "react";
 import {
   Platform,
@@ -31,13 +32,14 @@ const STATS = [
 
 // ── Preference rows ────────────────────────────────────────────────────────────
 type PrefRow =
-  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger?: false; right?: "chevron" | "light" }
-  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger: true;  right?: never };
+  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger?: false; right?: "chevron" | "light"; route?: string }
+  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger: true;  right?: never; route?: never };
 
 const PREFS: PrefRow[] = [
-  { icon: "account-circle",   label: "Account",           right: "chevron" },
+  { icon: "account-circle",   label: "Account",           right: "chevron", route: "/account-settings" },
   { icon: "credit-card",      label: "Subscription",      right: "chevron" },
-  { icon: "notifications",    label: "Notifications",     right: "chevron" },
+  { icon: "emoji-events",     label: "Achievements",      right: "chevron", route: "/achievements" },
+  { icon: "notifications",    label: "Notifications",     right: "chevron", route: "/notifications-settings" },
   { icon: "lock",             label: "Privacy & Security",right: "chevron" },
   { icon: "help",             label: "Help",              right: "chevron" },
   { icon: "palette",          label: "Appearance",        right: "light"   },
@@ -70,14 +72,25 @@ function PrefItem({ item }: { item: PrefRow }) {
   const chevX = useSharedValue(0);
   const chevAnim = useAnimatedStyle(() => ({ transform: [{ translateX: chevX.value }] }));
 
-  const handleIn  = () => { scale.value = withSpring(0.98, { damping: 14 }); chevX.value = withSpring(4, { damping: 14 }); Haptics.selectionAsync(); };
-  const handleOut = () => { scale.value = withSpring(1,    { damping: 14 }); chevX.value = withSpring(0, { damping: 14 }); };
+  const handleIn  = () => {
+    scale.value = withSpring(0.98, { damping: 14 });
+    chevX.value = withSpring(4,    { damping: 14 });
+    Haptics.selectionAsync();
+  };
+  const handleOut = () => {
+    scale.value = withSpring(1, { damping: 14 });
+    chevX.value = withSpring(0, { damping: 14 });
+  };
+  const handlePress = () => {
+    if (!item.danger && item.route) router.push(item.route as any);
+  };
 
   return (
     <TouchableOpacity
       activeOpacity={1}
       onPressIn={handleIn}
       onPressOut={handleOut}
+      onPress={handlePress}
     >
       <Animated.View style={[styles.prefRow, anim]}>
         <View style={styles.prefLeft}>
@@ -133,12 +146,10 @@ export default function ProfileScreen() {
           entering={isWeb ? undefined : FadeInDown.delay(0).springify()}
           style={styles.identitySection}
         >
-          {/* Avatar */}
           <View style={styles.avatarWrap}>
             <View style={styles.avatarBox}>
               <MaterialIcons name="person" size={60} color="#b0b0b0" />
             </View>
-            {/* Verified badge */}
             <View style={styles.verifiedBadge}>
               <MaterialIcons name="verified" size={14} color="#fff" />
             </View>
@@ -163,13 +174,11 @@ export default function ProfileScreen() {
 
         {/* ── Premium Widget ── */}
         <PressCard delay={120} style={styles.proCard}>
-          {/* Sparkle — decorative, top-right */}
           <View style={styles.sparkleWrap} pointerEvents="none">
             <MaterialIcons name="auto-awesome" size={88} color="#fff" style={{ opacity: 0.10 }} />
           </View>
 
           <View style={styles.proContent}>
-            {/* PRO TIER pill */}
             <View style={styles.proTierBadge}>
               <Text style={styles.proTierText}>PRO TIER</Text>
             </View>
@@ -220,163 +229,68 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, gap: 20 },
 
-  // Top App Bar
   topBar: {
-    position: "absolute",
-    top: 0, left: 0, right: 0,
-    zIndex: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    paddingHorizontal: 20,
-    paddingBottom: 14,
+    position: "absolute", top: 0, left: 0, right: 0, zIndex: 20,
+    flexDirection: "row", alignItems: "center", gap: 14,
+    paddingHorizontal: 20, paddingBottom: 14,
     backgroundColor: "#f3f3f3",
   },
-  topBarTitle: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.5,
-    color: "#000",
-  },
+  topBarTitle: { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.5, color: "#000" },
 
-  // Profile Identity
   identitySection: { alignItems: "center", gap: 6 },
   avatarWrap:      { marginBottom: 6, position: "relative" },
   avatarBox: {
-    width: 128, height: 128,
-    borderRadius: 24,
-    backgroundColor: "#2a2a2a",
-    alignItems: "center",
-    justifyContent: "center",
+    width: 128, height: 128, borderRadius: 24,
+    backgroundColor: "#2a2a2a", alignItems: "center", justifyContent: "center",
   },
   verifiedBadge: {
-    position: "absolute",
-    bottom: -8, right: -8,
-    width: 32, height: 32,
-    borderRadius: 16,
-    backgroundColor: "#000",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "#f9f9f9",
+    position: "absolute", bottom: -8, right: -8,
+    width: 32, height: 32, borderRadius: 16, backgroundColor: "#000",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 3, borderColor: "#f9f9f9",
   },
   profileName: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.5,
-    color: "#000",
-    textAlign: "center",
+    fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5,
+    color: "#000", textAlign: "center",
   },
   profileEmail: {
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
-    color: "#5f5e60",
-    textAlign: "center",
+    fontSize: 14, fontFamily: "Inter_500Medium", color: "#5f5e60", textAlign: "center",
   },
 
-  // Stats
   statsRow: { flexDirection: "row", gap: 12 },
   statCard: {
-    flex: 1,
-    backgroundColor: "#f3f3f3",
-    borderRadius: 20,
-    paddingVertical: 20,
-    alignItems: "center",
-    gap: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    flex: 1, backgroundColor: "#f3f3f3", borderRadius: 20,
+    paddingVertical: 20, alignItems: "center", gap: 6,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
   },
-  statLabel: {
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1.6,
-    color: "#5f5e60",
-    textAlign: "center",
-  },
-  statValue: {
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
-    color: "#000",
-    letterSpacing: -0.5,
-  },
+  statLabel: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.6, color: "#5f5e60", textAlign: "center" },
+  statValue: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: -0.5 },
 
-  // Pro widget
-  proCard: {
-    backgroundColor: "#000",
-    borderRadius: 24,
-    overflow: "hidden",
-    minHeight: 160,
-  },
-  sparkleWrap: {
-    position: "absolute",
-    top: -8, right: -8,
-  },
-  proContent: {
-    padding: 24,
-    gap: 14,
-  },
+  proCard:    { backgroundColor: "#000", borderRadius: 24, overflow: "hidden", minHeight: 160 },
+  sparkleWrap:{ position: "absolute", top: -8, right: -8 },
+  proContent: { padding: 24, gap: 14 },
   proTierBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.18)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
+    alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
   },
-  proTierText: {
-    fontSize: 9,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 2,
-    color: "#fff",
-  },
-  proHeadline: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-    color: "#fff",
-    letterSpacing: -0.5,
-    lineHeight: 26,
-  },
+  proTierText: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 2, color: "#fff" },
+  proHeadline: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: -0.5, lineHeight: 26 },
   proBtn: {
-    alignSelf: "flex-start",
-    backgroundColor: "#fff",
-    borderRadius: 999,
-    paddingHorizontal: 22,
-    paddingVertical: 10,
+    alignSelf: "flex-start", backgroundColor: "#fff",
+    borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10,
   },
-  proBtnText: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-    color: "#000",
-    letterSpacing: 1.2,
-  },
+  proBtnText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: 1.2 },
 
-  // Preferences
   prefsSection: { gap: 14 },
-  prefsLabel: {
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 3,
-    color: "#5f5e60",
-    paddingHorizontal: 4,
-  },
-  prefsList:   { gap: 4 },
+  prefsLabel:   { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 3, color: "#5f5e60", paddingHorizontal: 4 },
+  prefsList:    { gap: 4 },
   prefCardWrap: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 8,
-    elevation: 1,
+    backgroundColor: "#fff", borderRadius: 18,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 8, elevation: 1,
   },
   prefRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 18,
   },
   prefLeft:      { flexDirection: "row", alignItems: "center", gap: 20 },
   prefLabel:     { fontSize: 13, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: 0.3 },
