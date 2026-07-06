@@ -56,3 +56,26 @@ all. Instead:
 - Keep the native (iOS/Android) `useSSO` flow unchanged — it uses OS-level
   browser tabs and deep-link redirects, not `postMessage`, so it isn't
   affected by this issue.
+
+## Google OAuth 403 "you do not have access to this page" when testing inside an embedded preview (e.g. Canvas board)
+
+Even after switching to a full-page redirect, Google can still reject the
+auth request with a rendered 403 error page instead of completing sign-in.
+This happens specifically when the redirect runs inside an iframe (e.g. the
+app preview embedded as an iframe shape on the Canvas board, or any other
+iframe-wrapped preview) — Google's own OAuth pages actively refuse to render
+inside a third-party iframe as an anti-clickjacking measure, and return a
+real 403 HTML page rather than just failing silently.
+
+**Why:** `window.location`-based redirects inside an iframe only navigate
+that iframe, not the top-level tab, so the browser really is trying to load
+accounts.google.com inside a nested frame — which Google blocks outright.
+
+**How to apply:** before starting the redirect-based OAuth flow on web,
+check `window.top !== window.self`; if true, don't call the OAuth SDK method
+at all — instead navigate `window.top.location.href` (wrapped in try/catch,
+since a sandboxed iframe without `allow-top-navigation` throws a
+SecurityError; fall back to `window.open(url, "_blank")` in that case) to
+the same page with a query flag, then auto-resume the OAuth call once the
+page reloads at the top level. A normal published app tab already runs at
+the top level, so this only affects iframe-embedded dev/preview testing.

@@ -28,6 +28,8 @@ export const useWarmUpBrowser = () => {
 
 WebBrowser.maybeCompleteAuthSession();
 
+const AUTO_GOOGLE_PARAM = "autoGoogle";
+
 export default function SignInScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
@@ -42,6 +44,29 @@ export default function SignInScreen() {
     setLoading(true);
     try {
       if (Platform.OS === "web") {
+        // Google refuses to render its OAuth pages inside an iframe (returns
+        // a 403 "you do not have access to this page" as an anti-clickjacking
+        // measure). Dev/design previews (e.g. the Canvas board) embed the app
+        // in an iframe, so break out to the top-level browsing context first
+        // and resume the flow automatically once there.
+        if (window.top !== window.self) {
+          const url = new URL(window.location.href);
+          url.searchParams.set(AUTO_GOOGLE_PARAM, "1");
+          const target = url.toString();
+          try {
+            window.top!.location.href = target;
+          } catch {
+            // Sandboxed iframes without "allow-top-navigation" throw a
+            // SecurityError instead of navigating — fall back to a new tab.
+            const opened = window.open(target, "_blank");
+            if (!opened) {
+              setError("Please open this app in its own browser tab to sign in with Google.");
+              setLoading(false);
+            }
+          }
+          return;
+        }
+
         // Popup-based OAuth (expo-web-browser) breaks on web when the OAuth
         // provider sets Cross-Origin-Opener-Policy headers, which null out
         // `window.opener` and leave the sign-in stuck waiting on a postMessage
@@ -75,6 +100,17 @@ export default function SignInScreen() {
       if (Platform.OS !== "web") setLoading(false);
     }
   }, [startSSOFlow, signIn]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (window.top !== window.self) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(AUTO_GOOGLE_PARAM) !== "1") return;
+    url.searchParams.delete(AUTO_GOOGLE_PARAM);
+    window.history.replaceState({}, "", url.toString());
+    void onGooglePress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <View
