@@ -1,3 +1,4 @@
+import { useAuth } from "@clerk/expo";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
@@ -34,19 +35,21 @@ function formatHours(totalMinutes: number): string {
 
 // ── Preference rows ────────────────────────────────────────────────────────────
 type PrefRow =
-  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger?: false; right?: "chevron" | "light"; route?: string }
-  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger: true;  right?: never; route?: never };
+  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger?: false; right?: "chevron" | "light"; route?: string; onPress?: never }
+  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger: true;  right?: never; route?: never; onPress: () => void };
 
-const PREFS: PrefRow[] = [
-  { icon: "account-circle",   label: "Account",           right: "chevron", route: "/account-settings" },
-  { icon: "credit-card",      label: "Subscription",      right: "chevron", route: "/subscription" },
-  { icon: "emoji-events",     label: "Achievements",      right: "chevron", route: "/achievements" },
-  { icon: "notifications",    label: "Notifications",     right: "chevron", route: "/notifications-settings" },
-  { icon: "lock",             label: "Privacy & Security",right: "chevron", route: "/privacy-security" },
-  { icon: "help",             label: "Help",              right: "chevron", route: "/help" },
-  { icon: "palette",          label: "Appearance",        right: "chevron", route: "/appearance" },
-  { icon: "logout",           label: "Sign Out",          danger: true     },
-];
+function usePrefs(onSignOut: () => void): PrefRow[] {
+  return [
+    { icon: "account-circle",   label: "Account",           right: "chevron", route: "/account-settings" },
+    { icon: "credit-card",      label: "Subscription",      right: "chevron", route: "/subscription" },
+    { icon: "emoji-events",     label: "Achievements",      right: "chevron", route: "/achievements" },
+    { icon: "notifications",    label: "Notifications",     right: "chevron", route: "/notifications-settings" },
+    { icon: "lock",             label: "Privacy & Security",right: "chevron", route: "/privacy-security" },
+    { icon: "help",             label: "Help",              right: "chevron", route: "/help" },
+    { icon: "palette",          label: "Appearance",        right: "chevron", route: "/appearance" },
+    { icon: "logout",           label: "Sign Out",          danger: true, onPress: onSignOut },
+  ];
+}
 
 // ── Press-scale card wrapper ───────────────────────────────────────────────────
 function PressCard({ children, style, delay = 0 }: {
@@ -84,7 +87,11 @@ function PrefItem({ item }: { item: PrefRow }) {
     chevX.value = withSpring(0, { damping: 14 });
   };
   const handlePress = () => {
-    if (!item.danger && item.route) router.push(item.route as any);
+    if (item.danger) {
+      item.onPress();
+    } else if (item.route) {
+      router.push(item.route as any);
+    }
   };
 
   return (
@@ -124,9 +131,16 @@ export default function ProfileScreen() {
   const topPad  = isWeb ? 0 : insets.top;
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
 
+  const { signOut } = useAuth();
   const { data: me } = useGetMe();
   const { data: focusSessions = [] } = useListFocusSessions();
   const { data: goals = [] } = useListGoals();
+
+  const handleSignOut = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    signOut();
+  };
+  const prefs = usePrefs(handleSignOut);
 
   const completedSessions = focusSessions.filter((s) => s.status === "completed");
   const totalFocusMinutes = completedSessions.reduce((sum, s) => sum + s.plannedDurationMinutes, 0);
@@ -222,12 +236,12 @@ export default function ProfileScreen() {
         >
           <Text style={styles.prefsLabel}>PREFERENCES</Text>
           <View style={styles.prefsList}>
-            {PREFS.map((item, i) => (
+            {prefs.map((item, i) => (
               <View
                 key={i}
                 style={[
                   styles.prefCardWrap,
-                  i < PREFS.length - 1 && { marginBottom: 4 },
+                  i < prefs.length - 1 && { marginBottom: 4 },
                 ]}
               >
                 <PrefItem item={item} />

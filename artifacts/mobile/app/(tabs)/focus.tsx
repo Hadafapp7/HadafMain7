@@ -209,6 +209,33 @@ function AppPickerModal({
   );
 }
 
+// ── Blocked interstitial overlay ───────────────────────────────────────────────
+function BlockedInterstitial({ appName, onDismiss }: { appName: string; onDismiss: () => void }) {
+  const colors = useColors();
+  return (
+    <Animated.View
+      entering={FadeIn.duration(220)}
+      exiting={FadeOut.duration(200)}
+      style={[styles.blockedInterstitial, { backgroundColor: colors.background }]}
+    >
+      <View style={[styles.blockedInterstitialIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
+        <MaterialIcons name="block" size={40} color="#ef4444" />
+      </View>
+      <Text style={[styles.blockedInterstitialTitle, { color: colors.onSurface }]}>{appName} is blocked</Text>
+      <Text style={[styles.blockedInterstitialSub, { color: colors.outline }]}>
+        You added {appName} to your blocked list for this focus session. Stay on track — it'll be available again once your session ends.
+      </Text>
+      <TouchableOpacity
+        style={[styles.blockedInterstitialBtn, { backgroundColor: colors.primary }]}
+        onPress={onDismiss}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.blockedInterstitialBtnText}>Back to Focus</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 // ── Session complete overlay ───────────────────────────────────────────────────
 function SessionCompleteOverlay({ duration, intention, onDismiss }: {
   duration: number; intention: string; onDismiss: () => void;
@@ -373,6 +400,7 @@ export default function FocusScreen() {
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [remaining,    setRemaining]    = useState(duration * 60);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [blockedAttempt, setBlockedAttempt] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const totalSecs   = duration * 60;
 
@@ -762,8 +790,40 @@ export default function FocusScreen() {
               </Text>
             </Animated.View>
           )}
+
+          {/* In-app app launcher — tapping a blocked app during an active session shows the interstitial */}
+          {isActive && blockedApps.length > 0 && (
+            <Animated.View
+              entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
+              style={styles.section}
+            >
+              <Text style={[styles.sectionLabel, { color: colors.outline }]}>QUICK LAUNCH</Text>
+              <View style={[styles.appsCard, { backgroundColor: colors.card }]}>
+                <View style={styles.quickLaunchGrid}>
+                  {ALL_APPS.filter((a) => blockedApps.includes(a.name)).map((app) => (
+                    <TouchableOpacity
+                      key={app.name}
+                      style={[styles.quickLaunchChip, { backgroundColor: colors.surfaceContainerHigh }]}
+                      onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setBlockedAttempt(app.name); }}
+                      activeOpacity={0.75}
+                    >
+                      <MaterialIcons name={app.icon} size={18} color={colors.outline} />
+                      <Text style={[styles.quickLaunchChipText, { color: colors.onSurface }]}>{app.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <Text style={[styles.nativeBuildNote, { color: colors.outline }]}>
+                Full system-wide app blocking requires a future native build. Right now, blocking is enforced only for apps launched from within Hadaf.
+              </Text>
+            </Animated.View>
+          )}
         </Animated.ScrollView>
       </KeyboardAvoidingView>
+
+      {blockedAttempt && (
+        <BlockedInterstitial appName={blockedAttempt} onDismiss={() => setBlockedAttempt(null)} />
+      )}
 
       {/* Floating Start / active buttons */}
       <View style={[styles.stickyBottom, { bottom: tabBarH + 16, left: 20, right: 20 }]}>
@@ -912,6 +972,22 @@ const styles = StyleSheet.create({
   appIconWrap: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
   appName:     { fontSize: 14, fontFamily: "Inter_500Medium" },
   appCategory: { fontSize: 11, fontFamily: "Inter_400Regular" },
+
+  // Quick launch (in-app blocked interstitial trigger)
+  quickLaunchGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  quickLaunchChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14 },
+  quickLaunchChipText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  nativeBuildNote: { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16, paddingHorizontal: 2 },
+
+  blockedInterstitial: {
+    position: "absolute", inset: 0, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 36, zIndex: 200,
+  },
+  blockedInterstitialIcon: { width: 84, height: 84, borderRadius: 42, alignItems: "center", justifyContent: "center", marginBottom: 20 },
+  blockedInterstitialTitle: { fontSize: 24, fontFamily: "Inter_700Bold", textAlign: "center", marginBottom: 10 },
+  blockedInterstitialSub: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 21, marginBottom: 28 },
+  blockedInterstitialBtn: { height: 54, paddingHorizontal: 40, borderRadius: 27, alignItems: "center", justifyContent: "center" },
+  blockedInterstitialBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold" },
 
   // App picker modal
   modalOverlay:      { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },

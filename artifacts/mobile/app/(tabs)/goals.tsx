@@ -57,7 +57,6 @@ interface GoalDraft {
   priority: Priority;
   startTime: string;
   durationMinutes: number;
-  scheduledDate: string;
 }
 
 const PRIORITIES: Priority[] = ["low", "medium", "high", "critical"];
@@ -217,7 +216,6 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   const [priority,  setPriority]  = useState<Priority>("medium");
   const [duration,  setDuration]  = useState(90);
   const [startTime, setStartTime] = useState("10:00 AM");
-  const [schedDate, setSchedDate] = useState("");
   const [showDrumDur,  setShowDrumDur]  = useState(false);
   const [showDrumFrom, setShowDrumFrom] = useState(false);
 
@@ -233,7 +231,6 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
       setPriority(editingGoal.priority);
       setStartTime(editingGoal.startTime || "10:00 AM");
       setDuration(editingGoal.durationMinutes || 90);
-      setSchedDate(editingGoal.scheduledDate ?? "");
     }
   }, [editingGoal?.id]);
 
@@ -255,7 +252,6 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   const reset = useCallback(() => {
     setTitle(""); setIntent(""); setGoalType("daily"); setPriority("medium");
     setDuration(90); setStartTime("10:00 AM");
-    setSchedDate("");
     setShowDrumDur(false); setShowDrumFrom(false);
   }, []);
 
@@ -276,7 +272,6 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
       priority,
       startTime,
       durationMinutes: duration,
-      scheduledDate: goalType === "scheduled" ? schedDate.trim() : "",
     };
     if (isEditMode && onUpdate && editingGoal) {
       onUpdate(editingGoal.id, draft);
@@ -427,22 +422,6 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
                 </View>
               </View>
 
-              {/* Scheduled date field */}
-              {goalType === "scheduled" && (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={styles.schedColLabel}>SELECT DATE</Text>
-                  <TextInput
-                    style={styles.addModalInput}
-                    placeholder="e.g. Dec 25, 2026"
-                    placeholderTextColor="#b0b0b0"
-                    value={schedDate}
-                    onChangeText={setSchedDate}
-                    onBlur={() => setSchedDate(t => t.trim())}
-                    returnKeyType="done"
-                  />
-                </View>
-              )}
-
               {/* Inline drum pickers */}
               {showDrumDur && (
                 <Animated.View style={styles.drumBox}>
@@ -538,15 +517,22 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
           </View>
         )}
         <View style={styles.detailActions}>
-          <TouchableOpacity
-            style={styles.doneBtn}
-            activeOpacity={0.85}
-            onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onDone(); }}
-          >
-            <Text style={styles.doneBtnText}>
-              {goal.status === "done" ? "MARK AS PENDING" : "DONE"}
-            </Text>
-          </TouchableOpacity>
+          {goal.status === "done" ? (
+            <View style={[styles.doneBtn, { backgroundColor: "#e8e8e8" }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <MaterialIcons name="check-circle" size={18} color="#666" />
+                <Text style={[styles.doneBtnText, { color: "#666" }]}>DONE</Text>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.doneBtn}
+              activeOpacity={0.85}
+              onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onDone(); }}
+            >
+              <Text style={styles.doneBtnText}>DONE</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </Animated.View>
     </Modal>
@@ -784,7 +770,6 @@ export default function GoalsScreen() {
     priority: draft.priority,
     startTime: draft.startTime,
     durationMinutes: draft.durationMinutes,
-    scheduledDate: draft.scheduledDate || undefined,
   });
 
   const handleDeleteGoal = (id: string) => {

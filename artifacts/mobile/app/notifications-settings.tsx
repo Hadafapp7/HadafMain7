@@ -1,8 +1,9 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React from "react";
 import {
+  ActivityIndicator,
   Platform,
   ScrollView,
   StyleSheet,
@@ -14,16 +15,20 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useGetUserSettings, useUpdateUserSettings, type UserSettings } from "@workspace/api-client-react";
+
 const isWeb = Platform.OS === "web";
 
 function ToggleRow({
   icon,
   label,
+  sub,
   value,
   onToggle,
 }: {
   icon: React.ComponentProps<typeof MaterialIcons>["name"];
   label: string;
+  sub?: string;
   value: boolean;
   onToggle: () => void;
 }) {
@@ -31,7 +36,10 @@ function ToggleRow({
     <TouchableOpacity style={styles.toggleCard} activeOpacity={0.85} onPress={onToggle}>
       <View style={styles.toggleLeft}>
         <MaterialIcons name={icon} size={22} color="#000" />
-        <Text style={styles.toggleLabel}>{label}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toggleLabel}>{label}</Text>
+          {sub && <Text style={styles.toggleSub}>{sub}</Text>}
+        </View>
       </View>
       <Switch
         value={value}
@@ -48,13 +56,14 @@ export default function NotificationsSettingsScreen() {
   const insets = useSafeAreaInsets();
   const topPad = isWeb ? 0 : insets.top;
 
-  const [daily,      setDaily]      = useState(true);
-  const [goalProg,   setGoalProg]   = useState(true);
-  const [achAlerts,  setAchAlerts]  = useState(false);
-  const [appUpdates, setAppUpdates] = useState(true);
-  const [perfReport, setPerfReport] = useState(false);
+  const { data: settings, isLoading } = useGetUserSettings();
+  const updateSettings = useUpdateUserSettings();
 
-  const toggle = (fn: () => void) => () => { Haptics.selectionAsync(); fn(); };
+  const toggle = (key: keyof Pick<UserSettings, "notificationsEnabled" | "dailyReminderEnabled" | "focusReminderEnabled">) => {
+    Haptics.selectionAsync();
+    if (!settings) return;
+    updateSettings.mutate({ data: { [key]: !settings[key] } });
+  };
 
   return (
     <View style={styles.root}>
@@ -71,32 +80,47 @@ export default function NotificationsSettingsScreen() {
         contentContainerStyle={[styles.content, { paddingTop: topPad + 72, paddingBottom: 48 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Push Notifications */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()} style={styles.section}>
-          <Text style={styles.sectionLabel}>PUSH NOTIFICATIONS</Text>
-          <View style={styles.cardList}>
-            <ToggleRow icon="alarm"       label="Daily Reminders"   value={daily}     onToggle={toggle(() => setDaily(v => !v))} />
-            <ToggleRow icon="trending-up" label="Goal Progress"     value={goalProg}  onToggle={toggle(() => setGoalProg(v => !v))} />
-            <ToggleRow icon="emoji-events" label="Achievement Alerts" value={achAlerts} onToggle={toggle(() => setAchAlerts(v => !v))} />
-          </View>
-        </Animated.View>
+        {isLoading ? (
+          <ActivityIndicator style={{ marginTop: 24 }} color="#000" />
+        ) : (
+          <>
+            {/* Push Notifications */}
+            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()} style={styles.section}>
+              <Text style={styles.sectionLabel}>PUSH NOTIFICATIONS</Text>
+              <View style={styles.cardList}>
+                <ToggleRow
+                  icon="notifications-active"
+                  label="Enable Notifications"
+                  sub="Master switch for all push notifications"
+                  value={settings?.notificationsEnabled ?? true}
+                  onToggle={() => toggle("notificationsEnabled")}
+                />
+                <ToggleRow
+                  icon="alarm"
+                  label="Daily Reminders"
+                  sub="A nudge to check your goals each day"
+                  value={settings?.dailyReminderEnabled ?? true}
+                  onToggle={() => toggle("dailyReminderEnabled")}
+                />
+                <ToggleRow
+                  icon="self-improvement"
+                  label="Focus Session Reminders"
+                  sub="Alerts about upcoming or ending focus sessions"
+                  value={settings?.focusReminderEnabled ?? true}
+                  onToggle={() => toggle("focusReminderEnabled")}
+                />
+              </View>
+            </Animated.View>
 
-        {/* Email Notifications */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(80).springify()} style={styles.section}>
-          <Text style={styles.sectionLabel}>EMAIL NOTIFICATIONS</Text>
-          <View style={styles.cardList}>
-            <ToggleRow icon="system-update" label="App Updates"         value={appUpdates} onToggle={toggle(() => setAppUpdates(v => !v))} />
-            <ToggleRow icon="insights"      label="Performance Reports" value={perfReport}  onToggle={toggle(() => setPerfReport(v => !v))} />
-          </View>
-        </Animated.View>
-
-        {/* Focus Mode Info Card */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()} style={styles.focusModeCard}>
-          <Text style={styles.focusModeTitle}>Focus Mode</Text>
-          <Text style={styles.focusModeBody}>
-            System-wide notifications are silenced during active focus sessions to maintain peak cognitive clarity.
-          </Text>
-        </Animated.View>
+            {/* Focus Mode Info Card */}
+            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()} style={styles.focusModeCard}>
+              <Text style={styles.focusModeTitle}>Focus Mode</Text>
+              <Text style={styles.focusModeBody}>
+                System-wide notifications are silenced during active focus sessions to maintain peak cognitive clarity.
+              </Text>
+            </Animated.View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -126,8 +150,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 18,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 1,
   },
-  toggleLeft:  { flexDirection: "row", alignItems: "center", gap: 16 },
+  toggleLeft:  { flexDirection: "row", alignItems: "center", gap: 16, flex: 1, paddingRight: 12 },
   toggleLabel: { fontSize: 15, fontFamily: "Inter_500Medium", color: "#000" },
+  toggleSub:   { fontSize: 12, fontFamily: "Inter_400Regular", color: "#888", marginTop: 2 },
 
   focusModeCard: {
     backgroundColor: "#000", borderRadius: 22,

@@ -1,5 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
+import * as Haptics from "expo-haptics";
 import React, { useEffect, useState } from "react";
 import {
   Dimensions,
@@ -8,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -28,9 +30,12 @@ import { useColors } from "@/hooks/useColors";
 import {
   type AppUsageSummaryItem,
   type Goal,
+  useCreateAppUsageEntry,
   useGetAppUsageSummary,
   useGetMe,
+  useGetUserSettings,
   useListGoals,
+  useUpdateUserSettings,
 } from "@workspace/api-client-react";
 
 const isWeb    = Platform.OS === "web";
@@ -290,6 +295,131 @@ function AppRow({ app, index, last, maxMinutes }: {
   );
 }
 
+// ─── Log Usage Modal ──────────────────────────────────────────────────────────
+
+function LogUsageModal({ visible, onClose, onSubmit, submitting }: {
+  visible: boolean;
+  onClose: () => void;
+  onSubmit: (appName: string, category: string, minutes: number) => void;
+  submitting: boolean;
+}) {
+  const [appName, setAppName]   = useState("");
+  const [category, setCategory] = useState("");
+  const [minutes, setMinutes]   = useState("");
+
+  const scale   = useSharedValue(0.88);
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    if (visible) {
+      scale.value   = withSpring(1,    { damping: 18, stiffness: 160 });
+      opacity.value = withTiming(1, { duration: 180 });
+    } else {
+      scale.value   = withSpring(0.88, { damping: 18, stiffness: 160 });
+      opacity.value = withTiming(0,  { duration: 140 });
+      setAppName(""); setCategory(""); setMinutes("");
+    }
+  }, [visible]);
+  const cardStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
+
+  if (!visible) return null;
+
+  const parsedMinutes = parseInt(minutes, 10);
+  const canSubmit = appName.trim().length > 0 && Number.isFinite(parsedMinutes) && parsedMinutes > 0;
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.calOuter} activeOpacity={1} onPress={onClose}>
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+        <Animated.View
+          style={[styles.goalsSheet, cardStyle]}
+          onStartShouldSetResponder={() => true}
+          onTouchEnd={e => e.stopPropagation()}
+        >
+          <View style={styles.goalsSheetHeader}>
+            <Text style={styles.goalsSheetTitle}>LOG APP USAGE</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={14}>
+              <MaterialIcons name="close" size={20} color="#777" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.goalsSheetSub}>
+            Manually add screen time for an app since we can't read device usage automatically yet.
+          </Text>
+
+          <View style={{ gap: 12, marginTop: 14 }}>
+            <TextInput
+              style={styles.logInput}
+              placeholder="App name (e.g. Instagram)"
+              placeholderTextColor="#b0b0b0"
+              value={appName}
+              onChangeText={setAppName}
+              returnKeyType="next"
+            />
+            <TextInput
+              style={styles.logInput}
+              placeholder="Category (optional, e.g. social)"
+              placeholderTextColor="#b0b0b0"
+              value={category}
+              onChangeText={setCategory}
+              returnKeyType="next"
+            />
+            <TextInput
+              style={styles.logInput}
+              placeholder="Minutes used"
+              placeholderTextColor="#b0b0b0"
+              value={minutes}
+              onChangeText={(t) => setMinutes(t.replace(/[^0-9]/g, ""))}
+              keyboardType="number-pad"
+              returnKeyType="done"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.logSubmitBtn, !canSubmit && { opacity: 0.4 }]}
+            disabled={!canSubmit || submitting}
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              onSubmit(appName.trim(), category.trim(), parsedMinutes);
+            }}
+          >
+            <Text style={styles.logSubmitBtnText}>{submitting ? "SAVING…" : "SAVE"}</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+// ─── Usage Tracking Opt-In Modal ──────────────────────────────────────────────
+
+function UsageOptInModal({ visible, onClose, onEnable, enabling }: {
+  visible: boolean; onClose: () => void; onEnable: () => void; enabling: boolean;
+}) {
+  if (!visible) return null;
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.calOuter} activeOpacity={1} onPress={onClose}>
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={styles.optInCard} onStartShouldSetResponder={() => true} onTouchEnd={e => e.stopPropagation()}>
+          <View style={styles.optInIcon}>
+            <MaterialIcons name="privacy-tip" size={26} color="#222" />
+          </View>
+          <Text style={styles.optInTitle}>Enable Usage Tracking</Text>
+          <Text style={styles.optInSub}>
+            To log app usage, turn on usage tracking. You can disable it anytime in Privacy & Security settings.
+          </Text>
+          <TouchableOpacity style={styles.logSubmitBtn} activeOpacity={0.85} onPress={onEnable} disabled={enabling}>
+            <Text style={styles.logSubmitBtnText}>{enabling ? "ENABLING…" : "ENABLE & CONTINUE"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={{ marginTop: 12 }}>
+            <Text style={styles.optInCancel}>Not now</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 // ─── Goals Status Modal ───────────────────────────────────────────────────────
 
 function GoalsStatusModal({ visible, onClose, goals }: {
@@ -398,10 +528,38 @@ export default function HomeScreen() {
   const topPad = isWeb ? 24 : insets.top;
   const [showCal,   setShowCal]   = useState(false);
   const [showGoals, setShowGoals] = useState(false);
+  const [showLogUsage, setShowLogUsage] = useState(false);
+  const [showOptIn, setShowOptIn] = useState(false);
 
   const { data: me } = useGetMe();
   const { data: goals = [] } = useListGoals();
-  const { data: appUsage = [] } = useGetAppUsageSummary();
+  const { data: appUsage = [], refetch: refetchAppUsage } = useGetAppUsageSummary();
+  const { data: settings } = useGetUserSettings();
+  const updateSettings = useUpdateUserSettings();
+  const createUsageEntry = useCreateAppUsageEntry();
+
+  const handleOpenLogUsage = () => {
+    Haptics.selectionAsync();
+    if (settings && !settings.usageTrackingOptIn) {
+      setShowOptIn(true);
+    } else {
+      setShowLogUsage(true);
+    }
+  };
+
+  const handleEnableTracking = () => {
+    updateSettings.mutate(
+      { data: { usageTrackingOptIn: true } },
+      { onSuccess: () => { setShowOptIn(false); setShowLogUsage(true); } }
+    );
+  };
+
+  const handleLogUsage = (appName: string, category: string, minutes: number) => {
+    createUsageEntry.mutate(
+      { data: { appName, category: category || undefined, durationMinutes: minutes } },
+      { onSuccess: () => { refetchAppUsage(); setShowLogUsage(false); } }
+    );
+  };
 
   const firstName = (me?.name ?? me?.email ?? "there").split(" ")[0].split("@")[0];
   const hour = new Date().getHours();
@@ -417,6 +575,18 @@ export default function HomeScreen() {
       <AnimatedBackground />
       <CalendarModal visible={showCal} onClose={() => setShowCal(false)} />
       <GoalsStatusModal visible={showGoals} onClose={() => setShowGoals(false)} goals={goals} />
+      <LogUsageModal
+        visible={showLogUsage}
+        onClose={() => setShowLogUsage(false)}
+        onSubmit={handleLogUsage}
+        submitting={createUsageEntry.isPending}
+      />
+      <UsageOptInModal
+        visible={showOptIn}
+        onClose={() => setShowOptIn(false)}
+        onEnable={handleEnableTracking}
+        enabling={updateSettings.isPending}
+      />
 
       <ScrollView
         style={styles.scroll}
@@ -492,7 +662,9 @@ export default function HomeScreen() {
         >
           <View style={styles.appsHeader}>
             <Text style={styles.appsHeaderLabel}>MOST USED APPS</Text>
-            <Text style={styles.appsHeaderDots}>···</Text>
+            <TouchableOpacity onPress={handleOpenLogUsage} hitSlop={10} style={styles.appsHeaderAddBtn}>
+              <MaterialIcons name="add" size={16} color="#333" />
+            </TouchableOpacity>
           </View>
           {topApps.length === 0 && (
             <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#999", paddingVertical: 8 }}>
@@ -601,6 +773,7 @@ const styles = StyleSheet.create({
   appsHeader:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   appsHeaderLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 1.4 },
   appsHeaderDots:  { fontSize: 18, color: "#aaa", letterSpacing: 2, lineHeight: 20 },
+  appsHeaderAddBtn:{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#f0f0f0", alignItems: "center", justifyContent: "center" },
 
   appRow:      { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
   appIconWrap: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#2a2a2a", alignItems: "center", justifyContent: "center" },
@@ -649,6 +822,44 @@ const styles = StyleSheet.create({
   goalsListDot:      { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   goalsListName:     { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
   goalsListStatus:   { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+
+  // Log usage modal
+  logInput: {
+    backgroundColor: "#f0f0f0",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: "#000",
+  },
+  logSubmitBtn: {
+    marginTop: 18,
+    backgroundColor: "#000",
+    borderRadius: 999,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logSubmitBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 1.5 },
+
+  // Usage opt-in modal
+  optInCard: {
+    width: SCREEN_W * 0.86,
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    padding: 26,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 32,
+    elevation: 16,
+  },
+  optInIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#f0f0f0", alignItems: "center", justifyContent: "center", marginBottom: 14 },
+  optInTitle: { fontSize: 18, fontFamily: "Inter_700Bold", color: "#000", textAlign: "center", marginBottom: 8 },
+  optInSub: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#888", textAlign: "center", lineHeight: 19 },
+  optInCancel: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#999" },
 
   // Calendar modal
   calOuter: { flex: 1, alignItems: "center", justifyContent: "center" },
