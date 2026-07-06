@@ -1,2 +1,4 @@
 - [Expo web preview + testing](expo-web-testing.md) — mobile artifacts use `router = "expo-domain"`; test via `$REPLIT_EXPO_DEV_DOMAIN`, not the root proxy domain, or the page will be blank/404.
 - [React Navigation peer version pins](react-navigation-peer-pins.md) — when adding `@react-navigation/*` packages to an Expo app, pin the exact version expo-router resolves internally, or a duplicate install with a mismatched `@react-navigation/native` peer causes a silent blank-screen crash.
+- [Clerk Expo: native module crash & web SSO hang](clerk-expo-sso-pitfalls.md) — `@clerk/expo` crashes in Expo Go (needs a pnpm patch) and its web `useSSO` popup flow can hang forever on Google OAuth; use a redirect flow on web instead.
+- [pnpm patch reliability](pnpm-patch-reliability.md) — `pnpm patch-commit` can register a patch in the lockfile without applying it to disk; `pnpm install --force` can also corrupt node_modules/watchers. Verify and use a plain `pnpm install` first.

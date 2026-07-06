@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as AuthSession from "expo-auth-session";
 import { useSSO } from "@clerk/expo";
+import { useSignIn } from "@clerk/expo/legacy";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -32,6 +33,7 @@ export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { startSSOFlow } = useSSO();
+  const { signIn } = useSignIn();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +41,24 @@ export default function SignInScreen() {
     setError(null);
     setLoading(true);
     try {
+      if (Platform.OS === "web") {
+        // Popup-based OAuth (expo-web-browser) breaks on web when the OAuth
+        // provider sets Cross-Origin-Opener-Policy headers, which null out
+        // `window.opener` and leave the sign-in stuck waiting on a postMessage
+        // that never arrives. A full-page redirect avoids that entirely.
+        if (!signIn) {
+          setError("Something went wrong signing in. Please try again.");
+          setLoading(false);
+          return;
+        }
+        await signIn.authenticateWithRedirect({
+          strategy: "oauth_google",
+          redirectUrl: `${window.location.origin}/sso-callback`,
+          redirectUrlComplete: `${window.location.origin}/`,
+        });
+        return;
+      }
+
       const { createdSessionId, setActive } = await startSSOFlow({
         strategy: "oauth_google",
         redirectUrl: AuthSession.makeRedirectUri(),
@@ -52,9 +72,9 @@ export default function SignInScreen() {
     } catch {
       setError("Something went wrong signing in. Please try again.");
     } finally {
-      setLoading(false);
+      if (Platform.OS !== "web") setLoading(false);
     }
-  }, [startSSOFlow]);
+  }, [startSSOFlow, signIn]);
 
   return (
     <View
