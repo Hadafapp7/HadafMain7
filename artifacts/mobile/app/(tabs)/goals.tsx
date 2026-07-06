@@ -1,7 +1,7 @@
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   KeyboardAvoidingView,
@@ -28,6 +28,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
+import {
+  type Goal,
+  type GoalInput,
+  useCreateGoal,
+  useDeleteGoal,
+  useListGoals,
+  useUpdateGoal,
+} from "@workspace/api-client-react";
 
 const isWeb    = Platform.OS === "web";
 const SCREEN_W = Dimensions.get("window").width;
@@ -37,55 +45,52 @@ const FAB_RIGHT = 20;
 const THRESHOLD = 60;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-type GoalType = "daily" | "scheduled";
+type GoalType = Goal["type"];
+type Priority = Goal["priority"];
+type GoalStatusValue = Goal["status"];
 
-interface Goal {
-  id: string;
-  name: string;
+// Local draft shape used while composing the add/edit form (before hitting the API).
+interface GoalDraft {
+  title: string;
   intent: string;
   type: GoalType;
-  activeFrom: string;
-  activeTo: string;
+  priority: Priority;
+  startTime: string;
+  durationMinutes: number;
   scheduledDate: string;
-  scheduledTime: string;
-  progress: number;
 }
 
-const DEFAULT_GOALS: Goal[] = [
-  {
-    id: "1",
-    name: "Finish project proposal",
-    intent: "Review the final budget allocations and ensure the timeline matches the engineering roadmap for Q4.",
-    type: "daily",
-    activeFrom: "10:00 AM",
-    activeTo: "11:30 AM",
-    scheduledDate: "",
-    scheduledTime: "",
-    progress: 0.68,
-  },
-  {
-    id: "2",
-    name: "Morning Reading",
-    intent: "Read 30 pages to grow knowledge and expand thinking every day.",
-    type: "daily",
-    activeFrom: "7:00 AM",
-    activeTo: "8:00 AM",
-    scheduledDate: "",
-    scheduledTime: "",
-    progress: 1.0,
-  },
-  {
-    id: "3",
-    name: "Evening Journal",
-    intent: "Reflect on the day, celebrate wins, and plan tomorrow's priorities.",
-    type: "daily",
-    activeFrom: "9:00 PM",
-    activeTo: "9:30 PM",
-    scheduledDate: "",
-    scheduledTime: "",
-    progress: 0.0,
-  },
-];
+const PRIORITIES: Priority[] = ["low", "medium", "high", "critical"];
+const PRIORITY_LABEL: Record<Priority, string> = {
+  low: "Low", medium: "Medium", high: "High", critical: "Critical",
+};
+const PRIORITY_COLOR: Record<Priority, string> = {
+  low: "#4b8f4b", medium: "#3b74d1", high: "#E07B00", critical: "#d13b3b",
+};
+
+// ── Time helpers ────────────────────────────────────────────────────────────────
+function addMinutesToTimeStr(time: string, minutes: number): string {
+  const m = time.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  if (!m) return time;
+  let hour = parseInt(m[1], 10) % 12;
+  const min = parseInt(m[2], 10);
+  const isPM = m[3].toUpperCase() === "PM";
+  let total = (isPM ? hour + 12 : hour) * 60 + min + minutes;
+  total = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const outHour24 = Math.floor(total / 60);
+  const outMin = total % 60;
+  const outPeriod = outHour24 >= 12 ? "PM" : "AM";
+  const outHour12 = outHour24 % 12 === 0 ? 12 : outHour24 % 12;
+  return `${outHour12}:${String(outMin).padStart(2, "0")} ${outPeriod}`;
+}
+
+function durationLabel(mins: number) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m} Min${m !== 1 ? "s" : ""}`;
+  if (m === 0) return `${h} Hour${h !== 1 ? "s" : ""}`;
+  return `${(h + m / 60).toFixed(1)} Hours`;
+}
 
 // ── Drum picker constants ──────────────────────────────────────────────────────
 const HOURS_12 = ["1","2","3","4","5","6","7","8","9","10","11","12"];
@@ -179,11 +184,12 @@ function DrumTimePicker({ value, onChange }: { value: string; onChange: (v: stri
 }
 
 // ── Inline drum duration picker ────────────────────────────────────────────────
-function DrumDurationPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const parsed = value.match(/^(\d+)h\s*(\d+)m$/);
-  const [hrs,  setHrs]  = useState(parsed ? parsed[1] : "1");
-  const [mins, setMins] = useState(parsed ? parsed[2] : "30");
-  useEffect(() => { onChange(`${hrs}h ${mins}m`); }, [hrs, mins]);
+function DrumDurationPicker({ minutes, onChange }: { minutes: number; onChange: (v: number) => void }) {
+  const hrs0  = String(Math.floor(minutes / 60));
+  const mins0 = String(minutes % 60).padStart(2, "0");
+  const [hrs,  setHrs]  = useState(DUR_HRS.includes(hrs0) ? hrs0 : "1");
+  const [mins, setMins] = useState(DUR_MINS.includes(mins0) ? mins0 : "30");
+  useEffect(() => { onChange(parseInt(hrs, 10) * 60 + parseInt(mins, 10)); }, [hrs, mins]);
   return (
     <View style={styles.drumContainer}>
       <DrumColumn items={DUR_HRS}  selected={hrs}  onSelect={setHrs}  width={52} />
@@ -195,34 +201,25 @@ function DrumDurationPicker({ value, onChange }: { value: string; onChange: (v: 
   );
 }
 
-function durLabel(raw: string) {
-  const m = raw.match(/^(\d+)h\s*(\d+)m$/);
-  if (!m) return raw;
-  const h = parseInt(m[1]), mn = parseInt(m[2]);
-  if (mn === 0) return `${h} Hour${h !== 1 ? "s" : ""}`;
-  return `${h + mn / 60} Hours`;
-}
-
 // ── AddTaskModal ───────────────────────────────────────────────────────────────
 function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   visible: boolean;
   onClose: () => void;
-  onSave: (goal: Goal) => void;
+  onSave: (draft: GoalDraft) => void;
   editingGoal?: Goal | null;
-  onUpdate?: (goal: Goal) => void;
+  onUpdate?: (id: string, draft: GoalDraft) => void;
 }) {
-  const insets     = useSafeAreaInsets();
   const isEditMode = !!editingGoal;
 
-  const [name,      setName]      = useState("");
+  const [title,     setTitle]     = useState("");
+  const [intent,    setIntent]    = useState("");
   const [goalType,  setGoalType]  = useState<GoalType>("daily");
-  const [duration,  setDuration]  = useState("1h 30m");
+  const [priority,  setPriority]  = useState<Priority>("medium");
+  const [duration,  setDuration]  = useState(90);
   const [startTime, setStartTime] = useState("10:00 AM");
-  const [endTime,   setEndTime]   = useState("11:30 AM");
   const [schedDate, setSchedDate] = useState("");
   const [showDrumDur,  setShowDrumDur]  = useState(false);
   const [showDrumFrom, setShowDrumFrom] = useState(false);
-  const [showDrumTo,   setShowDrumTo]   = useState(false);
 
   const scale   = useSharedValue(0.88);
   const opacity = useSharedValue(0);
@@ -230,11 +227,13 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   // Sync fields when editing goal changes
   useEffect(() => {
     if (editingGoal) {
-      setName(editingGoal.name);
+      setTitle(editingGoal.title);
+      setIntent(editingGoal.intent ?? "");
       setGoalType(editingGoal.type);
-      setStartTime(editingGoal.activeFrom || "10:00 AM");
-      setEndTime(editingGoal.activeTo || "11:30 AM");
-      setSchedDate(editingGoal.scheduledDate || "");
+      setPriority(editingGoal.priority);
+      setStartTime(editingGoal.startTime || "10:00 AM");
+      setDuration(editingGoal.durationMinutes || 90);
+      setSchedDate(editingGoal.scheduledDate ?? "");
     }
   }, [editingGoal?.id]);
 
@@ -253,33 +252,36 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
     opacity: opacity.value,
   }));
 
-  const reset = () => {
-    setName(""); setGoalType("daily");
-    setDuration("1h 30m"); setStartTime("10:00 AM"); setEndTime("11:30 AM");
+  const reset = useCallback(() => {
+    setTitle(""); setIntent(""); setGoalType("daily"); setPriority("medium");
+    setDuration(90); setStartTime("10:00 AM");
     setSchedDate("");
-    setShowDrumDur(false); setShowDrumFrom(false); setShowDrumTo(false);
-  };
+    setShowDrumDur(false); setShowDrumFrom(false);
+  }, []);
 
-  const handleClose = () => { reset(); onClose(); };
+  const handleClose = useCallback(() => {
+    reset();
+    onClose();
+  }, [reset, onClose]);
 
   const handleSave = () => {
-    if (!name.trim()) return;
+    const trimmedTitle  = title.trim();
+    const trimmedIntent = intent.trim();
+    if (!trimmedTitle) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const goalData: Goal = {
-      id: editingGoal?.id ?? Date.now().toString(),
-      name: name.trim(),
-      intent: editingGoal?.intent ?? "",
+    const draft: GoalDraft = {
+      title: trimmedTitle,
+      intent: trimmedIntent,
       type: goalType,
-      activeFrom: startTime,
-      activeTo: goalType === "daily" ? endTime : "",
-      scheduledDate: goalType === "scheduled" ? schedDate : "",
-      scheduledTime: goalType === "scheduled" ? startTime : "",
-      progress: editingGoal?.progress ?? 0,
+      priority,
+      startTime,
+      durationMinutes: duration,
+      scheduledDate: goalType === "scheduled" ? schedDate.trim() : "",
     };
-    if (isEditMode && onUpdate) {
-      onUpdate(goalData);
+    if (isEditMode && onUpdate && editingGoal) {
+      onUpdate(editingGoal.id, draft);
     } else {
-      onSave(goalData);
+      onSave(draft);
     }
     reset(); onClose();
   };
@@ -305,7 +307,12 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
             <Animated.View style={[styles.addModalCard, modalAnim]}>
 
               {/* Close button */}
-              <TouchableOpacity style={styles.addModalClose} onPress={handleClose} hitSlop={12}>
+              <TouchableOpacity
+                style={styles.addModalClose}
+                onPress={handleClose}
+                hitSlop={12}
+                activeOpacity={0.6}
+              >
                 <MaterialIcons name="close" size={20} color="#000" />
               </TouchableOpacity>
 
@@ -317,14 +324,29 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
                 {isEditMode ? "UPDATE YOUR COMMITMENT" : "ARCHITECT YOUR DAY"}
               </Text>
 
-              {/* Task Identification */}
-              <Text style={styles.formLabel}>TASK IDENTIFICATION</Text>
+              {/* Title field */}
+              <Text style={styles.formLabel}>TITLE</Text>
               <TextInput
                 style={styles.addModalInput}
                 placeholder="What needs attention?"
                 placeholderTextColor="#b0b0b0"
-                value={name}
-                onChangeText={setName}
+                value={title}
+                onChangeText={setTitle}
+                onBlur={() => setTitle(t => t.trim())}
+                returnKeyType="done"
+              />
+
+              {/* Details field */}
+              <Text style={styles.formLabel}>DETAILS</Text>
+              <TextInput
+                style={[styles.addModalInput, styles.addModalTextArea]}
+                placeholder="Add notes or context (optional)"
+                placeholderTextColor="#b0b0b0"
+                value={intent}
+                onChangeText={setIntent}
+                onBlur={() => setIntent(t => t.trim())}
+                multiline
+                numberOfLines={3}
                 returnKeyType="done"
               />
 
@@ -349,28 +371,30 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
                 </TouchableOpacity>
               </View>
 
-              {/* Scheduling Window */}
-              <View style={styles.schedRow}>
-                <Text style={styles.formLabel}>SCHEDULING WINDOW</Text>
-                <Text style={styles.priorityBadge}>PRIORITY HIGH</Text>
+              {/* Priority selector */}
+              <Text style={[styles.formLabel, { marginBottom: 10 }]}>PRIORITY</Text>
+              <View style={styles.priorityRow}>
+                {PRIORITIES.map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[
+                      styles.priorityChip,
+                      priority === p && { backgroundColor: PRIORITY_COLOR[p], borderColor: PRIORITY_COLOR[p] },
+                    ]}
+                    onPress={() => { Haptics.selectionAsync(); setPriority(p); }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.priorityChipText, priority === p && { color: "#fff" }]}>
+                      {PRIORITY_LABEL[p]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
+              {/* Scheduling Window */}
+              <Text style={[styles.formLabel, { marginTop: 4 }]}>SCHEDULING WINDOW</Text>
+
               <View style={styles.schedCols}>
-                {/* Duration */}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.schedColLabel}>DURATION</Text>
-                  <TouchableOpacity
-                    style={styles.schedPill}
-                    activeOpacity={0.75}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setShowDrumDur(v => !v);
-                      setShowDrumFrom(false); setShowDrumTo(false);
-                    }}
-                  >
-                    <Text style={styles.schedPillText}>{durLabel(duration)}</Text>
-                  </TouchableOpacity>
-                </View>
                 {/* Start Time */}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.schedColLabel}>START TIME</Text>
@@ -380,31 +404,28 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
                     onPress={() => {
                       Haptics.selectionAsync();
                       setShowDrumFrom(v => !v);
-                      setShowDrumDur(false); setShowDrumTo(false);
+                      setShowDrumDur(false);
                     }}
                   >
                     <Text style={styles.schedPillText}>{startTime}</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-
-              {/* End Time (Daily only) */}
-              {goalType === "daily" && (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={styles.schedColLabel}>END TIME</Text>
+                {/* Duration */}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.schedColLabel}>DURATION</Text>
                   <TouchableOpacity
                     style={styles.schedPill}
                     activeOpacity={0.75}
                     onPress={() => {
                       Haptics.selectionAsync();
-                      setShowDrumTo(v => !v);
-                      setShowDrumDur(false); setShowDrumFrom(false);
+                      setShowDrumDur(v => !v);
+                      setShowDrumFrom(false);
                     }}
                   >
-                    <Text style={styles.schedPillText}>{endTime}</Text>
+                    <Text style={styles.schedPillText}>{durationLabel(duration)}</Text>
                   </TouchableOpacity>
                 </View>
-              )}
+              </View>
 
               {/* Scheduled date field */}
               {goalType === "scheduled" && (
@@ -416,6 +437,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
                     placeholderTextColor="#b0b0b0"
                     value={schedDate}
                     onChangeText={setSchedDate}
+                    onBlur={() => setSchedDate(t => t.trim())}
                     returnKeyType="done"
                   />
                 </View>
@@ -424,7 +446,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
               {/* Inline drum pickers */}
               {showDrumDur && (
                 <Animated.View style={styles.drumBox}>
-                  <DrumDurationPicker value={duration} onChange={setDuration} />
+                  <DrumDurationPicker minutes={duration} onChange={setDuration} />
                 </Animated.View>
               )}
               {showDrumFrom && (
@@ -432,17 +454,12 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
                   <DrumTimePicker value={startTime} onChange={setStartTime} />
                 </Animated.View>
               )}
-              {showDrumTo && (
-                <Animated.View style={styles.drumBox}>
-                  <DrumTimePicker value={endTime} onChange={setEndTime} />
-                </Animated.View>
-              )}
 
               {/* Submit */}
               <TouchableOpacity
-                style={[styles.commitBtn, !name.trim() && { opacity: 0.45 }]}
+                style={[styles.commitBtn, !title.trim() && { opacity: 0.45 }]}
                 onPress={handleSave}
-                disabled={!name.trim()}
+                disabled={!title.trim()}
                 activeOpacity={0.85}
               >
                 <Text style={styles.commitBtnText}>
@@ -481,9 +498,10 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
 
   if (!goal) return null;
 
+  const activeTo = addMinutesToTimeStr(goal.startTime, goal.durationMinutes);
   const timeStr = goal.type === "daily"
-    ? `${goal.activeFrom} - ${goal.activeTo}`
-    : goal.scheduledDate ? `${goal.scheduledDate} · ${goal.scheduledTime}` : "No schedule set";
+    ? `${goal.startTime} - ${activeTo}`
+    : goal.scheduledDate ? `${goal.scheduledDate} · ${goal.startTime}` : "No schedule set";
 
   return (
     <Modal visible={!!goal} transparent animationType="none" onRequestClose={onClose}>
@@ -496,7 +514,7 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
       <Animated.View style={[styles.detailSheet, { paddingBottom: insets.bottom + 20 }, sheetAnim]}>
         <View style={styles.dragHandle} />
         <Text style={styles.detailFocusLabel}>CURRENT FOCUS</Text>
-        <Text style={styles.detailTitle}>{goal.name}</Text>
+        <Text style={styles.detailTitle}>{goal.title}</Text>
         <View style={styles.detailTimeRow}>
           <MaterialIcons name="schedule" size={16} color="#555" />
           <Text style={styles.detailTimeText}>{timeStr}</Text>
@@ -504,11 +522,13 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
         <View style={styles.detailCards}>
           <View style={styles.detailInfoCard}>
             <Text style={styles.detailCardLabel}>DURATION</Text>
-            <Text style={styles.detailCardValue}>1.5 Hours</Text>
+            <Text style={styles.detailCardValue}>{durationLabel(goal.durationMinutes)}</Text>
           </View>
           <View style={styles.detailInfoCard}>
             <Text style={styles.detailCardLabel}>PRIORITY</Text>
-            <Text style={styles.detailCardValue}>Critical</Text>
+            <Text style={[styles.detailCardValue, { color: PRIORITY_COLOR[goal.priority] }]}>
+              {PRIORITY_LABEL[goal.priority]}
+            </Text>
           </View>
         </View>
         {!!goal.intent && (
@@ -523,14 +543,9 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
             activeOpacity={0.85}
             onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onDone(); }}
           >
-            <Text style={styles.doneBtnText}>DONE</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.rescheduleBtn}
-            activeOpacity={0.85}
-            onPress={() => { Haptics.selectionAsync(); onClose(); }}
-          >
-            <Text style={styles.rescheduleBtnText}>RESCHEDULE</Text>
+            <Text style={styles.doneBtnText}>
+              {goal.status === "done" ? "MARK AS PENDING" : "DONE"}
+            </Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -543,15 +558,16 @@ function GoalCard({ goal, delay = 0, onDelete, onPress, onEdit }: {
   goal: Goal; delay?: number; onDelete: () => void; onPress: () => void; onEdit: () => void;
 }) {
   const colors = useColors();
+  const activeTo = addMinutesToTimeStr(goal.startTime, goal.durationMinutes);
   return (
     <Animated.View
       entering={isWeb ? undefined : FadeInDown.delay(delay).springify()}
       exiting={isWeb ? undefined : FadeOut.duration(240)}
       layout={isWeb ? undefined : LinearTransition.springify()}
-      style={[styles.goalCard, { backgroundColor: colors.card }]}
+      style={[styles.goalCard, { backgroundColor: colors.card }, goal.status === "done" && { opacity: 0.6 }]}
     >
       <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={{ flex: 1, flexDirection: "row" }}>
-        <View style={[styles.goalCardAccent, { backgroundColor: colors.primary }]} />
+        <View style={[styles.goalCardAccent, { backgroundColor: PRIORITY_COLOR[goal.priority] }]} />
         <View style={styles.goalCardInner}>
           {/* Action buttons row */}
           <View style={styles.cardActions}>
@@ -571,34 +587,147 @@ function GoalCard({ goal, delay = 0, onDelete, onPress, onEdit }: {
             </TouchableOpacity>
           </View>
 
-          {/* Type badge */}
-          <View style={[styles.typeBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
-            <MaterialIcons
-              name={goal.type === "daily" ? "repeat" : "event"}
-              size={12}
-              color={colors.outline}
-            />
-            <Text style={[styles.typeBadgeText, { color: colors.outline }]}>
-              {goal.type === "daily" ? "DAILY" : "SCHEDULED"}
-            </Text>
+          {/* Badges row */}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={[styles.typeBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
+              <MaterialIcons
+                name={goal.type === "daily" ? "repeat" : "event"}
+                size={12}
+                color={colors.outline}
+              />
+              <Text style={[styles.typeBadgeText, { color: colors.outline }]}>
+                {goal.type === "daily" ? "DAILY" : "SCHEDULED"}
+              </Text>
+            </View>
+            <View style={[styles.typeBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
+              <Text style={[styles.typeBadgeText, { color: PRIORITY_COLOR[goal.priority] }]}>
+                {PRIORITY_LABEL[goal.priority].toUpperCase()}
+              </Text>
+            </View>
           </View>
 
-          <Text style={[styles.goalName,   { color: colors.onSurface }]}>{goal.name}</Text>
-          <Text style={[styles.goalIntent, { color: colors.outline }]}>{goal.intent}</Text>
+          <Text style={[styles.goalName,   { color: colors.onSurface }]}>{goal.title}</Text>
+          {!!goal.intent && <Text style={[styles.goalIntent, { color: colors.outline }]}>{goal.intent}</Text>}
 
           <View style={[styles.timeChip, { backgroundColor: colors.surfaceContainerHigh }]}>
             <MaterialIcons name="schedule" size={15} color={colors.onSurface} />
             <Text style={[styles.timeChipText, { color: colors.onSurface }]}>
               {goal.type === "daily"
-                ? `${goal.activeFrom} – ${goal.activeTo}`
+                ? `${goal.startTime} – ${activeTo}`
                 : goal.scheduledDate
-                  ? `${goal.scheduledDate}  ·  ${goal.scheduledTime}`
+                  ? `${goal.scheduledDate}  ·  ${goal.startTime}`
                   : "No schedule set"}
             </Text>
           </View>
         </View>
       </TouchableOpacity>
     </Animated.View>
+  );
+}
+
+// ── Filter bar ─────────────────────────────────────────────────────────────────
+interface Filters {
+  type: GoalType | "all";
+  priority: Priority | "all";
+  status: GoalStatusValue | "all";
+}
+const DEFAULT_FILTERS: Filters = { type: "all", priority: "all", status: "all" };
+
+function FilterSheet({ visible, filters, onApply, onClose }: {
+  visible: boolean; filters: Filters; onApply: (f: Filters) => void; onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<Filters>(filters);
+  useEffect(() => { if (visible) setDraft(filters); }, [visible, filters]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={StyleSheet.absoluteFill}>
+          <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+        </View>
+      </TouchableWithoutFeedback>
+      <View style={styles.addModalCentered} pointerEvents="box-none">
+        <View style={styles.filterCard}>
+          <TouchableOpacity style={styles.addModalClose} onPress={onClose} hitSlop={12}>
+            <MaterialIcons name="close" size={20} color="#000" />
+          </TouchableOpacity>
+          <Text style={styles.addModalTitle}>FILTER GOALS</Text>
+          <Text style={styles.addModalSub}>NARROW YOUR LIST</Text>
+
+          <Text style={styles.formLabel}>TYPE</Text>
+          <View style={styles.priorityRow}>
+            {(["all", "daily", "scheduled"] as const).map((t) => (
+              <TouchableOpacity
+                key={t}
+                style={[styles.priorityChip, draft.type === t && styles.priorityChipActiveBlack]}
+                onPress={() => { Haptics.selectionAsync(); setDraft(d => ({ ...d, type: t })); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.priorityChipText, draft.type === t && { color: "#fff" }]}>
+                  {t === "all" ? "All" : t === "daily" ? "Daily" : "Scheduled"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.formLabel, { marginTop: 18 }]}>PRIORITY</Text>
+          <View style={styles.priorityRow}>
+            {(["all", ...PRIORITIES] as const).map((p) => (
+              <TouchableOpacity
+                key={p}
+                style={[
+                  styles.priorityChip,
+                  draft.priority === p && (p === "all"
+                    ? styles.priorityChipActiveBlack
+                    : { backgroundColor: PRIORITY_COLOR[p as Priority], borderColor: PRIORITY_COLOR[p as Priority] }),
+                ]}
+                onPress={() => { Haptics.selectionAsync(); setDraft(d => ({ ...d, priority: p as Priority | "all" })); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.priorityChipText, draft.priority === p && { color: "#fff" }]}>
+                  {p === "all" ? "All" : PRIORITY_LABEL[p as Priority]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.formLabel, { marginTop: 18 }]}>STATUS</Text>
+          <View style={styles.priorityRow}>
+            {(["all", "pending", "done"] as const).map((s) => (
+              <TouchableOpacity
+                key={s}
+                style={[styles.priorityChip, draft.status === s && styles.priorityChipActiveBlack]}
+                onPress={() => { Haptics.selectionAsync(); setDraft(d => ({ ...d, status: s })); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.priorityChipText, draft.status === s && { color: "#fff" }]}>
+                  {s === "all" ? "All" : s === "pending" ? "Pending" : "Done"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 24 }}>
+            <TouchableOpacity
+              style={[styles.commitBtn, { flex: 1, backgroundColor: "#f0f0f0" }]}
+              onPress={() => { Haptics.selectionAsync(); setDraft(DEFAULT_FILTERS); onApply(DEFAULT_FILTERS); }}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.commitBtnText, { color: "#000" }]}>RESET</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.commitBtn, { flex: 1 }]}
+              onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onApply(draft); }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.commitBtnText}>APPLY</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -609,10 +738,26 @@ export default function GoalsScreen() {
   const topPad  = isWeb ? 67 : insets.top;
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
 
-  const [goals,        setGoals]        = useState<Goal[]>(DEFAULT_GOALS);
+  const { data: goals = [], isLoading, isError, refetch } = useListGoals();
+  const createGoal = useCreateGoal();
+  const updateGoal = useUpdateGoal();
+  const deleteGoal = useDeleteGoal();
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingGoal,  setEditingGoal]  = useState<Goal | null>(null);
   const [detailGoal,   setDetailGoal]   = useState<Goal | null>(null);
+  const [showFilters,  setShowFilters]  = useState(false);
+  const [filters,      setFilters]      = useState<Filters>(DEFAULT_FILTERS);
+
+  const filtersActive = filters.type !== "all" || filters.priority !== "all" || filters.status !== "all";
+
+  const visibleGoals = useMemo(() => {
+    return goals.filter(g =>
+      (filters.type === "all" || g.type === filters.type) &&
+      (filters.priority === "all" || g.priority === filters.priority) &&
+      (filters.status === "all" || g.status === filters.status)
+    );
+  }, [goals, filters]);
 
   const scrollY       = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -632,15 +777,27 @@ export default function GoalsScreen() {
     overflow: "hidden" as const,
   }));
 
+  const draftToInput = (draft: GoalDraft): GoalInput => ({
+    title: draft.title,
+    intent: draft.intent || undefined,
+    type: draft.type,
+    priority: draft.priority,
+    startTime: draft.startTime,
+    durationMinutes: draft.durationMinutes,
+    scheduledDate: draft.scheduledDate || undefined,
+  });
+
   const handleDeleteGoal = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setGoals(prev => prev.filter(g => g.id !== id));
+    deleteGoal.mutate({ id }, { onSuccess: () => refetch() });
   };
 
-  const handleAddGoal = (goal: Goal) => setGoals(prev => [...prev, goal]);
+  const handleAddGoal = (draft: GoalDraft) => {
+    createGoal.mutate({ data: draftToInput(draft) }, { onSuccess: () => refetch() });
+  };
 
-  const handleUpdateGoal = (updated: Goal) => {
-    setGoals(prev => prev.map(g => g.id === updated.id ? updated : g));
+  const handleUpdateGoal = (id: string, draft: GoalDraft) => {
+    updateGoal.mutate({ id, data: draftToInput(draft) }, { onSuccess: () => refetch() });
   };
 
   const handleEditGoal = (goal: Goal) => {
@@ -652,6 +809,14 @@ export default function GoalsScreen() {
   const handleModalClose = () => {
     setShowAddModal(false);
     setEditingGoal(null);
+  };
+
+  const handleToggleDone = (goal: Goal) => {
+    updateGoal.mutate(
+      { id: goal.id, data: { status: goal.status === "done" ? "pending" : "done" } },
+      { onSuccess: () => refetch() }
+    );
+    setDetailGoal(null);
   };
 
   return (
@@ -668,11 +833,44 @@ export default function GoalsScreen() {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()}>
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.delay(0).springify()}
+          style={styles.headerRow}
+        >
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>GOALS</Text>
+          <TouchableOpacity
+            style={[
+              styles.filterBtn,
+              { backgroundColor: colors.surfaceContainerHigh },
+              filtersActive && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => { Haptics.selectionAsync(); setShowFilters(true); }}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="tune" size={16} color={filtersActive ? "#fff" : colors.onSurface} />
+            <Text style={[styles.filterBtnText, { color: filtersActive ? "#fff" : colors.onSurface }]}>
+              {filtersActive ? "Filters active" : "Filter"}
+            </Text>
+          </TouchableOpacity>
         </Animated.View>
 
-        {goals.map((g, i) => (
+        {isLoading && (
+          <Text style={[styles.emptyText, { color: colors.outline }]}>Loading goals…</Text>
+        )}
+
+        {isError && !isLoading && (
+          <Text style={[styles.emptyText, { color: colors.outline }]}>
+            Couldn't load your goals. Pull to retry.
+          </Text>
+        )}
+
+        {!isLoading && !isError && visibleGoals.length === 0 && (
+          <Text style={[styles.emptyText, { color: colors.outline }]}>
+            {filtersActive ? "No goals match your filters." : "No goals yet. Tap + to add one."}
+          </Text>
+        )}
+
+        {visibleGoals.map((g, i) => (
           <GoalCard
             key={g.id}
             goal={g}
@@ -715,7 +913,15 @@ export default function GoalsScreen() {
       <GoalDetailSheet
         goal={detailGoal}
         onClose={() => setDetailGoal(null)}
-        onDone={() => setDetailGoal(null)}
+        onDone={() => detailGoal && handleToggleDone(detailGoal)}
+      />
+
+      {/* Modal 3 — Filters */}
+      <FilterSheet
+        visible={showFilters}
+        filters={filters}
+        onApply={(f) => { setFilters(f); setShowFilters(false); }}
+        onClose={() => setShowFilters(false)}
       />
     </View>
   );
@@ -726,7 +932,11 @@ const styles = StyleSheet.create({
   root:   { flex: 1 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, gap: 16 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
+  filterBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999 },
+  filterBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: 40 },
 
   // Goal card
   goalCard:       { borderRadius: 24, flexDirection: "row", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 20, elevation: 2 },
@@ -757,6 +967,12 @@ const styles = StyleSheet.create({
   typeToggleBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#555" },
   typeToggleBtnTextActive: { color: "#fff" },
 
+  // Priority chips
+  priorityRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 18 },
+  priorityChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 1.5, borderColor: "#e0e0e0", backgroundColor: "#f7f7f7" },
+  priorityChipActiveBlack: { backgroundColor: "#000", borderColor: "#000" },
+  priorityChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#444" },
+
   // ── Add Task Modal ──
   addModalCentered: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 },
   addModalScroll:   { width: "100%" },
@@ -772,7 +988,18 @@ const styles = StyleSheet.create({
     shadowRadius: 40,
     elevation: 16,
   },
-  addModalClose: { position: "absolute", top: 22, right: 22, width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  filterCard: {
+    width: "100%",
+    backgroundColor: "#fff",
+    borderRadius: 28,
+    padding: 28,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.2,
+    shadowRadius: 40,
+    elevation: 16,
+  },
+  addModalClose: { position: "absolute", top: 22, right: 22, width: 32, height: 32, alignItems: "center", justifyContent: "center", zIndex: 10 },
   addModalTitle: { fontSize: 28, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: -0.5, marginBottom: 4 },
   addModalSub:   { fontSize: 10, fontFamily: "Inter_700Bold", color: "#aaa", letterSpacing: 3, marginBottom: 24 },
 
@@ -780,7 +1007,7 @@ const styles = StyleSheet.create({
 
   addModalInput: {
     backgroundColor: "#f0f0f0",
-    borderRadius: 999,
+    borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 16,
     fontSize: 15,
@@ -788,10 +1015,13 @@ const styles = StyleSheet.create({
     color: "#000",
     marginBottom: 22,
   },
+  addModalTextArea: {
+    borderRadius: 20,
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
 
-  schedRow:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  priorityBadge: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#E07B00", letterSpacing: 1.5 },
-  schedCols:     { flexDirection: "row", gap: 12, marginBottom: 0 },
+  schedCols:     { flexDirection: "row", gap: 12, marginBottom: 0, marginTop: 4 },
   schedColLabel: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.8, color: "#555", marginBottom: 8 },
   schedPill:     { backgroundColor: "#f0f0f0", borderRadius: 999, paddingHorizontal: 18, paddingVertical: 14, alignItems: "center" },
   schedPillText: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#000" },
@@ -838,6 +1068,4 @@ const styles = StyleSheet.create({
   detailActions:    { gap: 10 },
   doneBtn:          { backgroundColor: "#000", borderRadius: 999, height: 54, alignItems: "center", justifyContent: "center" },
   doneBtnText:      { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 2 },
-  rescheduleBtn:    { borderRadius: 999, height: 54, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#000" },
-  rescheduleBtnText:{ fontSize: 13, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: 2 },
 });

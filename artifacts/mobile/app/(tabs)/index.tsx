@@ -25,6 +25,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
+import {
+  type AppUsageSummaryItem,
+  type Goal,
+  useGetAppUsageSummary,
+  useGetMe,
+  useListGoals,
+} from "@workspace/api-client-react";
 
 const isWeb    = Platform.OS === "web";
 const SCREEN_W = Dimensions.get("window").width;
@@ -238,29 +245,41 @@ function CounterNumber({ target, delay = 0, style: textStyle }: { target: number
 
 // ─── App row ──────────────────────────────────────────────────────────────────
 
-const APPS = [
-  { name: "Instagram", category: "SOCIAL",       time: "2h 15m", percent: 0.85, icon: "photo-camera"  as const },
-  { name: "TikTok",    category: "ENTERTAINMENT", time: "1h 45m", percent: 0.66, icon: "music-video"   as const },
-];
+function formatDuration(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h <= 0) return `${m}m`;
+  if (m <= 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
 
-function AppRow({ app, index, last }: { app: typeof APPS[0]; index: number; last: boolean }) {
+const APP_ICONS: Record<string, React.ComponentProps<typeof MaterialIcons>["name"]> = {
+  social: "photo-camera",
+  entertainment: "music-video",
+};
+
+function AppRow({ app, index, last, maxMinutes }: {
+  app: AppUsageSummaryItem; index: number; last: boolean; maxMinutes: number;
+}) {
+  const percent  = maxMinutes > 0 ? Math.min(1, app.totalMinutes / maxMinutes) : 0;
   const progress = useSharedValue(0);
   useEffect(() => {
-    progress.value = withDelay(400 + index * 120, withSpring(app.percent, { damping: 20 }));
-  }, []);
+    progress.value = withDelay(400 + index * 120, withSpring(percent, { damping: 20 }));
+  }, [percent]);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as any }));
+  const icon = APP_ICONS[(app.category ?? "").toLowerCase()] ?? "apps";
   return (
     <View>
       <View style={styles.appRow}>
         <View style={styles.appIconWrap}>
-          <MaterialIcons name={app.icon} size={20} color="#fff" />
+          <MaterialIcons name={icon} size={20} color="#fff" />
         </View>
         <View style={styles.appInfo}>
-          <Text style={styles.appName}>{app.name}</Text>
-          <Text style={styles.appCategory}>{app.category}</Text>
+          <Text style={styles.appName}>{app.appName}</Text>
+          <Text style={styles.appCategory}>{(app.category ?? "OTHER").toUpperCase()}</Text>
         </View>
         <View style={styles.appRight}>
-          <Text style={styles.appTime}>{app.time}</Text>
+          <Text style={styles.appTime}>{formatDuration(app.totalMinutes)}</Text>
           <View style={styles.appBarTrack}>
             <Animated.View style={[styles.appBarFill, barStyle]} />
           </View>
@@ -273,13 +292,9 @@ function AppRow({ app, index, last }: { app: typeof APPS[0]; index: number; last
 
 // ─── Goals Status Modal ───────────────────────────────────────────────────────
 
-const GOAL_STATUS = [
-  { name: "Finish project proposal", done: true  },
-  { name: "Morning Reading",          done: true  },
-  { name: "Evening Journal",          done: false },
-];
-
-function GoalsStatusModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function GoalsStatusModal({ visible, onClose, goals }: {
+  visible: boolean; onClose: () => void; goals: Goal[];
+}) {
   const scale   = useSharedValue(0.88);
   const opacity = useSharedValue(0);
   useEffect(() => {
@@ -295,8 +310,8 @@ function GoalsStatusModal({ visible, onClose }: { visible: boolean; onClose: () 
 
   if (!visible) return null;
 
-  const done    = GOAL_STATUS.filter(g => g.done).length;
-  const total   = GOAL_STATUS.length;
+  const done    = goals.filter(g => g.status === "done").length;
+  const total   = goals.length;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -317,14 +332,19 @@ function GoalsStatusModal({ visible, onClose }: { visible: boolean; onClose: () 
             {done} of {total} completed today
           </Text>
           <View style={styles.goalsList}>
-            {GOAL_STATUS.map((g, i) => (
-              <View key={i} style={[styles.goalsListRow, i < GOAL_STATUS.length - 1 && styles.goalsListDivider]}>
-                <View style={[styles.goalsListDot, { backgroundColor: g.done ? "#16a34a" : "#e5e7eb" }]}>
-                  {g.done && <MaterialIcons name="check" size={12} color="#fff" />}
+            {total === 0 && (
+              <Text style={[styles.goalsListName, { color: "#999", paddingVertical: 12 }]}>
+                No goals yet — add one from the Goals tab.
+              </Text>
+            )}
+            {goals.map((g, i) => (
+              <View key={g.id} style={[styles.goalsListRow, i < goals.length - 1 && styles.goalsListDivider]}>
+                <View style={[styles.goalsListDot, { backgroundColor: g.status === "done" ? "#16a34a" : "#e5e7eb" }]}>
+                  {g.status === "done" && <MaterialIcons name="check" size={12} color="#fff" />}
                 </View>
-                <Text style={[styles.goalsListName, { color: g.done ? "#111" : "#555" }]}>{g.name}</Text>
-                <Text style={[styles.goalsListStatus, { color: g.done ? "#16a34a" : "#aaa" }]}>
-                  {g.done ? "Done" : "Pending"}
+                <Text style={[styles.goalsListName, { color: g.status === "done" ? "#111" : "#555" }]}>{g.title}</Text>
+                <Text style={[styles.goalsListStatus, { color: g.status === "done" ? "#16a34a" : "#aaa" }]}>
+                  {g.status === "done" ? "Done" : "Pending"}
                 </Text>
               </View>
             ))}
@@ -379,11 +399,24 @@ export default function HomeScreen() {
   const [showCal,   setShowCal]   = useState(false);
   const [showGoals, setShowGoals] = useState(false);
 
+  const { data: me } = useGetMe();
+  const { data: goals = [] } = useListGoals();
+  const { data: appUsage = [] } = useGetAppUsageSummary();
+
+  const firstName = (me?.name ?? me?.email ?? "there").split(" ")[0].split("@")[0];
+  const hour = new Date().getHours();
+  const timeOfDay = hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening";
+
+  const pendingGoals = goals.filter(g => g.status === "pending").length;
+  const totalScreenMinutes = appUsage.reduce((sum, a) => sum + a.totalMinutes, 0);
+  const maxAppMinutes = Math.max(1, ...appUsage.map(a => a.totalMinutes));
+  const topApps = [...appUsage].sort((a, b) => b.totalMinutes - a.totalMinutes).slice(0, 4);
+
   return (
     <View style={[styles.root, { backgroundColor: "#f5f5f5" }]}>
       <AnimatedBackground />
       <CalendarModal visible={showCal} onClose={() => setShowCal(false)} />
-      <GoalsStatusModal visible={showGoals} onClose={() => setShowGoals(false)} />
+      <GoalsStatusModal visible={showGoals} onClose={() => setShowGoals(false)} goals={goals} />
 
       <ScrollView
         style={styles.scroll}
@@ -400,7 +433,7 @@ export default function HomeScreen() {
           style={styles.headerRow}
         >
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Good Evening, Alex 👋</Text>
+            <Text style={styles.greeting}>Good {timeOfDay}, {firstName} 👋</Text>
             <Text style={styles.focusStatus}>FOCUS MODE: OFF</Text>
           </View>
           <TouchableOpacity style={styles.avatar} activeOpacity={0.8}>
@@ -416,11 +449,11 @@ export default function HomeScreen() {
           {/* Screen Time */}
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>SCREEN TIME</Text>
-            <Text style={styles.statNumber}>4h 32m</Text>
+            <Text style={styles.statNumber}>{formatDuration(totalScreenMinutes)}</Text>
             <View style={styles.statCardBottom}>
               <View style={styles.statBadge}>
-                <MaterialIcons name="south-east" size={11} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.statBadgeText}> 23%</Text>
+                <MaterialIcons name="apps" size={11} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.statBadgeText}> {appUsage.length} apps</Text>
               </View>
               <View style={styles.sparkBars}>
                 <View style={[styles.sparkBar, { height: 14, backgroundColor: "rgba(255,255,255,0.3)" }]} />
@@ -461,8 +494,13 @@ export default function HomeScreen() {
             <Text style={styles.appsHeaderLabel}>MOST USED APPS</Text>
             <Text style={styles.appsHeaderDots}>···</Text>
           </View>
-          {APPS.map((app, i) => (
-            <AppRow key={app.name} app={app} index={i} last={i === APPS.length - 1} />
+          {topApps.length === 0 && (
+            <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#999", paddingVertical: 8 }}>
+              No usage logged yet.
+            </Text>
+          )}
+          {topApps.map((app, i) => (
+            <AppRow key={app.appName} app={app} index={i} last={i === topApps.length - 1} maxMinutes={maxAppMinutes} />
           ))}
         </Animated.View>
 
@@ -477,7 +515,7 @@ export default function HomeScreen() {
             icon="checklist"
             label1="DAILY"
             label2="GOALS"
-            badgeText="3 LEFT"
+            badgeText={goals.length === 0 ? undefined : `${pendingGoals} LEFT`}
             badgeBg="#2e7d32"
             onPress={() => setShowGoals(true)}
           />

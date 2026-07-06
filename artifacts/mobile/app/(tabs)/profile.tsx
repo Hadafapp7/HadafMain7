@@ -20,15 +20,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
+import { useGetMe, useListFocusSessions, useListGoals } from "@workspace/api-client-react";
 
 const isWeb = Platform.OS === "web";
 
-// ── Stats ──────────────────────────────────────────────────────────────────────
-const STATS = [
-  { label: "FOCUS",  value: "128h" },
-  { label: "STREAK", value: "14d"  },
-  { label: "SCORE",  value: "942"  },
-];
+function formatHours(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h <= 0) return `${m}m`;
+  if (m <= 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
 
 // ── Preference rows ────────────────────────────────────────────────────────────
 type PrefRow =
@@ -37,12 +39,12 @@ type PrefRow =
 
 const PREFS: PrefRow[] = [
   { icon: "account-circle",   label: "Account",           right: "chevron", route: "/account-settings" },
-  { icon: "credit-card",      label: "Subscription",      right: "chevron" },
+  { icon: "credit-card",      label: "Subscription",      right: "chevron", route: "/subscription" },
   { icon: "emoji-events",     label: "Achievements",      right: "chevron", route: "/achievements" },
   { icon: "notifications",    label: "Notifications",     right: "chevron", route: "/notifications-settings" },
-  { icon: "lock",             label: "Privacy & Security",right: "chevron" },
-  { icon: "help",             label: "Help",              right: "chevron" },
-  { icon: "palette",          label: "Appearance",        right: "light"   },
+  { icon: "lock",             label: "Privacy & Security",right: "chevron", route: "/privacy-security" },
+  { icon: "help",             label: "Help",              right: "chevron", route: "/help" },
+  { icon: "palette",          label: "Appearance",        right: "chevron", route: "/appearance" },
   { icon: "logout",           label: "Sign Out",          danger: true     },
 ];
 
@@ -122,6 +124,22 @@ export default function ProfileScreen() {
   const topPad  = isWeb ? 0 : insets.top;
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
 
+  const { data: me } = useGetMe();
+  const { data: focusSessions = [] } = useListFocusSessions();
+  const { data: goals = [] } = useListGoals();
+
+  const completedSessions = focusSessions.filter((s) => s.status === "completed");
+  const totalFocusMinutes = completedSessions.reduce((sum, s) => sum + s.plannedDurationMinutes, 0);
+  const goalsDone = goals.filter((g) => g.status === "done").length;
+
+  const stats = [
+    { label: "FOCUS",   value: formatHours(totalFocusMinutes) },
+    { label: "SESSIONS", value: String(completedSessions.length) },
+    { label: "GOALS DONE", value: String(goalsDone) },
+  ];
+
+  const displayName = me?.name?.toUpperCase() ?? me?.email?.split("@")[0].toUpperCase() ?? "";
+
   return (
     <View style={styles.root}>
       <AnimatedBackground />
@@ -155,8 +173,8 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <Text style={styles.profileName}>ALEXANDER VANCE</Text>
-          <Text style={styles.profileEmail}>alexander.v@stark.design</Text>
+          <Text style={styles.profileName}>{displayName}</Text>
+          <Text style={styles.profileEmail}>{me?.email ?? ""}</Text>
         </Animated.View>
 
         {/* ── Stats Row ── */}
@@ -164,7 +182,7 @@ export default function ProfileScreen() {
           entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
           style={styles.statsRow}
         >
-          {STATS.map((s, i) => (
+          {stats.map((s, i) => (
             <View key={i} style={styles.statCard}>
               <Text style={styles.statLabel}>{s.label}</Text>
               <Text style={styles.statValue}>{s.value}</Text>

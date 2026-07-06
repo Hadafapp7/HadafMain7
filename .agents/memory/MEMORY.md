@@ -1,0 +1,2 @@
+- [Expo web preview + testing](expo-web-testing.md) — mobile artifacts use `router = "expo-domain"`; test via `$REPLIT_EXPO_DEV_DOMAIN`, not the root proxy domain, or the page will be blank/404.
+- [React Navigation peer version pins](react-navigation-peer-pins.md) — when adding `@react-navigation/*` packages to an Expo app, pin the exact version expo-router resolves internally, or a duplicate install with a mismatched `@react-navigation/native` peer causes a silent blank-screen crash.

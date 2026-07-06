@@ -30,6 +30,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
+import {
+  useListBlockedApps,
+  useAddBlockedApp,
+  useRemoveBlockedApp,
+  useStartFocusSession,
+  useEndFocusSession,
+} from "@workspace/api-client-react";
 
 const isWeb    = Platform.OS === "web";
 const SCREEN_W = Dimensions.get("window").width;
@@ -348,18 +355,33 @@ export default function FocusScreen() {
   const topPad    = isWeb ? 67 : insets.top;
   const tabBarH   = isWeb ? 84 : 62 + insets.bottom;
 
+  const { data: persistedBlockedApps } = useListBlockedApps();
+  const addBlockedApp    = useAddBlockedApp();
+  const removeBlockedApp = useRemoveBlockedApp();
+  const startFocusSession = useStartFocusSession();
+  const endFocusSession   = useEndFocusSession();
+
   const [duration,    setDuration]    = useState(30);
   const [intention,   setIntention]   = useState("");
-  const [blockedApps, setBlockedApps] = useState<string[]>(["Instagram", "TikTok", "YouTube"]);
+  const [blockedApps, setBlockedApps] = useState<string[]>([]);
   const [showPicker,  setShowPicker]  = useState(false);
   const [showCustom,  setShowCustom]  = useState(false);
   const [customInput, setCustomInput] = useState("");
   const customRef = useRef<TextInput>(null);
+  const hasHydratedBlockedApps = useRef(false);
 
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [remaining,    setRemaining]    = useState(duration * 60);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const totalSecs   = duration * 60;
+
+  useEffect(() => {
+    if (!hasHydratedBlockedApps.current && persistedBlockedApps) {
+      setBlockedApps(persistedBlockedApps.map((a) => a.appName));
+      hasHydratedBlockedApps.current = true;
+    }
+  }, [persistedBlockedApps]);
 
   // Validation errors + shake
   const [errors,      setErrors]      = useState({ intention: false, blockedApps: false });
@@ -386,12 +408,16 @@ export default function FocusScreen() {
           clearTimer();
           setSessionState("done");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setActiveSessionId((id) => {
+            if (id) endFocusSession.mutate({ id, data: { status: "completed" } });
+            return null;
+          });
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-  }, [clearTimer]);
+  }, [clearTimer, endFocusSession]);
 
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -399,6 +425,10 @@ export default function FocusScreen() {
     setRemaining(duration * 60);
     setSessionState("running");
     startTick();
+    startFocusSession.mutate(
+      { data: { intention: intention.trim() || undefined, plannedDurationMinutes: duration, blockedApps } },
+      { onSuccess: (session) => setActiveSessionId(session.id) }
+    );
   };
 
   // Attempt to start: validate first
@@ -429,7 +459,16 @@ export default function FocusScreen() {
 
   const handlePause  = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); clearTimer(); setSessionState("paused"); };
   const handleResume = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setSessionState("running"); startTick(); };
-  const handleStop   = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); clearTimer(); setSessionState("idle"); setRemaining(duration * 60); };
+  const handleStop   = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    clearTimer();
+    setSessionState("idle");
+    setRemaining(duration * 60);
+    if (activeSessionId) {
+      endFocusSession.mutate({ id: activeSessionId, data: { status: "stopped" } });
+      setActiveSessionId(null);
+    }
+  };
   const handleDone   = () => { setSessionState("idle"); setRemaining(duration * 60); setIntention(""); };
 
   useEffect(() => () => clearTimer(), [clearTimer]);
@@ -438,9 +477,18 @@ export default function FocusScreen() {
   const cardW    = (SCREEN_W - 40 - 9 * 3) / 4;
 
   const toggleApp = (name: string) => {
+    const entry = ALL_APPS.find((a) => a.name === name);
     setBlockedApps((prev) => {
-      const next = prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name];
+      const isBlocked = prev.includes(name);
+      const next = isBlocked ? prev.filter((a) => a !== name) : [...prev, name];
       if (next.length > 0 && errors.blockedApps) setErrors((e) => ({ ...e, blockedApps: false }));
+
+      const persisted = persistedBlockedApps?.find((a) => a.appName === name);
+      if (isBlocked) {
+        if (persisted) removeBlockedApp.mutate({ id: persisted.id });
+      } else {
+        addBlockedApp.mutate({ data: { appName: name, category: entry?.category } });
+      }
       return next;
     });
   };
