@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
@@ -32,6 +33,7 @@ import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
 import {
   type FocusSession,
+  getListFocusSessionsQueryKey,
   useListBlockedApps,
   useAddBlockedApp,
   useRemoveBlockedApp,
@@ -238,20 +240,32 @@ function BlockedInterstitial({ appName, onDismiss }: { appName: string; onDismis
   );
 }
 
-// ── Compute sessions completed in the last 7 days ─────────────────────────────
-function sessionsThisWeekCount(sessions: FocusSession[]): number {
+// ── Compute sessions + minutes in the last 7 days ─────────────────────────────
+function getWeeklyStats(sessions: FocusSession[]): { count: number; minutes: number } {
   const now = new Date();
   const cutoff = new Date(now);
   cutoff.setDate(now.getDate() - 6);
   cutoff.setHours(0, 0, 0, 0);
-  return sessions.filter(
+  const completed = sessions.filter(
     (s) => s.status === "completed" && new Date(s.startedAt) >= cutoff,
-  ).length;
+  );
+  return {
+    count:   completed.length,
+    minutes: completed.reduce((sum, s) => sum + s.plannedDurationMinutes, 0),
+  };
+}
+
+function fmtMinutes(m: number): string {
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h === 0) return `${rem}m`;
+  if (rem === 0) return `${h}h`;
+  return `${h}h ${rem}m`;
 }
 
 // ── Session complete overlay ───────────────────────────────────────────────────
-function SessionCompleteOverlay({ duration, intention, sessionsThisWeek, onDismiss }: {
-  duration: number; intention: string; sessionsThisWeek: number; onDismiss: () => void;
+function SessionCompleteOverlay({ duration, intention, weeklyMinutes, onDismiss }: {
+  duration: number; intention: string; weeklyMinutes: number; onDismiss: () => void;
 }) {
   const colors = useColors();
   return (
@@ -262,6 +276,10 @@ function SessionCompleteOverlay({ duration, intention, sessionsThisWeek, onDismi
     >
       <Text style={styles.completeEmoji}>🎉</Text>
       <Text style={[styles.completeTitle, { color: colors.onSurface }]}>Session Complete!</Text>
+      <View style={styles.completeStatusBadge}>
+        <MaterialIcons name="check-circle" size={14} color="#16a34a" />
+        <Text style={styles.completeStatusText}>Completed</Text>
+      </View>
       <Text style={[styles.completeSub, { color: colors.outline }]}>
         You focused for {duration} minutes{intention ? ` on "${intention}"` : ""}.
       </Text>
@@ -275,7 +293,9 @@ function SessionCompleteOverlay({ duration, intention, sessionsThisWeek, onDismi
           <Text style={[styles.completeStatLabel, { color: colors.outline }]}>Session</Text>
         </View>
         <View style={[styles.completeStat, { backgroundColor: colors.card }]}>
-          <Text style={[styles.completeStatVal, { color: "#16a34a" }]}>🔥 {sessionsThisWeek}</Text>
+          <Text style={[styles.completeStatVal, { color: "#16a34a" }]}>
+            🔥 {weeklyMinutes > 0 ? fmtMinutes(weeklyMinutes) : "0m"}
+          </Text>
           <Text style={[styles.completeStatLabel, { color: colors.outline }]}>This Week</Text>
         </View>
       </View>
@@ -395,6 +415,7 @@ export default function FocusScreen() {
   const topPad    = isWeb ? 67 : insets.top;
   const tabBarH   = isWeb ? 84 : 62 + insets.bottom;
 
+  const queryClient = useQueryClient();
   const { data: persistedBlockedApps } = useListBlockedApps();
   const { data: allSessions = [] }     = useListFocusSessions();
   const addBlockedApp    = useAddBlockedApp();
@@ -402,7 +423,11 @@ export default function FocusScreen() {
   const startFocusSession = useStartFocusSession();
   const endFocusSession   = useEndFocusSession();
 
-  const weeklyCount = sessionsThisWeekCount(allSessions);
+  const weeklyStats = getWeeklyStats(allSessions);
+  const invalidateSessions = useCallback(
+    () => { void queryClient.invalidateQueries({ queryKey: getListFocusSessionsQueryKey() }); },
+    [queryClient],
+  );
 
   const [duration,    setDuration]    = useState(30);
   const [intention,   setIntention]   = useState("");
@@ -453,7 +478,12 @@ export default function FocusScreen() {
           setSessionState("done");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           setActiveSessionId((id) => {
-            if (id) endFocusSession.mutate({ id, data: { status: "completed" } });
+            if (id) {
+              endFocusSession.mutate(
+                { id, data: { status: "completed" } },
+                { onSuccess: invalidateSessions },
+              );
+            }
             return null;
           });
           return 0;
@@ -461,7 +491,7 @@ export default function FocusScreen() {
         return prev - 1;
       });
     }, 1000);
-  }, [clearTimer, endFocusSession]);
+  }, [clearTimer, endFocusSession, invalidateSessions]);
 
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -509,7 +539,10 @@ export default function FocusScreen() {
     setSessionState("idle");
     setRemaining(duration * 60);
     if (activeSessionId) {
-      endFocusSession.mutate({ id: activeSessionId, data: { status: "stopped" } });
+      endFocusSession.mutate(
+        { id: activeSessionId, data: { status: "stopped" } },
+        { onSuccess: invalidateSessions },
+      );
       setActiveSessionId(null);
     }
   };
@@ -557,7 +590,7 @@ export default function FocusScreen() {
         <SessionCompleteOverlay
           duration={duration}
           intention={intention}
-          sessionsThisWeek={weeklyCount}
+          weeklyMinutes={weeklyStats.minutes}
           onDismiss={handleDone}
         />
       )}
@@ -595,6 +628,26 @@ export default function FocusScreen() {
               duration={duration}
             />
           </Animated.View>
+
+          {/* Weekly stats strip — only in idle state when there is data */}
+          {!isActive && weeklyStats.count > 0 && (
+            <Animated.View
+              entering={isWeb ? undefined : FadeInDown.delay(55).springify()}
+              style={[styles.weeklyStrip, { backgroundColor: colors.card }]}
+            >
+              <MaterialIcons name="local-fire-department" size={16} color={colors.primary} />
+              <Text style={[styles.weeklyStripText, { color: colors.onSurface }]}>
+                THIS WEEK
+              </Text>
+              <Text style={[styles.weeklyStripVal, { color: colors.primary }]}>
+                {weeklyStats.count} session{weeklyStats.count !== 1 ? "s" : ""}
+              </Text>
+              <Text style={[styles.weeklyStripDot, { color: colors.outline }]}>·</Text>
+              <Text style={[styles.weeklyStripVal, { color: colors.primary }]}>
+                {fmtMinutes(weeklyStats.minutes)}
+              </Text>
+            </Animated.View>
+          )}
 
           {/* Config — hidden while active */}
           {!isActive && (
@@ -1039,6 +1092,8 @@ const styles = StyleSheet.create({
   completeOverlay:     { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, zIndex: 100 },
   completeEmoji:       { fontSize: 64, marginBottom: 12 },
   completeTitle:       { fontSize: 28, fontFamily: "Inter_700Bold", marginBottom: 8, textAlign: "center" },
+  completeStatusBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#dcfce7", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginBottom: 12 },
+  completeStatusText:  { fontSize: 12, fontFamily: "Inter_700Bold", color: "#16a34a", letterSpacing: 0.5 },
   completeSub:         { fontSize: 15, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 },
   completeStats:       { flexDirection: "row", gap: 12, marginBottom: 32 },
   completeStat:        { flex: 1, alignItems: "center", paddingVertical: 16, borderRadius: 16 },
@@ -1046,4 +1101,9 @@ const styles = StyleSheet.create({
   completeStatLabel:   { fontSize: 11, fontFamily: "Inter_400Regular" },
   completeDoneBtn:     { height: 58, borderRadius: 29, paddingHorizontal: 48, alignItems: "center", justifyContent: "center" },
   completeDoneBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
+
+  weeklyStrip:     { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
+  weeklyStripText: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.5, flex: 1 },
+  weeklyStripVal:  { fontSize: 13, fontFamily: "Inter_700Bold" },
+  weeklyStripDot:  { fontSize: 13 },
 });
