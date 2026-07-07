@@ -1,7 +1,8 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Dimensions,
   Modal,
   Platform,
@@ -24,69 +25,141 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
+import {
+  type AppUsageEntry,
+  type AppUsageSummaryItem,
+  useGetAppUsageSummary,
+  useListAppUsageEntries,
+} from "@workspace/api-client-react";
 
 const isWeb    = Platform.OS === "web";
 const SCREEN_W = Dimensions.get("window").width;
 
 const DATE_RANGES = ["WEEK", "MONTH", "YEAR"];
 
-// ─── Chart data ───────────────────────────────────────────────────────────────
+// ─── Data helpers ─────────────────────────────────────────────────────────────
 
-const CHART_DATASETS: Record<string, number[]> = {
-  WEEK:  [1.2, 1.8, 3.7, 2.3, 2.1, 2.8, 1.6],
-  MONTH: [1.5, 2.2, 2.8, 1.9, 3.1, 2.4, 2.7, 1.8, 2.5, 3.0, 2.1, 1.7],
-  YEAR:  [2.1, 2.4, 2.8, 3.1, 2.6],
-};
+function formatMinutes(m: number): string {
+  const h   = Math.floor(m / 60);
+  const rem = m % 60;
+  if (h > 0 && rem > 0) return `${h}h ${rem}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
 
-const X_LABELS: Record<string, string[]> = {
-  WEEK:  ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-  MONTH: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
-  YEAR:  ["2021","2022","2023","2024","2025"],
-};
+function categoryIcon(
+  category?: string | null,
+): React.ComponentProps<typeof MaterialIcons>["name"] {
+  switch (category?.toLowerCase()) {
+    case "social":        return "group";
+    case "entertainment": return "movie";
+    case "video":         return "play-circle-filled";
+    case "productivity":  return "work";
+    case "games":         return "sports-esports";
+    case "news":          return "article";
+    default:              return "smartphone";
+  }
+}
 
-const DOT_CONFIG: Record<string, { peak: number; secondary: number }> = {
-  WEEK:  { peak: 2, secondary: 6 },
-  MONTH: { peak: 4, secondary: 9  },
-  YEAR:  { peak: 3, secondary: 0  },
-};
+function buildChartData(
+  entries: AppUsageEntry[],
+  range: string,
+): { data: number[]; labels: string[] } {
+  const now = new Date();
 
-// ─── Top Apps ─────────────────────────────────────────────────────────────────
+  if (range === "WEEK") {
+    const days: { label: string; date: string }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      days.push({
+        label: d.toLocaleDateString("en", { weekday: "short" }),
+        date:  d.toISOString().slice(0, 10),
+      });
+    }
+    const data = days.map(({ date }) => {
+      const total = entries
+        .filter(e => e.loggedAt.slice(0, 10) === date)
+        .reduce((s, e) => s + e.durationMinutes, 0);
+      return total / 60;
+    });
+    return { data, labels: days.map(d => d.label) };
+  }
 
-const TOP_APPS = [
-  { name: "Instagram", category: "Social",        time: "2h 15m", icon: "photo-camera"      as const },
-  { name: "TikTok",    category: "Entertainment", time: "1h 45m", icon: "music-video"       as const },
-  { name: "YouTube",   category: "Video",         time: "45m",    icon: "play-circle-filled" as const },
-  { name: "Twitter",   category: "Social",        time: "32m",    icon: "alternate-email"   as const },
-  { name: "Reddit",    category: "Social",        time: "24m",    icon: "forum"             as const },
-];
+  if (range === "MONTH") {
+    const year   = now.getFullYear();
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const data   = months.map((_, m) => {
+      const total = entries
+        .filter(e => {
+          const d = new Date(e.loggedAt);
+          return d.getFullYear() === year && d.getMonth() === m;
+        })
+        .reduce((s, e) => s + e.durationMinutes, 0);
+      return total / 60;
+    });
+    return { data, labels: months };
+  }
 
-// ─── Weekly Focus data ────────────────────────────────────────────────────────
+  // YEAR — last 5 years
+  const startYear = now.getFullYear() - 4;
+  const years     = Array.from({ length: 5 }, (_, i) => startYear + i);
+  const data      = years.map(y => {
+    const total = entries
+      .filter(e => new Date(e.loggedAt).getFullYear() === y)
+      .reduce((s, e) => s + e.durationMinutes, 0);
+    return total / 60;
+  });
+  return { data, labels: years.map(String) };
+}
 
-const WEEK_DATA = [
-  { day: "Mon", value: 0.6 },
-  { day: "Tue", value: 0.8 },
-  { day: "Wed", value: 0.5 },
-  { day: "Thu", value: 0.9 },
-  { day: "Fri", value: 0.7 },
-  { day: "Sat", value: 1.0, today: true },
-  { day: "Sun", value: 0.3 },
-];
+function computeKpis(entries: AppUsageEntry[], summary: AppUsageSummaryItem[]) {
+  if (entries.length === 0) {
+    return { peakTime: "—", dailyAvg: "—", topApp: "—" };
+  }
+
+  // Peak time by hour
+  const hourTotals: Record<number, number> = {};
+  for (const e of entries) {
+    const h = new Date(e.loggedAt).getHours();
+    hourTotals[h] = (hourTotals[h] ?? 0) + e.durationMinutes;
+  }
+  const peakHour = Number(
+    Object.entries(hourTotals).sort((a, b) => b[1] - a[1])[0][0],
+  );
+  const period  = peakHour >= 12 ? "PM" : "AM";
+  const h12     = peakHour % 12 || 12;
+  const peakTime = `${h12} ${period}`;
+
+  // Daily average
+  const uniqueDays = new Set(entries.map(e => e.loggedAt.slice(0, 10)));
+  const totalMin   = entries.reduce((s, e) => s + e.durationMinutes, 0);
+  const avgMin     = Math.round(totalMin / uniqueDays.size);
+  const dailyAvg   = formatMinutes(avgMin);
+
+  // Top app (summary already sorted by total)
+  const name     = summary[0]?.appName ?? "—";
+  const topApp   = name.length > 6 ? name.slice(0, 6) + "…" : name;
+
+  return { peakTime, dailyAvg, topApp };
+}
 
 // ─── Chart paths ──────────────────────────────────────────────────────────────
 
 function buildPaths(data: number[], w: number, h: number) {
-  const padL = 36, padR = 12, padT = 16, padB = 44; // padB 44 for x-axis labels
-  const max  = Math.max(...data) * 1.15;
+  const padL = 36, padR = 12, padT = 16, padB = 44;
+  const maxVal = Math.max(...data, 0.1) * 1.15;
 
-  const toX = (i: number) => padL + (i / (data.length - 1)) * (w - padL - padR);
-  const toY = (v: number) => padT + (1 - v / max) * (h - padT - padB);
+  const toX = (i: number) =>
+    padL + (data.length > 1 ? (i / (data.length - 1)) : 0.5) * (w - padL - padR);
+  const toY = (v: number) => padT + (1 - v / maxVal) * (h - padT - padB);
 
   let line = `M ${toX(0)} ${toY(data[0])}`;
   for (let i = 1; i < data.length; i++) {
     const cpx = (toX(i - 1) + toX(i)) / 2;
     line += ` C ${cpx} ${toY(data[i - 1])}, ${cpx} ${toY(data[i])}, ${toX(i)} ${toY(data[i])}`;
   }
-  const area = `${line} L ${toX(data.length - 1)} ${h - padB} L ${toX(0)} ${h - padB} Z`;
+  const area   = `${line} L ${toX(data.length - 1)} ${h - padB} L ${toX(0)} ${h - padB} Z`;
   const points = data.map((v, i) => ({ x: toX(i), y: toY(v) }));
 
   return { line, area, points, toX, padB };
@@ -94,22 +167,24 @@ function buildPaths(data: number[], w: number, h: number) {
 
 // ─── Activity Chart ───────────────────────────────────────────────────────────
 
-function ActivityChart({ range }: { range: string }) {
-  const data   = CHART_DATASETS[range] ?? CHART_DATASETS.WEEK;
-  const dotCfg = DOT_CONFIG[range] ?? DOT_CONFIG.WEEK;
-  const labels = X_LABELS[range] ?? [];
-
+function ActivityChart({ data, labels }: { data: number[]; labels: string[] }) {
   const chartW = SCREEN_W - 80;
   const chartH = 220;
 
   const { line, area, points, padB } = buildPaths(data, chartW, chartH);
 
-  const yLabels    = ["4h", "3h", "2h", "1h"];
+  const maxVal     = Math.max(...data, 0);
+  const yMax       = Math.ceil(maxVal * 1.15) || 4;
+  const yStep      = Math.ceil(yMax / 4) || 1;
+  const yLabels    = [yStep * 4, yStep * 3, yStep * 2, yStep].map(v => `${v}h`);
   const yPositions = [0.08, 0.31, 0.56, 0.80].map(p => chartH * p);
 
-  // x-label positions
   const padL = 36, padR = 12;
-  const labelX = (i: number) => padL + (i / (data.length - 1)) * (chartW - padL - padR);
+  const labelX = (i: number) =>
+    padL + (data.length > 1 ? (i / (data.length - 1)) : 0.5) * (chartW - padL - padR);
+
+  // Peak index (highest value)
+  const peakIdx = data.reduce((best, v, i) => (v > data[best] ? i : best), 0);
 
   return (
     <View style={{ height: chartH }}>
@@ -121,27 +196,19 @@ function ActivityChart({ range }: { range: string }) {
           </LinearGradient>
         </Defs>
 
-        {/* Y-axis labels */}
         {yLabels.map((label, i) => (
           <SvgText key={i} x={4} y={yPositions[i] + 4} fontSize={10} fill="#aaa" fontFamily="Inter_500Medium">
             {label}
           </SvgText>
         ))}
 
-        {/* Area + line */}
         <Path d={area} fill="url(#areaGrad)" />
         <Path d={line} fill="none" stroke="#3b82f6" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
 
-        {/* Peak dot — orange */}
-        {points[dotCfg.peak] && (
-          <Circle cx={points[dotCfg.peak].x} cy={points[dotCfg.peak].y} r={6} fill="#f97316" stroke="#fff" strokeWidth={2} />
-        )}
-        {/* Secondary dot — green */}
-        {points[dotCfg.secondary] && (
-          <Circle cx={points[dotCfg.secondary].x} cy={points[dotCfg.secondary].y} r={6} fill="#22c55e" stroke="#fff" strokeWidth={2} />
+        {points[peakIdx] && data[peakIdx] > 0 && (
+          <Circle cx={points[peakIdx].x} cy={points[peakIdx].y} r={6} fill="#f97316" stroke="#fff" strokeWidth={2} />
         )}
 
-        {/* X-axis labels */}
         {labels.map((label, i) => (
           <SvgText
             key={i}
@@ -162,7 +229,15 @@ function ActivityChart({ range }: { range: string }) {
 
 // ─── Top Apps Modal ───────────────────────────────────────────────────────────
 
-function TopAppsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function TopAppsModal({
+  visible,
+  onClose,
+  apps,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  apps: AppUsageSummaryItem[];
+}) {
   const colors  = useColors();
   const scale   = useSharedValue(0.88);
   const opacity = useSharedValue(0);
@@ -197,50 +272,38 @@ function TopAppsModal({ visible, onClose }: { visible: boolean; onClose: () => v
               <MaterialIcons name="close" size={20} color={colors.outline} />
             </TouchableOpacity>
           </View>
-          {TOP_APPS.map((app, i) => (
-            <View
-              key={app.name}
-              style={[
-                styles.topAppRow,
-                i < TOP_APPS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
-              ]}
-            >
-              <View style={[styles.topAppIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-                <MaterialIcons name={app.icon} size={20} color={colors.onSurface} />
+
+          {apps.length === 0 ? (
+            <Text style={[styles.emptyText, { color: colors.outline }]}>
+              No app usage logged yet.
+            </Text>
+          ) : (
+            apps.map((app, i) => (
+              <View
+                key={app.appName}
+                style={[
+                  styles.topAppRow,
+                  i < apps.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
+                ]}
+              >
+                <View style={[styles.topAppIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
+                  <MaterialIcons name={categoryIcon(app.category)} size={20} color={colors.onSurface} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.topAppName, { color: colors.onSurface }]}>{app.appName}</Text>
+                  {app.category ? (
+                    <Text style={[styles.topAppCategory, { color: colors.outline }]}>{app.category}</Text>
+                  ) : null}
+                </View>
+                <Text style={[styles.topAppTime, { color: colors.onSurface }]}>
+                  {formatMinutes(app.totalMinutes)}
+                </Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.topAppName, { color: colors.onSurface }]}>{app.name}</Text>
-                <Text style={[styles.topAppCategory, { color: colors.outline }]}>{app.category}</Text>
-              </View>
-              <Text style={[styles.topAppTime, { color: colors.onSurface }]}>{app.time}</Text>
-            </View>
-          ))}
+            ))
+          )}
         </Animated.View>
       </View>
     </Modal>
-  );
-}
-
-// ─── Weekly Focus Bar ─────────────────────────────────────────────────────────
-
-function WeekBar({ data, index }: { data: typeof WEEK_DATA[0]; index: number }) {
-  const colors = useColors();
-  const height = useSharedValue(0);
-  useEffect(() => {
-    height.value = withDelay(350 + index * 60, withSpring(data.value * 100, { damping: 18 }));
-  }, []);
-  const barStyle = useAnimatedStyle(() => ({ height: `${height.value}%` as any }));
-  return (
-    <View style={styles.weekBarItem}>
-      <View style={styles.weekBarOuter}>
-        <Animated.View style={[
-          styles.weekBarFill,
-          { backgroundColor: data.today ? colors.primary : colors.surfaceContainerHighest, borderRadius: 4 },
-          barStyle,
-        ]} />
-      </View>
-      <Text style={[styles.weekDay, { color: data.today ? colors.onSurface : colors.outline }]}>{data.day}</Text>
-    </View>
   );
 }
 
@@ -268,19 +331,54 @@ function KpiCard({ icon, label, value }: {
   );
 }
 
+// ─── Empty State ──────────────────────────────────────────────────────────────
+
+function EmptyChart({ colors }: { colors: ReturnType<typeof useColors> }) {
+  return (
+    <View style={styles.emptyChart}>
+      <MaterialIcons name="bar-chart" size={36} color={colors.outline} />
+      <Text style={[styles.emptyText, { color: colors.outline }]}>
+        No usage logged yet.{"\n"}Use "Log App Usage" on the Home tab to get started.
+      </Text>
+    </View>
+  );
+}
+
 // ─── Analytics Screen ─────────────────────────────────────────────────────────
 
 export default function AnalyticsScreen() {
-  const colors       = useColors();
-  const insets       = useSafeAreaInsets();
-  const topPad       = isWeb ? 24 : insets.top;
-  const [activeRange,  setActiveRange]  = useState("WEEK");
-  const [showTopApps,  setShowTopApps]  = useState(false);
+  const colors      = useColors();
+  const insets      = useSafeAreaInsets();
+  const topPad      = isWeb ? 24 : insets.top;
+  const [activeRange, setActiveRange] = useState("WEEK");
+  const [showTopApps, setShowTopApps] = useState(false);
+
+  const { data: entries = [], isLoading: loadingEntries } = useListAppUsageEntries();
+  const { data: summary = [], isLoading: loadingSummary } = useGetAppUsageSummary();
+
+  const isLoading = loadingEntries || loadingSummary;
+  const hasData   = entries.length > 0;
+
+  const { data: chartData, labels: chartLabels } = useMemo(
+    () => buildChartData(entries, activeRange),
+    [entries, activeRange],
+  );
+
+  const hasChartData = chartData.some(v => v > 0);
+
+  const { peakTime, dailyAvg, topApp } = useMemo(
+    () => computeKpis(entries, summary),
+    [entries, summary],
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <AnimatedBackground />
-      <TopAppsModal visible={showTopApps} onClose={() => setShowTopApps(false)} />
+      <TopAppsModal
+        visible={showTopApps}
+        onClose={() => setShowTopApps(false)}
+        apps={summary}
+      />
 
       <ScrollView
         style={styles.scroll}
@@ -296,71 +394,131 @@ export default function AnalyticsScreen() {
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>ANALYTICS</Text>
         </Animated.View>
 
-        {/* Range tabs */}
-        <Animated.View
-          entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
-          style={[styles.rangeBar, { backgroundColor: colors.surfaceContainerHigh }]}
-        >
-          {DATE_RANGES.map((r) => (
-            <TouchableOpacity
-              key={r}
-              style={[styles.rangeBtn, activeRange === r && { backgroundColor: colors.primary }]}
-              onPress={() => setActiveRange(r)}
-              activeOpacity={0.8}
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator color={colors.primary} size="large" />
+          </View>
+        ) : (
+          <>
+            {/* Range tabs */}
+            <Animated.View
+              entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
+              style={[styles.rangeBar, { backgroundColor: colors.surfaceContainerHigh }]}
             >
-              <Text style={[
-                styles.rangeBtnText,
-                {
-                  color: activeRange === r ? "#fff" : colors.outline,
-                  fontFamily: activeRange === r ? "Inter_700Bold" : "Inter_500Medium",
-                },
-              ]}>
-                {r}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </Animated.View>
+              {DATE_RANGES.map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  style={[styles.rangeBtn, activeRange === r && { backgroundColor: colors.primary }]}
+                  onPress={() => setActiveRange(r)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[
+                    styles.rangeBtnText,
+                    {
+                      color: activeRange === r ? "#fff" : colors.outline,
+                      fontFamily: activeRange === r ? "Inter_700Bold" : "Inter_500Medium",
+                    },
+                  ]}>
+                    {r}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </Animated.View>
 
-        {/* 3-column KPIs */}
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(180).springify()} style={styles.kpiRow}>
-          <KpiCard icon="alarm"  label="PEAK TIME"  value="8 PM"    />
-          <KpiCard icon="timer"  label="DAILY AVG"  value="2h 40m"  />
-          <KpiCard icon="apps"   label="TOP APP"    value="INSTAG…" />
-        </Animated.View>
+            {/* 3-column KPIs */}
+            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(180).springify()} style={styles.kpiRow}>
+              <KpiCard icon="alarm"  label="PEAK TIME"  value={peakTime} />
+              <KpiCard icon="timer"  label="DAILY AVG"  value={dailyAvg} />
+              <KpiCard icon="apps"   label="TOP APP"    value={hasData ? topApp : "—"} />
+            </Animated.View>
 
-        {/* Activity chart */}
-        <Animated.View
-          entering={isWeb ? undefined : FadeInDown.delay(240).springify()}
-          style={[styles.chartCard, { backgroundColor: colors.card }]}
-        >
-          <View style={styles.chartHeader}>
-            <View>
-              <Text style={[styles.chartSubLabel, { color: colors.outline }]}>USAGE TRENDS</Text>
-              <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Activity Flow</Text>
-            </View>
-            <View style={[styles.yearlyBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
-              <Text style={[styles.yearlyBadgeText, { color: colors.onSurface }]}>{activeRange}</Text>
-            </View>
-          </View>
-          <ActivityChart range={activeRange} />
-        </Animated.View>
+            {/* Activity chart */}
+            <Animated.View
+              entering={isWeb ? undefined : FadeInDown.delay(240).springify()}
+              style={[styles.chartCard, { backgroundColor: colors.card }]}
+            >
+              <View style={styles.chartHeader}>
+                <View>
+                  <Text style={[styles.chartSubLabel, { color: colors.outline }]}>USAGE TRENDS</Text>
+                  <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Activity Flow</Text>
+                </View>
+                <View style={[styles.yearlyBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
+                  <Text style={[styles.yearlyBadgeText, { color: colors.onSurface }]}>{activeRange}</Text>
+                </View>
+              </View>
 
-        {/* Weekly Focus */}
-        <Animated.View
-          entering={isWeb ? undefined : FadeInDown.delay(360).springify()}
-          style={[styles.chartCard, { backgroundColor: colors.card }]}
-        >
-          <View style={styles.chartHeader}>
-            <View>
-              <Text style={[styles.chartSubLabel, { color: colors.outline }]}>THIS WEEK</Text>
-              <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Focus Time</Text>
-            </View>
-            <Text style={[styles.weeklyTotal, { color: colors.onSurface }]}>8h 20m</Text>
-          </View>
-          <View style={styles.weekBars}>
-            {WEEK_DATA.map((d, i) => <WeekBar key={i} data={d} index={i} />)}
-          </View>
-        </Animated.View>
+              {hasChartData ? (
+                <ActivityChart data={chartData} labels={chartLabels} />
+              ) : (
+                <EmptyChart colors={colors} />
+              )}
+            </Animated.View>
+
+            {/* Per-app breakdown card */}
+            {summary.length > 0 && (
+              <Animated.View
+                entering={isWeb ? undefined : FadeInDown.delay(300).springify()}
+                style={[styles.chartCard, { backgroundColor: colors.card }]}
+              >
+                <View style={styles.chartHeader}>
+                  <View>
+                    <Text style={[styles.chartSubLabel, { color: colors.outline }]}>BREAKDOWN</Text>
+                    <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Top Apps</Text>
+                  </View>
+                  {summary.length > 3 && (
+                    <TouchableOpacity
+                      style={[styles.yearlyBadge, { backgroundColor: colors.surfaceContainerHigh }]}
+                      onPress={() => setShowTopApps(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.yearlyBadgeText, { color: colors.onSurface }]}>See all</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {summary.slice(0, 5).map((app, i) => (
+                  <View
+                    key={app.appName}
+                    style={[
+                      styles.topAppRow,
+                      i < Math.min(summary.length, 5) - 1 && {
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.surfaceContainerHigh,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.topAppIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
+                      <MaterialIcons name={categoryIcon(app.category)} size={20} color={colors.onSurface} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.topAppName, { color: colors.onSurface }]}>{app.appName}</Text>
+                      {app.category ? (
+                        <Text style={[styles.topAppCategory, { color: colors.outline }]}>{app.category}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={[styles.topAppTime, { color: colors.onSurface }]}>
+                      {formatMinutes(app.totalMinutes)}
+                    </Text>
+                  </View>
+                ))}
+              </Animated.View>
+            )}
+
+            {/* Empty state when no data at all */}
+            {!hasData && (
+              <Animated.View
+                entering={isWeb ? undefined : FadeInDown.delay(360).springify()}
+                style={[styles.chartCard, styles.emptyCard, { backgroundColor: colors.card }]}
+              >
+                <MaterialIcons name="smartphone" size={40} color={colors.outline} />
+                <Text style={[styles.emptyHeading, { color: colors.onSurface }]}>No screen time yet</Text>
+                <Text style={[styles.emptyText, { color: colors.outline }]}>
+                  Log your first app session from the Home tab to see your usage data here.
+                </Text>
+              </Animated.View>
+            )}
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -376,19 +534,11 @@ const styles = StyleSheet.create({
   headerRow:  { flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 4 },
   headerTitle:{ fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: 1 },
 
+  loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80 },
+
   rangeBar: { flexDirection: "row", borderRadius: 40, padding: 4, gap: 4 },
   rangeBtn: { flex: 1, paddingVertical: 10, borderRadius: 36, alignItems: "center" },
   rangeBtnText: { fontSize: 13, letterSpacing: 0.8 },
-
-  totalCard: { borderRadius: 28, padding: 24, gap: 12 },
-  totalLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 1.5, color: "#9ca3af" },
-  totalTimeRow: { flexDirection: "row", alignItems: "flex-end", gap: 2 },
-  totalHours: { fontSize: 72, fontFamily: "Inter_700Bold", color: "#fff", lineHeight: 78, letterSpacing: -2 },
-  totalHUnit: { fontSize: 36, fontFamily: "Inter_700Bold", color: "#fff", marginBottom: 8, letterSpacing: -1 },
-  totalMins:  { fontSize: 72, fontFamily: "Inter_700Bold", color: "#fff", lineHeight: 78, letterSpacing: -2, marginLeft: 8 },
-  totalMUnit: { fontSize: 36, fontFamily: "Inter_700Bold", color: "#fff", marginBottom: 8, letterSpacing: -1 },
-  totalTrendRow:  { flexDirection: "row", alignItems: "center" },
-  totalTrendText: { fontSize: 14, fontFamily: "Inter_400Regular", color: "#9ca3af" },
 
   kpiRow:  { flexDirection: "row", gap: 10 },
   kpiCard: {
@@ -410,26 +560,20 @@ const styles = StyleSheet.create({
   yearlyBadge:    { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   yearlyBadgeText:{ fontSize: 12, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5 },
 
-  // Top Apps card
-  topAppsCard: {
-    borderRadius: 28, padding: 20, gap: 0,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04, shadowRadius: 24, elevation: 2,
-  },
   topAppRow:      { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 },
   topAppIcon:     { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   topAppName:     { fontSize: 14, fontFamily: "Inter_500Medium" },
   topAppCategory: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
   topAppTime:     { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  tapToExpand:    { fontSize: 11, fontFamily: "Inter_500Medium", textAlign: "center", marginTop: 8 },
 
-  // Weekly focus bars
-  weeklyTotal: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  weekBars:    { flexDirection: "row", justifyContent: "space-between", height: 80, alignItems: "flex-end" },
-  weekBarItem: { alignItems: "center", gap: 4, flex: 1 },
-  weekBarOuter:{ flex: 1, width: "60%", justifyContent: "flex-end" },
-  weekBarFill: { width: "100%" },
-  weekDay:     { fontSize: 11, fontFamily: "Inter_500Medium" },
+  emptyChart: {
+    height: 160, alignItems: "center", justifyContent: "center", gap: 12,
+  },
+  emptyCard: {
+    alignItems: "center", gap: 12, paddingVertical: 32,
+  },
+  emptyHeading: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  emptyText:    { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20 },
 
   // Top Apps Modal
   modalOuter: { flex: 1, alignItems: "center", justifyContent: "center" },
