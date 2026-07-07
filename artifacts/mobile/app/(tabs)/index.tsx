@@ -566,9 +566,17 @@ export default function HomeScreen() {
   const timeOfDay = hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening";
 
   const pendingGoals = goals.filter(g => g.status === "pending").length;
+  const doneGoals    = goals.filter(g => g.status === "done").length;
   const totalScreenMinutes = appUsage.reduce((sum, a) => sum + a.totalMinutes, 0);
   const maxAppMinutes = Math.max(1, ...appUsage.map(a => a.totalMinutes));
   const topApps = [...appUsage].sort((a, b) => b.totalMinutes - a.totalMinutes).slice(0, 4);
+
+  const doomScore = appUsage.length === 0 && goals.length === 0
+    ? 0
+    : Math.min(100, Math.round(
+        (totalScreenMinutes / 480) * 70 +
+        (goals.length > 0 ? (pendingGoals / goals.length) * 30 : 0),
+      ));
 
   return (
     <View style={[styles.root, { backgroundColor: "#f5f5f5" }]}>
@@ -636,16 +644,16 @@ export default function HomeScreen() {
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>DOOMSCORE</Text>
             <CounterNumber
-              target={68}
+              target={doomScore}
               delay={200}
               style={styles.statNumber}
             />
             <View style={styles.doomRow}>
-              <Text style={styles.doomBetter}>BETTER</Text>
-              <Text style={styles.doomPts}>+4 PTS</Text>
+              <Text style={styles.doomBetter}>{doomScore === 0 ? "GET STARTED" : doomScore < 40 ? "GREAT" : doomScore < 70 ? "MODERATE" : "HIGH"}</Text>
+              <Text style={styles.doomPts}>{doneGoals > 0 ? `${doneGoals} DONE` : "TODAY"}</Text>
             </View>
             <AnimatedProgressBar
-              percent={0.68}
+              percent={doomScore / 100}
               delay={350}
               height={5}
               radius={3}
