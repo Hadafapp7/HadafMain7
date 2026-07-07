@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as AuthSession from "expo-auth-session";
-import { useSSO } from "@clerk/expo";
+import { useOAuth } from "@clerk/expo";
 import { useSignIn } from "@clerk/expo/legacy";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useState } from "react";
@@ -34,7 +34,7 @@ export default function SignInScreen() {
   useWarmUpBrowser();
   const insets = useSafeAreaInsets();
   const colors = useColors();
-  const { startSSOFlow } = useSSO();
+  const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
   const { signIn } = useSignIn();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,8 +84,7 @@ export default function SignInScreen() {
         return;
       }
 
-      const { createdSessionId, setActive } = await startSSOFlow({
-        strategy: "oauth_google",
+      const { createdSessionId, setActive } = await startOAuthFlow({
         redirectUrl: AuthSession.makeRedirectUri(),
       });
 
@@ -99,7 +98,7 @@ export default function SignInScreen() {
     } finally {
       if (Platform.OS !== "web") setLoading(false);
     }
-  }, [startSSOFlow, signIn]);
+  }, [startOAuthFlow, signIn]);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;

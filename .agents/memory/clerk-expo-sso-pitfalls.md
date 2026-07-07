@@ -3,19 +3,31 @@ name: Clerk Expo SSO pitfalls (native crash + web hang)
 description: Two distinct @clerk/expo bugs seen in an Expo Router app - Expo Go native-module crash on Android, and a web Google SSO flow that hangs forever on a loading spinner.
 ---
 
-## Native module crash in Expo Go (Android)
+## Native module crash in Expo Go (`Cannot find native module 'ClerkExpo'`)
 
-`@clerk/expo` (confirmed on 3.6.5 and 3.7.0) does an unconditional top-level
-`require("../specs/NativeClerkModule")` in `dist/utils/native-module.js`. On
-Android this synchronously calls `expo.requireNativeModule("ClerkExpo")`,
-which does not exist in Expo Go (only in a custom dev client) and throws
-outside any try/catch, crashing the entire Metro bundle for that platform.
+`@clerk/expo` v3+ ships `useSSO`, which uses a native module (`ClerkExpo`)
+that only exists in a **custom dev build** — not in Expo Go. Importing
+`useSSO` crashes the entire bundle at load time in Expo Go.
 
 **Why:** Expo Go can't load ahead-of-time native modules that weren't part of
-its prebuilt binary; `@clerk/expo` assumes a dev client is always available.
+its prebuilt binary; `useSSO` in `@clerk/expo` v3 unconditionally requires
+`ClerkExpo` on module load.
 
-**How to apply:** Patch the package (`pnpm patch @clerk/expo@<version>`) to
-wrap that `require` in try/catch, falling back to `{ default: null }`. See
+**Expo Go-compatible fix:** Replace `useSSO` with `useOAuth` from `@clerk/expo`
+(the deprecated but no-native-module OAuth hook), combined with `useSignIn`
+from `@clerk/expo/legacy`. `useOAuth` is NOT in `@clerk/expo/legacy` — it
+lives in the main `@clerk/expo` export.
+
+```ts
+import { useOAuth } from "@clerk/expo";               // no native module
+import { useSignIn } from "@clerk/expo/legacy";        // legacy SignInResource
+
+const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
+// call: await startOAuthFlow({ redirectUrl: AuthSession.makeRedirectUri() })
+```
+
+**Alternative (dev build only):** Patch the package (`pnpm patch @clerk/expo@<version>`) to
+wrap the native-module require in try/catch, falling back to `{ default: null }`. See
 `pnpm-patch-reliability.md` for how to make sure the patch actually lands on
 disk after `pnpm patch-commit`.
 
