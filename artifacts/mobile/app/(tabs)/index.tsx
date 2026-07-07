@@ -29,11 +29,13 @@ import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
 import {
   type AppUsageSummaryItem,
+  type FocusSession,
   type Goal,
   useCreateAppUsageEntry,
   useGetAppUsageSummary,
   useGetMe,
   useGetUserSettings,
+  useListFocusSessions,
   useListGoals,
   useUpdateUserSettings,
 } from "@workspace/api-client-react";
@@ -54,6 +56,30 @@ const TODAY_MONTH = 4;
 const TODAY_DAY   = 31;
 
 type DayState = "complete" | "missed" | "partial";
+
+// ─── Streak helper ────────────────────────────────────────────────────────────
+
+function computeStreak(sessions: FocusSession[]): number {
+  const completedDays = new Set<string>();
+  for (const s of sessions) {
+    if (s.status === "completed") completedDays.add(s.startedAt.slice(0, 10));
+  }
+  let streak = 0;
+  const checkDate = new Date();
+  for (let i = 0; i < 366; i++) {
+    const dateStr = checkDate.toISOString().slice(0, 10);
+    if (completedDays.has(dateStr)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else if (i === 0) {
+      // today has no session yet — don't break streak, check yesterday
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
 
 // ─── Calendar helpers ─────────────────────────────────────────────────────────
 
@@ -535,8 +561,11 @@ export default function HomeScreen() {
   const { data: goals = [] } = useListGoals();
   const { data: appUsage = [], refetch: refetchAppUsage } = useGetAppUsageSummary();
   const { data: settings } = useGetUserSettings();
+  const { data: focusSessions = [] } = useListFocusSessions();
   const updateSettings = useUpdateUserSettings();
   const createUsageEntry = useCreateAppUsageEntry();
+
+  const streak = computeStreak(focusSessions);
 
   const handleOpenLogUsage = () => {
     Haptics.selectionAsync();
@@ -711,7 +740,7 @@ export default function HomeScreen() {
             iconColor="#d84315"
             icon="local-fire-department"
             label1="STREAKS"
-            badgeText="7 DAYS"
+            badgeText={streak > 0 ? `${streak} ${streak === 1 ? "DAY" : "DAYS"}` : undefined}
             badgeBg="#d84315"
           />
         </Animated.View>

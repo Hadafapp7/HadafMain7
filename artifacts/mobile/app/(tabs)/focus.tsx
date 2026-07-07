@@ -31,11 +31,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
 import {
+  type FocusSession,
   useListBlockedApps,
   useAddBlockedApp,
   useRemoveBlockedApp,
   useStartFocusSession,
   useEndFocusSession,
+  useListFocusSessions,
 } from "@workspace/api-client-react";
 
 const isWeb    = Platform.OS === "web";
@@ -236,9 +238,20 @@ function BlockedInterstitial({ appName, onDismiss }: { appName: string; onDismis
   );
 }
 
+// ── Compute sessions completed in the last 7 days ─────────────────────────────
+function sessionsThisWeekCount(sessions: FocusSession[]): number {
+  const now = new Date();
+  const cutoff = new Date(now);
+  cutoff.setDate(now.getDate() - 6);
+  cutoff.setHours(0, 0, 0, 0);
+  return sessions.filter(
+    (s) => s.status === "completed" && new Date(s.startedAt) >= cutoff,
+  ).length;
+}
+
 // ── Session complete overlay ───────────────────────────────────────────────────
-function SessionCompleteOverlay({ duration, intention, onDismiss }: {
-  duration: number; intention: string; onDismiss: () => void;
+function SessionCompleteOverlay({ duration, intention, sessionsThisWeek, onDismiss }: {
+  duration: number; intention: string; sessionsThisWeek: number; onDismiss: () => void;
 }) {
   const colors = useColors();
   return (
@@ -262,7 +275,7 @@ function SessionCompleteOverlay({ duration, intention, onDismiss }: {
           <Text style={[styles.completeStatLabel, { color: colors.outline }]}>Session</Text>
         </View>
         <View style={[styles.completeStat, { backgroundColor: colors.card }]}>
-          <Text style={[styles.completeStatVal, { color: "#16a34a" }]}>🔥 13</Text>
+          <Text style={[styles.completeStatVal, { color: "#16a34a" }]}>🔥 {sessionsThisWeek}</Text>
           <Text style={[styles.completeStatLabel, { color: colors.outline }]}>This Week</Text>
         </View>
       </View>
@@ -383,10 +396,13 @@ export default function FocusScreen() {
   const tabBarH   = isWeb ? 84 : 62 + insets.bottom;
 
   const { data: persistedBlockedApps } = useListBlockedApps();
+  const { data: allSessions = [] }     = useListFocusSessions();
   const addBlockedApp    = useAddBlockedApp();
   const removeBlockedApp = useRemoveBlockedApp();
   const startFocusSession = useStartFocusSession();
   const endFocusSession   = useEndFocusSession();
+
+  const weeklyCount = sessionsThisWeekCount(allSessions);
 
   const [duration,    setDuration]    = useState(30);
   const [intention,   setIntention]   = useState("");
@@ -538,7 +554,12 @@ export default function FocusScreen() {
       <AnimatedBackground />
 
       {sessionState === "done" && (
-        <SessionCompleteOverlay duration={duration} intention={intention} onDismiss={handleDone} />
+        <SessionCompleteOverlay
+          duration={duration}
+          intention={intention}
+          sessionsThisWeek={weeklyCount}
+          onDismiss={handleDone}
+        />
       )}
 
       <ConfirmModal
