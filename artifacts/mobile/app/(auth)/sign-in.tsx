@@ -84,14 +84,18 @@ export default function SignInScreen() {
         return;
       }
 
-      const { createdSessionId, setActive } = await startOAuthFlow({
+      const { createdSessionId, setActive, signIn: oauthSignIn } = await startOAuthFlow({
         redirectUrl: AuthSession.makeRedirectUri(),
       });
 
-      if (createdSessionId && setActive) {
-        await setActive({ session: createdSessionId });
+      const sessionId = createdSessionId || oauthSignIn?.createdSessionId || "";
+
+      if (sessionId && setActive) {
+        await setActive({ session: sessionId });
+      } else if (oauthSignIn?.status === "needs_second_factor") {
+        setError("Two-factor authentication is not yet supported in-app. Please disable 2FA on your Google account or use a different sign-in method.");
       } else {
-        setError("Sign-in requires additional steps. Please try again.");
+        setError("Something went wrong signing in. Please try again.");
       }
     } catch {
       setError("Something went wrong signing in. Please try again.");
