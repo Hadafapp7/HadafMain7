@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import * as AuthSession from "expo-auth-session";
 import { useOAuth } from "@clerk/expo";
 import { useSignIn } from "@clerk/expo/legacy";
+import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -84,7 +84,7 @@ export default function SignInScreen() {
         return;
       }
 
-      const redirectUrl = AuthSession.makeRedirectUri({ scheme: "mobile" });
+      const redirectUrl = Linking.createURL("/oauth-native-callback");
       const { createdSessionId, setActive, signIn: oauthSignIn } = await startOAuthFlow({
         redirectUrl,
       });
