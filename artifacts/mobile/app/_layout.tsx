@@ -39,6 +39,7 @@ function RootLayoutNav() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="oauth-native-callback" options={{ headerShown: false }} />
       <Stack.Protected guard={isSignedIn}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack.Protected>
