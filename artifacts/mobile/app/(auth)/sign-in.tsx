@@ -84,8 +84,9 @@ export default function SignInScreen() {
         return;
       }
 
+      const redirectUrl = AuthSession.makeRedirectUri({ scheme: "mobile" });
       const { createdSessionId, setActive, signIn: oauthSignIn } = await startOAuthFlow({
-        redirectUrl: AuthSession.makeRedirectUri(),
+        redirectUrl,
       });
 
       const sessionId = createdSessionId || oauthSignIn?.createdSessionId || "";
@@ -95,10 +96,14 @@ export default function SignInScreen() {
       } else if (oauthSignIn?.status === "needs_second_factor") {
         setError("Two-factor authentication is not yet supported in-app. Please disable 2FA on your Google account or use a different sign-in method.");
       } else {
-        setError("Something went wrong signing in. Please try again.");
+        // Surface the actual Clerk status so we can debug
+        const statusMsg = oauthSignIn?.status ?? "unknown";
+        setError(`Sign-in incomplete (status: ${statusMsg}). Please try again.`);
       }
-    } catch {
-      setError("Something went wrong signing in. Please try again.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[sign-in] OAuth error:", msg);
+      setError(`Sign-in error: ${msg}`);
     } finally {
       if (Platform.OS !== "web") setLoading(false);
     }
