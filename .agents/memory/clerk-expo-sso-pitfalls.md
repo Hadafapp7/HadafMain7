@@ -13,23 +13,21 @@ that only exists in a **custom dev build** — not in Expo Go. Importing
 its prebuilt binary; `useSSO` in `@clerk/expo` v3 unconditionally requires
 `ClerkExpo` on module load.
 
-**Expo Go-compatible fix:** Replace `useSSO` with `useOAuth` from `@clerk/expo`
-(the deprecated but no-native-module OAuth hook), combined with `useSignIn`
-from `@clerk/expo/legacy`. `useOAuth` is NOT in `@clerk/expo/legacy` — it
-lives in the main `@clerk/expo` export.
+**Real root cause:** `NativeClerkModule.android.js` uses `expo.requireNativeModule`
+(hard throw), while `NativeClerkModule.js` uses `expo.requireOptionalNativeModule`
+(returns null). Metro on Android *always* prefers `.android.js` over `.js`, so
+the hard-crash version always loads on Android in Expo Go. Swapping hooks
+(`useSSO` → `useOAuth`) does NOT help — the crash is at package init time.
 
-```ts
-import { useOAuth } from "@clerk/expo";               // no native module
-import { useSignIn } from "@clerk/expo/legacy";        // legacy SignInResource
+**Correct fix (two-part patch to `@clerk/expo`):**
+1. `dist/specs/NativeClerkModule.android.js` — change `requireNativeModule` → `requireOptionalNativeModule`
+2. `dist/utils/native-module.js` — wrap the `require("../specs/NativeClerkModule")` in try/catch fallback
 
-const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
-// call: await startOAuthFlow({ redirectUrl: AuthSession.makeRedirectUri() })
-```
-
-**Alternative (dev build only):** Patch the package (`pnpm patch @clerk/expo@<version>`) to
-wrap the native-module require in try/catch, falling back to `{ default: null }`. See
-`pnpm-patch-reliability.md` for how to make sure the patch actually lands on
-disk after `pnpm patch-commit`.
+**Patch registration:** Add both diffs to `patches/@clerk__expo@<version>.patch`.
+Also apply the changes directly to node_modules (the patched folder under
+`.pnpm/@clerk+expo@<version>_patch_hash=*/node_modules/...`) because pnpm may
+not reapply the patch if it thinks the hash already matches. See
+`pnpm-patch-reliability.md` for context.
 
 ## Web Google SSO hangs on a loading spinner forever
 
