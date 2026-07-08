@@ -1,6 +1,5 @@
 import { useSignIn, useSignUp } from "@clerk/expo/legacy";
-import * as Linking from "expo-linking";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
@@ -14,26 +13,24 @@ export default function OAuthNativeCallback() {
   const handled = useRef(false);
   const [statusMsg, setStatusMsg] = useState("Finishing sign-in…");
 
+  const params = useLocalSearchParams<{ rotating_token_nonce?: string }>();
+  const nonce = params.rotating_token_nonce ?? "";
+
   useEffect(() => {
+    if (!nonce) return;
     if (!signInLoaded || !signUpLoaded) return;
     if (!signIn || !setActive) return;
     if (handled.current) return;
+    handled.current = true;
 
-    const processUrl = async (rawUrl: string | null) => {
-      if (!rawUrl) return;
+    console.log(
+      "[oauth-native-callback] signIn.id:",
+      (signIn as unknown as Record<string, unknown>).id ?? "NO_ID",
+      "nonce prefix:",
+      nonce.slice(0, 8),
+    );
 
-      let nonce: string | undefined;
-      try {
-        const parsed = new URL(rawUrl);
-        nonce = parsed.searchParams.get("rotating_token_nonce") ?? undefined;
-      } catch {
-        return;
-      }
-
-      if (!nonce) return;
-
-      handled.current = true;
-
+    (async () => {
       try {
         await signIn.reload({ rotatingTokenNonce: nonce });
 
@@ -57,22 +54,19 @@ export default function OAuthNativeCallback() {
         router.replace("/(auth)/sign-in" as never);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error("[oauth-native-callback] reload failed:", msg, "nonce length:", nonce?.length);
+        console.error(
+          "[oauth-native-callback] reload failed:",
+          msg,
+          "| signIn.id:",
+          (signIn as unknown as Record<string, unknown>).id ?? "NO_ID",
+          "| nonce length:",
+          nonce.length,
+        );
         setStatusMsg(`Error: ${msg}`);
-        setTimeout(() => router.replace("/(auth)/sign-in" as never), 2000);
+        setTimeout(() => router.replace("/(auth)/sign-in" as never), 3000);
       }
-    };
-
-    Linking.getInitialURL().then((url) => {
-      processUrl(url);
-    });
-
-    const sub = Linking.addEventListener("url", ({ url }) => {
-      if (!handled.current) processUrl(url);
-    });
-
-    return () => sub.remove();
-  }, [signInLoaded, signUpLoaded, signIn, setActive]);
+    })();
+  }, [nonce, signInLoaded, signUpLoaded]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -84,5 +78,10 @@ export default function OAuthNativeCallback() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
-  label: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 24 },
+  label: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    paddingHorizontal: 24,
+  },
 });
