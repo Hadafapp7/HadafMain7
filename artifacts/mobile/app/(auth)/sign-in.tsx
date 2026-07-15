@@ -69,8 +69,9 @@ export default function SignInScreen() {
     }
   };
 
-  const verifyCode = async () => {
-    if (otp.length < 6) {
+  const verifyCode = async (codeOverride?: string) => {
+    const code = codeOverride ?? otp;
+    if (code.length < 6) {
       setError("Please enter the 6-digit code.");
       return;
     }
@@ -81,7 +82,7 @@ export default function SignInScreen() {
 
     try {
       if (isSignUp) {
-        const result = await signUp!.attemptEmailAddressVerification({ code: otp });
+        const result = await signUp!.attemptEmailAddressVerification({ code });
         if (result.status === "complete" && result.createdSessionId) {
           await setActive!({ session: result.createdSessionId });
         } else {
@@ -90,7 +91,7 @@ export default function SignInScreen() {
       } else {
         const result = await signIn!.attemptFirstFactor({
           strategy: "email_code",
-          code: otp,
+          code,
         });
         if (result.status === "complete" && result.createdSessionId) {
           await setActive!({ session: result.createdSessionId });
@@ -113,7 +114,7 @@ export default function SignInScreen() {
     setOtp(digits);
     setError(null);
     if (digits.length === 6) {
-      verifyCode();
+      verifyCode(digits);
     }
   };
 
@@ -271,7 +272,9 @@ export default function SignInScreen() {
                   ref={otpRef}
                   value={otp}
                   onChangeText={handleOTPChange}
+                  onSubmitEditing={() => verifyCode(otp)}
                   keyboardType="number-pad"
+                  returnKeyType="done"
                   maxLength={6}
                   style={styles.hiddenInput}
                   autoFocus
