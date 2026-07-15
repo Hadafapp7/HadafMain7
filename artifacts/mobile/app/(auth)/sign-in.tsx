@@ -1,13 +1,10 @@
 import { useSignIn, useSignUp } from "@clerk/expo/legacy";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -20,93 +17,27 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 
-const COUNTRIES = [
-  { dial: "+966", code: "SA", flag: "🇸🇦", name: "Saudi Arabia" },
-  { dial: "+971", code: "AE", flag: "🇦🇪", name: "UAE" },
-  { dial: "+974", code: "QA", flag: "🇶🇦", name: "Qatar" },
-  { dial: "+965", code: "KW", flag: "🇰🇼", name: "Kuwait" },
-  { dial: "+973", code: "BH", flag: "🇧🇭", name: "Bahrain" },
-  { dial: "+968", code: "OM", flag: "🇴🇲", name: "Oman" },
-  { dial: "+962", code: "JO", flag: "🇯🇴", name: "Jordan" },
-  { dial: "+20", code: "EG", flag: "🇪🇬", name: "Egypt" },
-  { dial: "+961", code: "LB", flag: "🇱🇧", name: "Lebanon" },
-  { dial: "+970", code: "PS", flag: "🇵🇸", name: "Palestine" },
-  { dial: "+964", code: "IQ", flag: "🇮🇶", name: "Iraq" },
-  { dial: "+963", code: "SY", flag: "🇸🇾", name: "Syria" },
-  { dial: "+967", code: "YE", flag: "🇾🇪", name: "Yemen" },
-  { dial: "+218", code: "LY", flag: "🇱🇾", name: "Libya" },
-  { dial: "+216", code: "TN", flag: "🇹🇳", name: "Tunisia" },
-  { dial: "+213", code: "DZ", flag: "🇩🇿", name: "Algeria" },
-  { dial: "+212", code: "MA", flag: "🇲🇦", name: "Morocco" },
-  { dial: "+1", code: "US", flag: "🇺🇸", name: "United States" },
-  { dial: "+44", code: "GB", flag: "🇬🇧", name: "United Kingdom" },
-  { dial: "+49", code: "DE", flag: "🇩🇪", name: "Germany" },
-  { dial: "+33", code: "FR", flag: "🇫🇷", name: "France" },
-  { dial: "+39", code: "IT", flag: "🇮🇹", name: "Italy" },
-  { dial: "+34", code: "ES", flag: "🇪🇸", name: "Spain" },
-  { dial: "+7", code: "RU", flag: "🇷🇺", name: "Russia" },
-  { dial: "+91", code: "IN", flag: "🇮🇳", name: "India" },
-  { dial: "+92", code: "PK", flag: "🇵🇰", name: "Pakistan" },
-  { dial: "+880", code: "BD", flag: "🇧🇩", name: "Bangladesh" },
-  { dial: "+90", code: "TR", flag: "🇹🇷", name: "Turkey" },
-  { dial: "+98", code: "IR", flag: "🇮🇷", name: "Iran" },
-  { dial: "+86", code: "CN", flag: "🇨🇳", name: "China" },
-  { dial: "+81", code: "JP", flag: "🇯🇵", name: "Japan" },
-  { dial: "+82", code: "KR", flag: "🇰🇷", name: "South Korea" },
-  { dial: "+62", code: "ID", flag: "🇮🇩", name: "Indonesia" },
-  { dial: "+60", code: "MY", flag: "🇲🇾", name: "Malaysia" },
-  { dial: "+65", code: "SG", flag: "🇸🇬", name: "Singapore" },
-  { dial: "+27", code: "ZA", flag: "🇿🇦", name: "South Africa" },
-  { dial: "+234", code: "NG", flag: "🇳🇬", name: "Nigeria" },
-  { dial: "+254", code: "KE", flag: "🇰🇪", name: "Kenya" },
-  { dial: "+55", code: "BR", flag: "🇧🇷", name: "Brazil" },
-  { dial: "+52", code: "MX", flag: "🇲🇽", name: "Mexico" },
-  { dial: "+61", code: "AU", flag: "🇦🇺", name: "Australia" },
-  { dial: "+64", code: "NZ", flag: "🇳🇿", name: "New Zealand" },
-  { dial: "+31", code: "NL", flag: "🇳🇱", name: "Netherlands" },
-  { dial: "+32", code: "BE", flag: "🇧🇪", name: "Belgium" },
-  { dial: "+41", code: "CH", flag: "🇨🇭", name: "Switzerland" },
-  { dial: "+46", code: "SE", flag: "🇸🇪", name: "Sweden" },
-  { dial: "+47", code: "NO", flag: "🇳🇴", name: "Norway" },
-  { dial: "+45", code: "DK", flag: "🇩🇰", name: "Denmark" },
-  { dial: "+358", code: "FI", flag: "🇫🇮", name: "Finland" },
-  { dial: "+48", code: "PL", flag: "🇵🇱", name: "Poland" },
-];
-
-type Country = (typeof COUNTRIES)[number];
-
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
-  const router = useRouter();
 
   const { signIn, setActive, isLoaded: signInLoaded } = useSignIn();
   const { signUp, isLoaded: signUpLoaded } = useSignUp();
 
-  const [step, setStep] = useState<"phone" | "otp">("phone");
-  const [country, setCountry] = useState<Country>(COUNTRIES[0]);
-  const [phone, setPhone] = useState("");
+  const [step, setStep] = useState<"email" | "otp">("email");
+  const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSignUp, setIsSignUp] = useState(false);
-  const [pickerVisible, setPickerVisible] = useState(false);
-  const [countrySearch, setCountrySearch] = useState("");
 
   const otpRef = useRef<TextInput>(null);
-  const phoneRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
 
-  const filteredCountries = COUNTRIES.filter(
-    (c) =>
-      c.name.toLowerCase().includes(countrySearch.toLowerCase()) ||
-      c.dial.includes(countrySearch),
-  );
-
-  const fullPhone = `${country.dial}${phone.replace(/\D/g, "")}`;
-
-  const sendOTP = async () => {
-    if (!phone.trim()) {
-      setError("Please enter your phone number.");
+  const sendCode = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) {
+      setError("Please enter your email address.");
       return;
     }
     if (!signInLoaded || !signUpLoaded) return;
@@ -115,14 +46,14 @@ export default function SignInScreen() {
     setError(null);
 
     try {
-      await signIn!.create({ strategy: "phone_code", identifier: fullPhone });
+      await signIn!.create({ strategy: "email_code", identifier: trimmed });
       setIsSignUp(false);
       setStep("otp");
       setTimeout(() => otpRef.current?.focus(), 200);
     } catch {
       try {
-        await signUp!.create({ phoneNumber: fullPhone });
-        await signUp!.preparePhoneNumberVerification({ strategy: "phone_code" });
+        await signUp!.create({ emailAddress: trimmed });
+        await signUp!.prepareEmailAddressVerification({ strategy: "email_code" });
         setIsSignUp(true);
         setStep("otp");
         setTimeout(() => otpRef.current?.focus(), 200);
@@ -130,7 +61,7 @@ export default function SignInScreen() {
         const msg =
           err instanceof Error
             ? err.message
-            : "Failed to send verification code. Check the number and try again.";
+            : "Could not send the code. Check the email address and try again.";
         setError(msg);
       }
     } finally {
@@ -138,7 +69,7 @@ export default function SignInScreen() {
     }
   };
 
-  const verifyOTP = async () => {
+  const verifyCode = async () => {
     if (otp.length < 6) {
       setError("Please enter the 6-digit code.");
       return;
@@ -150,7 +81,7 @@ export default function SignInScreen() {
 
     try {
       if (isSignUp) {
-        const result = await signUp!.attemptPhoneNumberVerification({ code: otp });
+        const result = await signUp!.attemptEmailAddressVerification({ code: otp });
         if (result.status === "complete" && result.createdSessionId) {
           await setActive!({ session: result.createdSessionId });
         } else {
@@ -158,7 +89,7 @@ export default function SignInScreen() {
         }
       } else {
         const result = await signIn!.attemptFirstFactor({
-          strategy: "phone_code",
+          strategy: "email_code",
           code: otp,
         });
         if (result.status === "complete" && result.createdSessionId) {
@@ -182,15 +113,15 @@ export default function SignInScreen() {
     setOtp(digits);
     setError(null);
     if (digits.length === 6) {
-      verifyOTP();
+      verifyCode();
     }
   };
 
   const goBack = () => {
-    setStep("phone");
+    setStep("email");
     setOtp("");
     setError(null);
-    setTimeout(() => phoneRef.current?.focus(), 200);
+    setTimeout(() => emailRef.current?.focus(), 200);
   };
 
   return (
@@ -223,61 +154,36 @@ export default function SignInScreen() {
         </View>
 
         <View style={styles.form}>
-          {step === "phone" ? (
+          {step === "email" ? (
             <>
               <Text style={[styles.label, { color: colors.foreground }]}>
-                Enter your phone number
+                Enter your email address
               </Text>
 
-              <View style={styles.phoneRow}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setCountrySearch("");
-                    setPickerVisible(true);
-                  }}
-                  style={[
-                    styles.countryBtn,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.flag}>{country.flag}</Text>
-                  <Text style={[styles.dialCode, { color: colors.foreground }]}>
-                    {country.dial}
-                  </Text>
-                  <MaterialCommunityIcons
-                    name="chevron-down"
-                    size={16}
-                    color={colors.mutedForeground}
-                  />
-                </TouchableOpacity>
-
-                <TextInput
-                  ref={phoneRef}
-                  style={[
-                    styles.phoneInput,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                    },
-                  ]}
-                  placeholder="Phone number"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="phone-pad"
-                  value={phone}
-                  onChangeText={(t) => {
-                    setPhone(t);
-                    setError(null);
-                  }}
-                  onSubmitEditing={sendOTP}
-                  returnKeyType="send"
-                  autoFocus
-                />
-              </View>
+              <TextInput
+                ref={emailRef}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    color: colors.foreground,
+                  },
+                ]}
+                placeholder="you@example.com"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={email}
+                onChangeText={(t) => {
+                  setEmail(t);
+                  setError(null);
+                }}
+                onSubmitEditing={sendCode}
+                returnKeyType="send"
+                autoFocus
+              />
 
               {error ? (
                 <Text style={[styles.error, { color: colors.destructive }]}>
@@ -291,7 +197,7 @@ export default function SignInScreen() {
                   { backgroundColor: colors.primary },
                   loading && styles.disabledBtn,
                 ]}
-                onPress={sendOTP}
+                onPress={sendCode}
                 disabled={loading}
                 activeOpacity={0.85}
               >
@@ -299,7 +205,10 @@ export default function SignInScreen() {
                   <ActivityIndicator color={colors.primaryForeground} />
                 ) : (
                   <Text
-                    style={[styles.primaryBtnText, { color: colors.primaryForeground }]}
+                    style={[
+                      styles.primaryBtnText,
+                      { color: colors.primaryForeground },
+                    ]}
                   >
                     Send Code
                   </Text>
@@ -318,10 +227,10 @@ export default function SignInScreen() {
                 </TouchableOpacity>
                 <View style={styles.otpHeaderText}>
                   <Text style={[styles.label, { color: colors.foreground }]}>
-                    Verification code
+                    Check your email
                   </Text>
                   <Text style={[styles.otpSub, { color: colors.mutedForeground }]}>
-                    Sent to {fullPhone}
+                    We sent a 6-digit code to {email.trim().toLowerCase()}
                   </Text>
                 </View>
               </View>
@@ -349,7 +258,10 @@ export default function SignInScreen() {
                     </Text>
                     {otp.length === i && (
                       <View
-                        style={[styles.cursor, { backgroundColor: colors.primary }]}
+                        style={[
+                          styles.cursor,
+                          { backgroundColor: colors.primary },
+                        ]}
                       />
                     )}
                   </Pressable>
@@ -380,7 +292,7 @@ export default function SignInScreen() {
                 />
               ) : null}
 
-              <TouchableOpacity onPress={sendOTP} disabled={loading}>
+              <TouchableOpacity onPress={sendCode} disabled={loading}>
                 <Text style={[styles.resend, { color: colors.mutedForeground }]}>
                   Didn't receive a code?{" "}
                   <Text style={{ color: colors.primary }}>Resend</Text>
@@ -390,93 +302,11 @@ export default function SignInScreen() {
           )}
 
           <Text style={[styles.terms, { color: colors.mutedForeground }]}>
-            By continuing you agree to keep your focus goals just between you and Hadaf.
+            By continuing you agree to keep your focus goals just between you and
+            Hadaf.
           </Text>
         </View>
       </View>
-
-      <Modal
-        visible={pickerVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setPickerVisible(false)}
-      >
-        <View style={[styles.modalRoot, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-              Select Country
-            </Text>
-            <TouchableOpacity onPress={() => setPickerVisible(false)}>
-              <MaterialCommunityIcons name="close" size={22} color={colors.foreground} />
-            </TouchableOpacity>
-          </View>
-
-          <View
-            style={[
-              styles.searchWrap,
-              { backgroundColor: colors.surfaceContainerLow },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="magnify"
-              size={18}
-              color={colors.mutedForeground}
-            />
-            <TextInput
-              style={[styles.searchInput, { color: colors.foreground }]}
-              placeholder="Search country or dial code…"
-              placeholderTextColor={colors.mutedForeground}
-              value={countrySearch}
-              onChangeText={setCountrySearch}
-              autoFocus
-              clearButtonMode="while-editing"
-            />
-          </View>
-
-          <FlatList
-            data={filteredCountries}
-            keyExtractor={(item) => item.code}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.countryRow,
-                  {
-                    backgroundColor:
-                      item.code === country.code
-                        ? colors.accent
-                        : "transparent",
-                    borderBottomColor: colors.border,
-                  },
-                ]}
-                onPress={() => {
-                  setCountry(item);
-                  setPickerVisible(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.rowFlag}>{item.flag}</Text>
-                <Text
-                  style={[styles.rowName, { color: colors.foreground }]}
-                  numberOfLines={1}
-                >
-                  {item.name}
-                </Text>
-                <Text style={[styles.rowDial, { color: colors.mutedForeground }]}>
-                  {item.dial}
-                </Text>
-                {item.code === country.code && (
-                  <MaterialCommunityIcons
-                    name="check"
-                    size={18}
-                    color={colors.primary}
-                  />
-                )}
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -517,29 +347,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
   },
-  phoneRow: {
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "center",
-  },
-  countryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    height: 54,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  flag: {
-    fontSize: 20,
-  },
-  dialCode: {
-    fontSize: 15,
-    fontFamily: "Inter_500Medium",
-  },
-  phoneInput: {
-    flex: 1,
+  input: {
     height: 54,
     borderRadius: 16,
     borderWidth: 1,
@@ -578,7 +386,7 @@ const styles = StyleSheet.create({
   },
   otpHeaderText: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   otpSub: {
     fontSize: 13,
@@ -620,56 +428,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
-  },
-  modalRoot: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontFamily: "Inter_600SemiBold",
-  },
-  searchWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginVertical: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-    padding: 0,
-  },
-  countryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  rowFlag: {
-    fontSize: 22,
-  },
-  rowName: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-  },
-  rowDial: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
   },
 });
