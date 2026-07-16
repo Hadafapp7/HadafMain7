@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -289,6 +288,28 @@ const APP_ICONS: Record<string, React.ComponentProps<typeof MaterialIcons>["name
   entertainment: "music-video",
 };
 
+const POPULAR_APPS: { name: string; icon: React.ComponentProps<typeof MaterialIcons>["name"]; category: string }[] = [
+  { name: "Instagram", icon: "photo-camera",       category: "social"         },
+  { name: "TikTok",    icon: "music-video",         category: "entertainment"  },
+  { name: "YouTube",   icon: "play-circle-filled",  category: "entertainment"  },
+  { name: "Twitter",   icon: "alternate-email",     category: "social"         },
+  { name: "Reddit",    icon: "forum",               category: "social"         },
+  { name: "Facebook",  icon: "people",              category: "social"         },
+  { name: "Snapchat",  icon: "camera-alt",          category: "social"         },
+  { name: "Netflix",   icon: "tv",                  category: "entertainment"  },
+  { name: "Discord",   icon: "headset",             category: "social"         },
+  { name: "Twitch",    icon: "videogame-asset",     category: "entertainment"  },
+  { name: "WhatsApp",  icon: "chat",                category: "social"         },
+  { name: "Spotify",   icon: "library-music",       category: "entertainment"  },
+];
+
+const QUICK_TIMES = [
+  { label: "30m", mins: 30  },
+  { label: "1h",  mins: 60  },
+  { label: "2h",  mins: 120 },
+  { label: "3h",  mins: 180 },
+];
+
 function AppRow({ app, index, last, maxMinutes }: {
   app: AppUsageSummaryItem; index: number; last: boolean; maxMinutes: number;
 }) {
@@ -321,97 +342,114 @@ function AppRow({ app, index, last, maxMinutes }: {
   );
 }
 
-// ─── Log Usage Modal ──────────────────────────────────────────────────────────
+// ─── Select Apps Modal ────────────────────────────────────────────────────────
 
-function LogUsageModal({ visible, onClose, onSubmit, submitting }: {
+function SelectAppsModal({ visible, onClose, onSubmit, submitting }: {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (appName: string, category: string, minutes: number) => void;
+  onSubmit: (apps: { name: string; category: string; minutes: number }[]) => void;
   submitting: boolean;
 }) {
-  const [appName, setAppName]   = useState("");
-  const [category, setCategory] = useState("");
-  const [minutes, setMinutes]   = useState("");
+  const [selected,   setSelected]   = useState<string[]>([]);
+  const [minsPerApp, setMinsPerApp] = useState(60);
 
-  const scale   = useSharedValue(0.88);
-  const opacity = useSharedValue(0);
   useEffect(() => {
-    if (visible) {
-      scale.value   = withSpring(1,    { damping: 18, stiffness: 160 });
-      opacity.value = withTiming(1, { duration: 180 });
-    } else {
-      scale.value   = withSpring(0.88, { damping: 18, stiffness: 160 });
-      opacity.value = withTiming(0,  { duration: 140 });
-      setAppName(""); setCategory(""); setMinutes("");
-    }
+    if (!visible) { setSelected([]); setMinsPerApp(60); }
   }, [visible]);
-  const cardStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
 
-  if (!visible) return null;
+  const toggle = (name: string) => {
+    Haptics.selectionAsync();
+    setSelected(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
+  };
 
-  const parsedMinutes = parseInt(minutes, 10);
-  const canSubmit = appName.trim().length > 0 && Number.isFinite(parsedMinutes) && parsedMinutes > 0;
+  const handleSubmit = () => {
+    if (selected.length === 0) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onSubmit(selected.map(name => {
+      const app = POPULAR_APPS.find(a => a.name === name)!;
+      return { name: app.name, category: app.category, minutes: minsPerApp };
+    }));
+  };
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.calOuter} activeOpacity={1} onPress={onClose}>
-        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
-        <Animated.View
-          style={[styles.goalsSheet, cardStyle]}
-          onStartShouldSetResponder={() => true}
-          onTouchEnd={e => e.stopPropagation()}
-        >
-          <View style={styles.goalsSheetHeader}>
-            <Text style={styles.goalsSheetTitle}>LOG APP USAGE</Text>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.selectModalOuter}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={styles.selectModalSheet}>
+          <View style={styles.selectModalHandle} />
+
+          <View style={styles.selectModalHeader}>
+            <Text style={styles.selectModalTitle}>MOST USED APPS</Text>
             <TouchableOpacity onPress={onClose} hitSlop={14}>
               <MaterialIcons name="close" size={20} color="#777" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.goalsSheetSub}>
-            Manually add screen time for an app since we can't read device usage automatically yet.
+          <Text style={styles.selectModalSub}>
+            Pick the apps you spend the most time on
           </Text>
 
-          <View style={{ gap: 12, marginTop: 14 }}>
-            <TextInput
-              style={styles.logInput}
-              placeholder="App name (e.g. Instagram)"
-              placeholderTextColor="#b0b0b0"
-              value={appName}
-              onChangeText={setAppName}
-              returnKeyType="next"
-            />
-            <TextInput
-              style={styles.logInput}
-              placeholder="Category (optional, e.g. social)"
-              placeholderTextColor="#b0b0b0"
-              value={category}
-              onChangeText={setCategory}
-              returnKeyType="next"
-            />
-            <TextInput
-              style={styles.logInput}
-              placeholder="Minutes used"
-              placeholderTextColor="#b0b0b0"
-              value={minutes}
-              onChangeText={(t) => setMinutes(t.replace(/[^0-9]/g, ""))}
-              keyboardType="number-pad"
-              returnKeyType="done"
-            />
+          <View style={styles.timeRow}>
+            <Text style={styles.timeRowLabel}>TIME PER APP</Text>
+            <View style={styles.timeBtns}>
+              {QUICK_TIMES.map(qt => (
+                <TouchableOpacity
+                  key={qt.mins}
+                  style={[styles.timeBtn, minsPerApp === qt.mins && styles.timeBtnActive]}
+                  onPress={() => { Haptics.selectionAsync(); setMinsPerApp(qt.mins); }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.timeBtnText, minsPerApp === qt.mins && styles.timeBtnTextActive]}>
+                    {qt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
+          <ScrollView style={styles.selectAppsList} showsVerticalScrollIndicator={false}>
+            {POPULAR_APPS.map((app, i) => {
+              const isSel = selected.includes(app.name);
+              return (
+                <TouchableOpacity
+                  key={app.name}
+                  style={[
+                    styles.selectAppRow,
+                    i < POPULAR_APPS.length - 1 && { borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
+                  ]}
+                  onPress={() => toggle(app.name)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.selectAppIcon, isSel && { backgroundColor: "#111" }]}>
+                    <MaterialIcons name={app.icon} size={20} color={isSel ? "#fff" : "#555"} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.selectAppName}>{app.name}</Text>
+                    <Text style={styles.selectAppCat}>{app.category.toUpperCase()}</Text>
+                  </View>
+                  <View style={[styles.selectCheckbox, isSel && { backgroundColor: "#111", borderColor: "#111" }]}>
+                    {isSel && <MaterialIcons name="check" size={14} color="#fff" />}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
           <TouchableOpacity
-            style={[styles.logSubmitBtn, !canSubmit && { opacity: 0.4 }]}
-            disabled={!canSubmit || submitting}
+            style={[styles.logSubmitBtn, selected.length === 0 && { opacity: 0.4 }]}
+            disabled={selected.length === 0 || submitting}
+            onPress={handleSubmit}
             activeOpacity={0.85}
-            onPress={() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              onSubmit(appName.trim(), category.trim(), parsedMinutes);
-            }}
           >
-            <Text style={styles.logSubmitBtnText}>{submitting ? "SAVING…" : "SAVE"}</Text>
+            <Text style={styles.logSubmitBtnText}>
+              {submitting
+                ? "SAVING…"
+                : selected.length === 0
+                  ? "SELECT APPS"
+                  : `LOG ${selected.length} APP${selected.length > 1 ? "S" : ""}`}
+            </Text>
           </TouchableOpacity>
-        </Animated.View>
-      </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -583,11 +621,19 @@ export default function HomeScreen() {
     );
   };
 
-  const handleLogUsage = (appName: string, category: string, minutes: number) => {
-    createUsageEntry.mutate(
-      { data: { appName, category: category || undefined, durationMinutes: minutes } },
-      { onSuccess: () => { refetchAppUsage(); setShowLogUsage(false); } }
-    );
+  const handleLogUsage = (apps: { name: string; category: string; minutes: number }[]) => {
+    let remaining = apps.length;
+    apps.forEach(app => {
+      createUsageEntry.mutate(
+        { data: { appName: app.name, category: app.category, durationMinutes: app.minutes } },
+        {
+          onSuccess: () => {
+            remaining--;
+            if (remaining === 0) { refetchAppUsage(); setShowLogUsage(false); }
+          },
+        }
+      );
+    });
   };
 
   const firstName = (me?.name ?? me?.email ?? "there").split(" ")[0].split("@")[0];
@@ -612,7 +658,7 @@ export default function HomeScreen() {
       <AnimatedBackground />
       <CalendarModal visible={showCal} onClose={() => setShowCal(false)} />
       <GoalsStatusModal visible={showGoals} onClose={() => setShowGoals(false)} goals={goals} />
-      <LogUsageModal
+      <SelectAppsModal
         visible={showLogUsage}
         onClose={() => setShowLogUsage(false)}
         onSubmit={handleLogUsage}
@@ -860,16 +906,40 @@ const styles = StyleSheet.create({
   goalsListName:     { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
   goalsListStatus:   { fontSize: 12, fontFamily: "Inter_600SemiBold" },
 
-  // Log usage modal
-  logInput: {
-    backgroundColor: "#f0f0f0",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    color: "#000",
+  // Select apps modal
+  selectModalOuter: { flex: 1, justifyContent: "flex-end" },
+  selectModalSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 32,
+    maxHeight: "88%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 20,
   },
+  selectModalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ddd", alignSelf: "center", marginBottom: 18 },
+  selectModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  selectModalTitle:  { fontSize: 18, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: 0.5 },
+  selectModalSub:    { fontSize: 13, fontFamily: "Inter_400Regular", color: "#888", marginBottom: 18 },
+  timeRow:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
+  timeRowLabel: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#555", letterSpacing: 1 },
+  timeBtns:     { flexDirection: "row", gap: 6 },
+  timeBtn:      { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: "#f0f0f0" },
+  timeBtnActive:{ backgroundColor: "#111" },
+  timeBtnText:  { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#555" },
+  timeBtnTextActive: { color: "#fff" },
+  selectAppsList: { maxHeight: 340, marginBottom: 8 },
+  selectAppRow:  { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 13 },
+  selectAppIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#f0f0f0", alignItems: "center", justifyContent: "center" },
+  selectAppName: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#111", marginBottom: 2 },
+  selectAppCat:  { fontSize: 10, fontFamily: "Inter_500Medium", color: "#888", letterSpacing: 0.8 },
+  selectCheckbox:{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: "#ddd", alignItems: "center", justifyContent: "center" },
+
   logSubmitBtn: {
     marginTop: 18,
     backgroundColor: "#000",

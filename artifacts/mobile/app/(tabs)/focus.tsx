@@ -4,6 +4,7 @@ import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AppState,
   Dimensions,
   KeyboardAvoidingView,
   Modal,
@@ -40,6 +41,7 @@ import {
   useStartFocusSession,
   useEndFocusSession,
   useListFocusSessions,
+  useGetAppUsageSummary,
 } from "@workspace/api-client-react";
 
 const isWeb    = Platform.OS === "web";
@@ -418,6 +420,7 @@ export default function FocusScreen() {
   const queryClient = useQueryClient();
   const { data: persistedBlockedApps } = useListBlockedApps();
   const { data: allSessions = [] }     = useListFocusSessions();
+  const { data: appUsage = [], isLoading: appUsageLoading } = useGetAppUsageSummary();
   const addBlockedApp    = useAddBlockedApp();
   const removeBlockedApp = useRemoveBlockedApp();
   const startFocusSession = useStartFocusSession();
@@ -442,15 +445,47 @@ export default function FocusScreen() {
   const [remaining,    setRemaining]    = useState(duration * 60);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [blockedAttempt, setBlockedAttempt] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const totalSecs   = duration * 60;
+  const [showFocusReturn, setShowFocusReturn] = useState(false);
+  const intervalRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const appStateRef      = useRef(AppState.currentState);
+  const sessionStateRef  = useRef<SessionState>("idle");
+  const totalSecs        = duration * 60;
 
+  // Keep sessionStateRef in sync so the AppState listener never has a stale closure
+  useEffect(() => { sessionStateRef.current = sessionState; }, [sessionState]);
+
+  // Auto-populate blocked apps: use persisted list, fall back to top 3 from usage, then defaults
   useEffect(() => {
-    if (!hasHydratedBlockedApps.current && persistedBlockedApps) {
+    if (hasHydratedBlockedApps.current) return;
+    if (persistedBlockedApps === undefined || appUsageLoading) return;
+
+    if (persistedBlockedApps.length > 0) {
       setBlockedApps(persistedBlockedApps.map((a) => a.appName));
-      hasHydratedBlockedApps.current = true;
+    } else if (appUsage.length > 0) {
+      const knownNames = new Set(ALL_APPS.map(a => a.name));
+      const top3 = appUsage
+        .filter(a => knownNames.has(a.appName))
+        .slice(0, 3)
+        .map(a => a.appName);
+      setBlockedApps(top3.length > 0 ? top3 : ["Instagram", "TikTok", "YouTube"]);
+    } else {
+      // No usage logged yet — use the 3 most common distracting apps as smart defaults
+      setBlockedApps(["Instagram", "TikTok", "YouTube"]);
     }
-  }, [persistedBlockedApps]);
+    hasHydratedBlockedApps.current = true;
+  }, [persistedBlockedApps, appUsage, appUsageLoading]);
+
+  // When the user returns to the app during a running session, show a focus reminder
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", nextState => {
+      const wasBackground = appStateRef.current.match(/inactive|background/);
+      appStateRef.current = nextState;
+      if (wasBackground && nextState === "active" && sessionStateRef.current === "running") {
+        setShowFocusReturn(true);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // Validation errors + shake
   const [errors,      setErrors]      = useState({ intention: false, blockedApps: false });
@@ -899,6 +934,30 @@ export default function FocusScreen() {
         <BlockedInterstitial appName={blockedAttempt} onDismiss={() => setBlockedAttempt(null)} />
       )}
 
+      {showFocusReturn && (
+        <Animated.View
+          entering={FadeIn.duration(300)}
+          exiting={FadeOut.duration(250)}
+          style={[styles.focusReturnOverlay, { backgroundColor: colors.background }]}
+        >
+          <View style={[styles.focusReturnIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
+            <MaterialIcons name="lock" size={38} color={colors.primary} />
+          </View>
+          <Text style={[styles.focusReturnTitle, { color: colors.onSurface }]}>Session still running</Text>
+          <Text style={[styles.focusReturnTime, { color: colors.primary }]}>{formatTime(remaining)}</Text>
+          <Text style={[styles.focusReturnSub, { color: colors.outline }]}>
+            Stay focused — {blockedApps.length} app{blockedApps.length !== 1 ? "s are" : " is"} blocked until your session ends.
+          </Text>
+          <TouchableOpacity
+            style={[styles.focusReturnBtn, { backgroundColor: colors.primary }]}
+            onPress={() => setShowFocusReturn(false)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.focusReturnBtnText}>Back to Focus</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
       {/* Floating Start / active buttons */}
       <View style={[styles.stickyBottom, { bottom: tabBarH + 16, left: 20, right: 20 }]}>
         {sessionState === "idle" && (
@@ -1052,6 +1111,21 @@ const styles = StyleSheet.create({
   quickLaunchChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14 },
   quickLaunchChipText: { fontSize: 12, fontFamily: "Inter_500Medium" },
   nativeBuildNote: { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16, paddingHorizontal: 2 },
+
+  // Focus return overlay (shown when user returns to app during a running session)
+  focusReturnOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 200,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+  },
+  focusReturnIcon:    { width: 80, height: 80, borderRadius: 40, alignItems: "center", justifyContent: "center", marginBottom: 20 },
+  focusReturnTitle:   { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.3, marginBottom: 6 },
+  focusReturnTime:    { fontSize: 48, fontFamily: "Inter_700Bold", letterSpacing: -2, marginBottom: 10 },
+  focusReturnSub:     { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20, marginBottom: 28 },
+  focusReturnBtn:     { paddingHorizontal: 40, paddingVertical: 16, borderRadius: 999 },
+  focusReturnBtnText: { fontSize: 15, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 0.5 },
 
   blockedInterstitial: {
     position: "absolute", inset: 0, alignItems: "center", justifyContent: "center",
