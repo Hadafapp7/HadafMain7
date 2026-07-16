@@ -38,6 +38,12 @@ import {
   useListGoals,
   useUpdateUserSettings,
 } from "@workspace/api-client-react";
+import {
+  type AppUsageStat,
+  getDeviceUsageStats,
+  hasUsagePermission,
+  requestUsagePermission,
+} from "../../modules/hadaf-native/src";
 
 const isWeb    = Platform.OS === "web";
 const SCREEN_W = Dimensions.get("window").width;
@@ -595,6 +601,10 @@ export default function HomeScreen() {
   const [showLogUsage, setShowLogUsage] = useState(false);
   const [showOptIn, setShowOptIn] = useState(false);
 
+  // Native device usage state
+  const [deviceUsage,    setDeviceUsage]    = useState<AppUsageStat[]>([]);
+  const [nativePermGranted, setNativePermGranted] = useState(false);
+
   const { data: me } = useGetMe();
   const { data: goals = [] } = useListGoals();
   const { data: appUsage = [], refetch: refetchAppUsage } = useGetAppUsageSummary();
@@ -605,9 +615,29 @@ export default function HomeScreen() {
 
   const streak = computeStreak(focusSessions);
 
+  // On mount: check native permission and load real device usage if available
+  useEffect(() => {
+    const perm = hasUsagePermission();
+    setNativePermGranted(perm);
+    if (perm) {
+      getDeviceUsageStats(7).then(setDeviceUsage).catch(() => {});
+    }
+  }, []);
+
+  // Merge device usage with server usage — device data takes priority when available
+  const mergedUsage: AppUsageSummaryItem[] = deviceUsage.length > 0
+    ? deviceUsage.map(d => ({ appName: d.appName, category: d.category, totalMinutes: d.totalMinutes }))
+    : appUsage;
+
   const handleOpenLogUsage = () => {
     Haptics.selectionAsync();
-    if (settings && !settings.usageTrackingOptIn) {
+    if (nativePermGranted) {
+      // Already have real data — refresh and open the selection sheet
+      getDeviceUsageStats(7).then(stats => {
+        setDeviceUsage(stats);
+        setShowLogUsage(true);
+      }).catch(() => setShowLogUsage(true));
+    } else if (settings && !settings.usageTrackingOptIn) {
       setShowOptIn(true);
     } else {
       setShowLogUsage(true);
@@ -615,6 +645,18 @@ export default function HomeScreen() {
   };
 
   const handleEnableTracking = () => {
+    // Request native permission first on real devices
+    requestUsagePermission().then(granted => {
+      if (granted) {
+        setNativePermGranted(true);
+        return getDeviceUsageStats(7);
+      }
+      return Promise.resolve([] as AppUsageStat[]);
+    }).then(stats => {
+      if (stats.length > 0) setDeviceUsage(stats);
+    }).catch(() => {});
+
+    // Also update server-side opt-in flag
     updateSettings.mutate(
       { data: { usageTrackingOptIn: true } },
       { onSuccess: () => { setShowOptIn(false); setShowLogUsage(true); } }
@@ -642,11 +684,11 @@ export default function HomeScreen() {
 
   const pendingGoals = goals.filter(g => g.status === "pending").length;
   const doneGoals    = goals.filter(g => g.status === "done").length;
-  const totalScreenMinutes = appUsage.reduce((sum, a) => sum + a.totalMinutes, 0);
-  const maxAppMinutes = Math.max(1, ...appUsage.map(a => a.totalMinutes));
-  const topApps = [...appUsage].sort((a, b) => b.totalMinutes - a.totalMinutes).slice(0, 4);
+  const totalScreenMinutes = mergedUsage.reduce((sum, a) => sum + a.totalMinutes, 0);
+  const maxAppMinutes = Math.max(1, ...mergedUsage.map(a => a.totalMinutes));
+  const topApps = [...mergedUsage].sort((a, b) => b.totalMinutes - a.totalMinutes).slice(0, 4);
 
-  const doomScore = appUsage.length === 0 && goals.length === 0
+  const doomScore = mergedUsage.length === 0 && goals.length === 0
     ? 0
     : Math.min(100, Math.round(
         (totalScreenMinutes / 480) * 70 +

@@ -43,6 +43,14 @@ import {
   useListFocusSessions,
   useGetAppUsageSummary,
 } from "@workspace/api-client-react";
+import {
+  KNOWN_APPS,
+  getPermissionStatus,
+  openAccessibilitySettings,
+  openOverlaySettings,
+  startNativeSession,
+  stopNativeSession,
+} from "../../modules/hadaf-native/src";
 
 const isWeb    = Platform.OS === "web";
 const SCREEN_W = Dimensions.get("window").width;
@@ -534,6 +542,14 @@ export default function FocusScreen() {
     setRemaining(duration * 60);
     setSessionState("running");
     startTick();
+    // Resolve package names / bundle IDs for the native blocker
+    const nativeIdentifiers = blockedApps.flatMap(name =>
+      Object.entries(KNOWN_APPS)
+        .filter(([, v]) => v.name === name)
+        .map(([pkg]) => pkg)
+    );
+    // Start native OS-level blocking (no-op on web / Expo Go)
+    void startNativeSession(nativeIdentifiers, duration);
     startFocusSession.mutate(
       { data: { intention: intention.trim() || undefined, plannedDurationMinutes: duration, blockedApps } },
       { onSuccess: (session) => setActiveSessionId(session.id) }
@@ -573,6 +589,7 @@ export default function FocusScreen() {
     clearTimer();
     setSessionState("idle");
     setRemaining(duration * 60);
+    void stopNativeSession();
     if (activeSessionId) {
       endFocusSession.mutate(
         { id: activeSessionId, data: { status: "stopped" } },
