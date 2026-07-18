@@ -7,10 +7,10 @@
   "build": {
     "development": {
       "node": "22.13.0",
-      "image": "latest",
       "developmentClient": true,
       "distribution": "internal",
       "android": {
+        "image": "latest",
         "buildType": "apk",
         "gradleCommand": ":app:assembleDebug"
       },
@@ -20,17 +20,17 @@
     },
     "preview": {
       "node": "22.13.0",
-      "image": "latest",
       "distribution": "internal",
       "android": {
+        "image": "latest",
         "buildType": "apk"
       }
     },
     "production": {
       "node": "22.13.0",
-      "image": "latest",
       "autoIncrement": true,
       "android": {
+        "image": "latest",
         "buildType": "app-bundle"
       }
     }
