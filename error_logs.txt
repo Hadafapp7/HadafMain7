@@ -1,12 +1,13 @@
 Running 'gradlew :app:assembleRelease' in /home/expo/workingdir/build/artifacts/mobile/android
 Downloading https://services.gradle.org/distributions/gradle-8.14.3-bin.zip
-10%.
-20%.
+10%
+20%
 30%.
 40%.
 50%.
-60%.
-70%
+60%
+70
+%.
 80%.
 90%.
 100%
@@ -23,16 +24,16 @@ Daemon will be stopped at the end of the build
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/expo-modules-autolinking@3.0.26/node_modules/expo-modules-autolinking/android/expo-gradle-plugin/expo-autolinking-plugin/build.gradle.kts:25:3: 'kotlinOptions(KotlinJvmOptionsDeprecated /* = KotlinJvmOptions */.() -> Unit): Unit' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
 > Configure project :expo-gradle-plugin:expo-autolinking-settings-plugin
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/expo-modules-autolinking@3.0.26/node_modules/expo-modules-autolinking/android/expo-gradle-plugin/expo-autolinking-settings-plugin/build.gradle.kts:30:3: 'kotlinOptions(KotlinJvmOptionsDeprecated /* = KotlinJvmOptions */.() -> Unit): Unit' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
-> Task :expo-gradle-plugin:expo-autolinking-plugin-shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
-> Task :gradle-plugin:settings-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :gradle-plugin:shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-gradle-plugin:expo-autolinking-plugin-shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :expo-gradle-plugin:expo-autolinking-settings-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
-> Task :gradle-plugin:settings-plugin:pluginDescriptors
+> Task :gradle-plugin:settings-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :expo-gradle-plugin:expo-autolinking-settings-plugin:pluginDescriptors
+> Task :gradle-plugin:settings-plugin:pluginDescriptors
 > Task :expo-gradle-plugin:expo-autolinking-settings-plugin:processResources
 > Task :gradle-plugin:settings-plugin:processResources
-> Task :gradle-plugin:shared:processResources NO-SOURCE
 > Task :expo-gradle-plugin:expo-autolinking-plugin-shared:processResources NO-SOURCE
+> Task :gradle-plugin:shared:processResources NO-SOURCE
 > Task :gradle-plugin:shared:compileKotlin
 > Task :gradle-plugin:shared:compileJava NO-SOURCE
 > Task :gradle-plugin:shared:classes UP-TO-DATE
@@ -51,11 +52,10 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/expo-modules-autolinkin
 > Task :expo-gradle-plugin:expo-autolinking-settings-plugin:jar
 > Configure project :expo-module-gradle-plugin
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/expo-modules-core@3.0.30_react-native@0.81.5_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.0__react@19.1.0/node_modules/expo-modules-core/expo-module-gradle-plugin/build.gradle.kts:58:3: 'kotlinOptions(KotlinJvmOptionsDeprecated /* = KotlinJvmOptions */.() -> Unit): Unit' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
-> Task :expo-dev-launcher-gradle-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :expo-gradle-plugin:expo-autolinking-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :expo-module-gradle-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
-> Task :gradle-plugin:react-native-gradle-plugin:checkKotlinGradlePluginConfigurationErrors
-SKIPPED
+> Task :expo-dev-launcher-gradle-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :gradle-plugin:react-native-gradle-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :expo-dev-launcher-gradle-plugin:pluginDescriptors
 > Task :expo-module-gradle-plugin:pluginDescriptors
 > Task :expo-module-gradle-plugin:processResources
@@ -94,11 +94,11 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/expo-modules-core@3.0.3
  ℹ️  Applying gradle plugin 'expo-dev-launcher-gradle-plugin'
 > Configure project :expo
 Using expo modules
-- clerk-expo (1.0.0)
-- expo-constants (18.0.13)
-- expo-dev-client (57.0.5)
-- expo-dev-launcher (57.0.5)
-- expo-dev-menu (57.0.5)
+  - clerk-expo (1.0.0)
+  - expo-constants (18.0.13)
+  - expo-dev-client (57.0.5)
+  - expo-dev-launcher (57.0.5)
+  - expo-dev-menu (57.0.5)
 - expo-dev-menu-interface (57.0.0)
 - expo-json-utils (57.0.0)
 - expo-manifests (57.0.0)
@@ -108,7 +108,7 @@ Using expo modules
   - [📦] expo-application (7.0.8)
   - [📦] expo-asset (12.0.13)
   - [📦] expo-blur (15.0.8)
-  - [📦] expo-crypto (15.0.9)
+- [📦] expo-crypto (15.0.9)
   - [📦] expo-file-system (19.0.23)
   - [📦] expo-font (14.0.12)
   - [📦] expo-haptics (15.0.8)
@@ -130,6 +130,7 @@ Preparing "Install Android SDK Build-Tools 36 v.36.0.0".
 Installing Android SDK Build-Tools 36 in /home/expo/Android/Sdk/build-tools/36.0.0
 "Install Android SDK Build-Tools 36 v.36.0.0" complete.
 "Install Android SDK Build-Tools 36 v.36.0.0" finished.
+[=========                              ] 25%
 [=======================================] 100% Fetch remote repository...       
 > Task :clerk-expo:preBuild UP-TO-DATE
 > Task :expo-dev-client:preBuild UP-TO-DATE
@@ -147,40 +148,42 @@ Installing Android SDK Build-Tools 36 in /home/expo/Android/Sdk/build-tools/36.0
 > Task :app:generateCodegenArtifactsFromSchema SKIPPED
 > Task :app:generateReactNativeEntryPoint
 > Task :react-native-async-storage_async-storage:generateCodegenSchemaFromJavaScript
-> Task :expo-constants:createExpoConfig
-The NODE_ENV environment variable is required but was not specified. Ensure the project is bundled with Expo CLI or NODE_ENV is set. Using only .env.local and .env
-> Task :expo-constants:preBuild
 > Task :react-native-gesture-handler:generateCodegenSchemaFromJavaScript
-> Task :react-native-keyboard-controller:generateCodegenSchemaFromJavaScript
-> Task :react-native-async-storage_async-storage:generateCodegenArtifactsFromSchema
-> Task :react-native-async-storage_async-storage:preBuild
+> Task :expo-constants:createExpoConfig
+> Task :expo-constants:preBuild
+The NODE_ENV environment variable is required but was not specified. Ensure the project is bundled with Expo CLI or NODE_ENV is set. Using only .env.local and .env
 > Task :expo:generatePackagesList
 > Task :expo:preBuild
-> Task :react-native-reanimated:assertMinimalReactNativeVersionTask
-> Task :react-native-reanimated:assertNewArchitectureEnabledTask SKIPPED
+> Task :react-native-async-storage_async-storage:generateCodegenArtifactsFromSchema
+> Task :react-native-async-storage_async-storage:preBuild
 > Task :react-native-gesture-handler:generateCodegenArtifactsFromSchema
 > Task :react-native-gesture-handler:preBuild
+> Task :react-native-keyboard-controller:generateCodegenSchemaFromJavaScript
+> Task :react-native-reanimated:assertMinimalReactNativeVersionTask
+> Task :react-native-reanimated:assertNewArchitectureEnabledTask SKIPPED
 > Task :react-native-reanimated:assertWorkletsVersionTask
+> Task :react-native-safe-area-context:generateCodegenSchemaFromJavaScript
 > Task :react-native-keyboard-controller:generateCodegenArtifactsFromSchema
 > Task :react-native-keyboard-controller:preBuild
-> Task :react-native-safe-area-context:generateCodegenSchemaFromJavaScript
 > Task :react-native-reanimated:generateCodegenSchemaFromJavaScript
 > Task :react-native-screens:generateCodegenSchemaFromJavaScript
 > Task :react-native-safe-area-context:generateCodegenArtifactsFromSchema
 > Task :react-native-safe-area-context:preBuild
-> Task :react-native-reanimated:generateCodegenArtifactsFromSchema
-> Task :react-native-svg:generateCodegenSchemaFromJavaScript
 > Task :react-native-worklets:assertMinimalReactNativeVersionTask
 > Task :react-native-worklets:assertNewArchitectureEnabledTask SKIPPED
+> Task :react-native-reanimated:generateCodegenArtifactsFromSchema
 > Task :react-native-screens:generateCodegenArtifactsFromSchema
 > Task :react-native-screens:preBuild
+> Task :react-native-svg:generateCodegenSchemaFromJavaScript
+> Task :react-native-worklets:generateCodegenSchemaFromJavaScript
 > Task :react-native-reanimated:prepareReanimatedHeadersForPrefabs
 > Task :react-native-reanimated:preBuild
 > Task :react-native-reanimated:preReleaseBuild
-> Task :clerk-expo:preReleaseBuild UP-TO-DATE
+> Task :clerk-expo:preReleaseBuild
+UP-TO-DATE
+> Task :solana-mobile_mobile-wallet-adapter-protocol:generateCodegenSchemaFromJavaScript
 > Task :clerk-expo:mergeReleaseJniLibFolders
 > Task :clerk-expo:mergeReleaseNativeLibs NO-SOURCE
-> Task :react-native-worklets:generateCodegenSchemaFromJavaScript
 > Task :clerk-expo:copyReleaseJniLibsProjectOnly
 > Task :expo:preReleaseBuild
 > Task :expo:mergeReleaseJniLibFolders
@@ -195,24 +198,27 @@ The NODE_ENV environment variable is required but was not specified. Ensure the 
 > Task :expo-dev-client:mergeReleaseNativeLibs NO-SOURCE
 > Task :expo-dev-client:copyReleaseJniLibsProjectOnly
 > Task :expo-dev-launcher:preReleaseBuild UP-TO-DATE
-> Task :solana-mobile_mobile-wallet-adapter-protocol:generateCodegenSchemaFromJavaScript
 > Task :expo-dev-launcher:mergeReleaseJniLibFolders
 > Task :expo-dev-launcher:mergeReleaseNativeLibs NO-SOURCE
+> Task :react-native-worklets:generateCodegenArtifactsFromSchema
 > Task :expo-dev-launcher:copyReleaseJniLibsProjectOnly
 > Task :expo-dev-menu:preReleaseBuild UP-TO-DATE
+> Task :expo-dev-menu:mergeReleaseJniLibFolders
 > Task :react-native-svg:generateCodegenArtifactsFromSchema
 > Task :react-native-svg:preBuild
 > Task :expo-dev-menu-interface:preReleaseBuild UP-TO-DATE
-> Task :expo-dev-menu:mergeReleaseJniLibFolders
 > Task :expo-dev-menu:mergeReleaseNativeLibs NO-SOURCE
-> Task :expo-dev-menu-interface:mergeReleaseJniLibFolders
 > Task :expo-dev-menu:copyReleaseJniLibsProjectOnly
+> Task :expo-dev-menu-interface:mergeReleaseJniLibFolders
 > Task :expo-json-utils:preReleaseBuild UP-TO-DATE
 > Task :expo-dev-menu-interface:mergeReleaseNativeLibs NO-SOURCE
 > Task :expo-json-utils:mergeReleaseJniLibFolders
-> Task :expo-json-utils:mergeReleaseNativeLibs NO-SOURCE
 > Task :expo-dev-menu-interface:copyReleaseJniLibsProjectOnly
 > Task :expo-manifests:preReleaseBuild UP-TO-DATE
+> Task :expo-json-utils:mergeReleaseNativeLibs NO-SOURCE
+> Task :react-native-worklets:prepareWorkletsHeadersForPrefabs
+> Task :react-native-worklets:preBuild
+> Task :react-native-worklets:preReleaseBuild
 > Task :expo-json-utils:copyReleaseJniLibsProjectOnly
 > Task :expo-modules-core:preReleaseBuild UP-TO-DATE
 > Task :expo-manifests:mergeReleaseJniLibFolders
@@ -221,37 +227,32 @@ The NODE_ENV environment variable is required but was not specified. Ensure the 
 > Task :expo-updates-interface:preReleaseBuild UP-TO-DATE
 > Task :expo-updates-interface:mergeReleaseJniLibFolders
 > Task :expo-updates-interface:mergeReleaseNativeLibs NO-SOURCE
-> Task :expo-updates-interface:copyReleaseJniLibsProjectOnly
-> Task :hadaf-native:preReleaseBuild UP-TO-DATE
-> Task :hadaf-native:mergeReleaseJniLibFolders
-> Task :hadaf-native:mergeReleaseNativeLibs NO-SOURCE
-> Task :hadaf-native:copyReleaseJniLibsProjectOnly
-> Task :react-native-async-storage_async-storage:preReleaseBuild
-> Task :react-native-async-storage_async-storage:mergeReleaseJniLibFolders
-> Task :react-native-async-storage_async-storage:mergeReleaseNativeLibs
-NO-SOURCE
-> Task :react-native-async-storage_async-storage:copyReleaseJniLibsProjectOnly
-> Task :react-native-gesture-handler:preReleaseBuild
-> Task :react-native-gesture-handler:mergeReleaseJniLibFolders
-> Task :react-native-keyboard-controller:preReleaseBuild
-> Task :react-native-keyboard-controller:mergeReleaseJniLibFolders
-> Task :react-native-keyboard-controller:mergeReleaseNativeLibs NO-SOURCE
-> Task :react-native-keyboard-controller:copyReleaseJniLibsProjectOnly
-> Task :react-native-reanimated:mergeReleaseJniLibFolders
-> Task :react-native-safe-area-context:preReleaseBuild
-> Task :react-native-safe-area-context:mergeReleaseJniLibFolders
-> Task :react-native-worklets:generateCodegenArtifactsFromSchema
-> Task :react-native-safe-area-context:mergeReleaseNativeLibs NO-SOURCE
-> Task :react-native-safe-area-context:copyReleaseJniLibsProjectOnly
-> Task :react-native-screens:preReleaseBuild
-> Task :react-native-worklets:prepareWorkletsHeadersForPrefabs
-> Task :react-native-worklets:preBuild
-> Task :react-native-worklets:preReleaseBuild
 > Task :solana-mobile_mobile-wallet-adapter-protocol:generateCodegenArtifactsFromSchema
 > Task :solana-mobile_mobile-wallet-adapter-protocol:preBuild
 > Task :app:preBuild
 > Task :app:preReleaseBuild
+> Task :expo-updates-interface:copyReleaseJniLibsProjectOnly
+> Task :hadaf-native:preReleaseBuild UP-TO-DATE
 > Task :app:mergeReleaseJniLibFolders
+> Task :react-native-async-storage_async-storage:preReleaseBuild
+> Task :react-native-async-storage_async-storage:mergeReleaseJniLibFolders
+> Task :hadaf-native:mergeReleaseJniLibFolders
+> Task :react-native-async-storage_async-storage:mergeReleaseNativeLibs NO-SOURCE
+> Task :hadaf-native:mergeReleaseNativeLibs NO-SOURCE
+> Task :react-native-async-storage_async-storage:copyReleaseJniLibsProjectOnly
+> Task :react-native-gesture-handler:preReleaseBuild
+> Task :hadaf-native:copyReleaseJniLibsProjectOnly
+> Task :react-native-keyboard-controller:preReleaseBuild
+> Task :react-native-gesture-handler:mergeReleaseJniLibFolders
+> Task :react-native-keyboard-controller:mergeReleaseJniLibFolders
+> Task :react-native-keyboard-controller:mergeReleaseNativeLibs NO-SOURCE
+> Task :react-native-reanimated:mergeReleaseJniLibFolders
+> Task :react-native-safe-area-context:preReleaseBuild
+> Task :react-native-keyboard-controller:copyReleaseJniLibsProjectOnly
+> Task :react-native-screens:preReleaseBuild
+> Task :react-native-safe-area-context:mergeReleaseJniLibFolders
+> Task :react-native-safe-area-context:mergeReleaseNativeLibs NO-SOURCE
+> Task :react-native-safe-area-context:copyReleaseJniLibsProjectOnly
 > Task :react-native-svg:preReleaseBuild
 > Task :react-native-svg:mergeReleaseJniLibFolders
 > Task :react-native-svg:mergeReleaseNativeLibs NO-SOURCE
@@ -281,7 +282,7 @@ NO-SOURCE
 > Task :react-native-svg:parseReleaseLocalResources
 > Task :react-native-svg:generateReleaseRFile
 > Task :react-native-svg:javaPreCompileRelease
-> Task :expo-modules-core:configureCMakeRelWithDebInfo[arm64-v8a]
+> Task :react-native-worklets:configureCMakeRelWithDebInfo[arm64-v8a]
 Checking the license for package CMake 3.22.1 in /home/expo/Android/Sdk/licenses
 License for package CMake 3.22.1 accepted.
 Preparing "Install CMake 3.22.1 v.3.22.1".
@@ -290,12 +291,12 @@ Installing CMake 3.22.1 in /home/expo/Android/Sdk/cmake/3.22.1
 "Install CMake 3.22.1 v.3.22.1" complete.
 "Install CMake 3.22.1 v.3.22.1" finished.
 > Task :react-native-svg:compileReleaseJavaWithJavac
-> Task :react-native-svg:bundleLibCompileToJarRelease
-> Task :react-native-gesture-handler:javaPreCompileRelease
 Note: Some input files use or override a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 Note: Some input files use unchecked or unsafe operations.
 Note: Recompile with -Xlint:unchecked for details.
+> Task :react-native-svg:bundleLibCompileToJarRelease
+> Task :react-native-gesture-handler:javaPreCompileRelease
 > Task :react-native-keyboard-controller:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :react-native-keyboard-controller:generateReleaseBuildConfig
 > Task :react-native-keyboard-controller:generateReleaseResValues
@@ -304,7 +305,7 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :react-native-keyboard-controller:parseReleaseLocalResources
 > Task :react-native-keyboard-controller:generateReleaseRFile
 > Task :react-native-screens:configureCMakeRelWithDebInfo[arm64-v8a]
-> Task :react-native-worklets:configureCMakeRelWithDebInfo[arm64-v8a]
+> Task :expo-modules-core:configureCMakeRelWithDebInfo[arm64-v8a]
 > Task :react-native-worklets:configureCMakeRelWithDebInfo[armeabi-v7a]
 > Task :react-native-worklets:configureCMakeRelWithDebInfo[x86]
 > Task :react-native-worklets:configureCMakeRelWithDebInfo[x86_64]
@@ -317,6 +318,7 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :react-native-reanimated:configureCMakeRelWithDebInfo[x86_64]
 > Task :react-native-reanimated:generateJsonModelRelease
 > Task :react-native-reanimated:prefabReleaseConfigurePackage
+> Task :app:configureCMakeRelWithDebInfo[arm64-v8a]
 > Task :react-native-keyboard-controller:compileReleaseKotlin
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_fcfe858f08c40f4fabb70307ed883ead/node_modules/react-native-keyboard-controller/android/src/main/java/com/reactnativekeyboardcontroller/extensions/EditText.kt:69:42 Unchecked cast of 'ArrayList<*>' to 'ArrayList<TextWatcher>'.
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_fcfe858f08c40f4fabb70307ed883ead/node_modules/react-native-keyboard-controller/android/src/main/java/com/reactnativekeyboardcontroller/interactive/KeyboardAnimationController.kt:89:16 'static fun getWindowInsetsController(p0: View): WindowInsetsControllerCompat?' is deprecated. Deprecated in Java.
@@ -348,20 +350,19 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-keyboard-c
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_fcfe858f08c40f4fabb70307ed883ead/node_modules/react-native-keyboard-controller/android/src/main/java/com/reactnativekeyboardcontroller/views/overlay/OverKeyboardViewGroup.kt:153:5 The corresponding parameter in the supertype 'ReactViewGroup' is named 'h'. This may cause problems when calling this function with named arguments.
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_fcfe858f08c40f4fabb70307ed883ead/node_modules/react-native-keyboard-controller/android/src/main/java/com/reactnativekeyboardcontroller/views/overlay/OverKeyboardViewGroup.kt:154:5 The corresponding parameter in the supertype 'ReactViewGroup' is named 'oldw'. This may cause problems when calling this function with named arguments.
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_fcfe858f08c40f4fabb70307ed883ead/node_modules/react-native-keyboard-controller/android/src/main/java/com/reactnativekeyboardcontroller/views/overlay/OverKeyboardViewGroup.kt:155:5 The corresponding parameter in the supertype 'ReactViewGroup' is named 'oldh'. This may cause problems when calling this function with named arguments.
-> Task :app:configureCMakeRelWithDebInfo[arm64-v8a]
 > Task :expo-modules-core:buildCMakeRelWithDebInfo[arm64-v8a]
-> Task :react-native-gesture-handler:configureCMakeRelWithDebInfo[arm64-v8a]
 > Task :app:configureCMakeRelWithDebInfo[armeabi-v7a]
+> Task :react-native-gesture-handler:configureCMakeRelWithDebInfo[arm64-v8a]
 > Task :react-native-gesture-handler:configureCMakeRelWithDebInfo[armeabi-v7a]
 > Task :app:configureCMakeRelWithDebInfo[x86]
 > Task :react-native-gesture-handler:configureCMakeRelWithDebInfo[x86]
-> Task :react-native-gesture-handler:configureCMakeRelWithDebInfo[x86_64]
 > Task :app:configureCMakeRelWithDebInfo[x86_64]
+> Task :react-native-gesture-handler:configureCMakeRelWithDebInfo[x86_64]
 > Task :react-native-keyboard-controller:javaPreCompileRelease
 > Task :react-native-keyboard-controller:compileReleaseJavaWithJavac
+> Task :react-native-worklets:buildCMakeRelWithDebInfo[arm64-v8a][worklets]
 > Task :react-native-keyboard-controller:bundleLibRuntimeToDirRelease
 > Task :react-native-screens:configureCMakeRelWithDebInfo[armeabi-v7a]
-> Task :react-native-worklets:buildCMakeRelWithDebInfo[arm64-v8a][worklets]
 > Task :expo-modules-core:configureCMakeRelWithDebInfo[armeabi-v7a]
 > Task :react-native-safe-area-context:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :react-native-safe-area-context:generateReleaseBuildConfig
@@ -376,6 +377,7 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-safe-area-
 > Task :react-native-safe-area-context:javaPreCompileRelease
 > Task :react-native-safe-area-context:compileReleaseJavaWithJavac
 > Task :react-native-safe-area-context:bundleLibRuntimeToDirRelease
+> Task :react-native-screens:configureCMakeRelWithDebInfo[x86]
 > Task :solana-mobile_mobile-wallet-adapter-protocol:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :solana-mobile_mobile-wallet-adapter-protocol:generateReleaseBuildConfig
 > Task :solana-mobile_mobile-wallet-adapter-protocol:generateReleaseResValues
@@ -383,7 +385,6 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-safe-area-
 > Task :solana-mobile_mobile-wallet-adapter-protocol:packageReleaseResources
 > Task :solana-mobile_mobile-wallet-adapter-protocol:parseReleaseLocalResources
 > Task :solana-mobile_mobile-wallet-adapter-protocol:generateReleaseRFile
-> Task :react-native-screens:configureCMakeRelWithDebInfo[x86]
 > Task :solana-mobile_mobile-wallet-adapter-protocol:compileReleaseKotlin
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/@solana-mobile+mobile-wallet-adapter-protocol@2.2.9_react-native@0.81.5_@babel+core@7.2_7ae85ea2d1b809e5bbd175a124d9c383/node_modules/@solana-mobile/mobile-wallet-adapter-protocol/android/src/main/java/com/solanamobile/mobilewalletadapter/reactnative/SolanaMobileWalletAdapterPackage.kt:3:8 'class TurboReactPackage : BaseReactPackage' is deprecated. Use BaseReactPackage instead.
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/@solana-mobile+mobile-wallet-adapter-protocol@2.2.9_react-native@0.81.5_@babel+core@7.2_7ae85ea2d1b809e5bbd175a124d9c383/node_modules/@solana-mobile/mobile-wallet-adapter-protocol/android/src/main/java/com/solanamobile/mobilewalletadapter/reactnative/SolanaMobileWalletAdapterPackage.kt:10:48 'class TurboReactPackage : BaseReactPackage' is deprecated. Use BaseReactPackage instead.
@@ -425,10 +426,10 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/@solana-mobile+mobile-w
 > Task :expo-dev-client:generateReleaseRFile
 > Task :expo-dev-client:javaPreCompileRelease
 > Task :expo-dev-launcher:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :react-native-screens:buildCMakeRelWithDebInfo[x86]
 > Task :expo-dev-launcher:dataBindingMergeDependencyArtifactsRelease
 > Task :expo-dev-launcher:generateReleaseResValues
 > Task :expo-dev-launcher:generateReleaseResources
-> Task :react-native-screens:buildCMakeRelWithDebInfo[x86]
 > Task :expo-dev-launcher:packageReleaseResources
 > Task :expo-dev-launcher:parseReleaseLocalResources
 > Task :expo-dev-launcher:dataBindingGenBaseClassesRelease
@@ -465,6 +466,7 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/@solana-mobile+mobile-w
 > Task :expo-manifests:generateReleaseResources
 > Task :expo-manifests:packageReleaseResources
 > Task :expo-manifests:parseReleaseLocalResources
+> Task :react-native-screens:configureCMakeRelWithDebInfo[x86_64]
 > Task :expo-manifests:generateReleaseRFile
 > Task :expo-manifests:javaPreCompileRelease
 > Task :expo-updates-interface:checkKotlinGradlePluginConfigurationErrors SKIPPED
@@ -480,8 +482,6 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/@solana-mobile+mobile-w
 > Task :hadaf-native:generateReleaseResValues
 > Task :hadaf-native:generateReleaseResources
 > Task :hadaf-native:packageReleaseResources
-> Task :react-native-screens:configureCMakeRelWithDebInfo[x86_64]
-> Task :expo-modules-core:buildCMakeRelWithDebInfo[armeabi-v7a]
 > Task :hadaf-native:parseReleaseLocalResources
 > Task :hadaf-native:generateReleaseRFile
 > Task :hadaf-native:javaPreCompileRelease
@@ -493,12 +493,13 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/@solana-mobile+mobile-w
 > Task :react-native-async-storage_async-storage:parseReleaseLocalResources
 > Task :react-native-async-storage_async-storage:generateReleaseRFile
 > Task :react-native-async-storage_async-storage:javaPreCompileRelease
+> Task :expo-modules-core:buildCMakeRelWithDebInfo[armeabi-v7a]
 > Task :react-native-async-storage_async-storage:compileReleaseJavaWithJavac
-> Task :react-native-async-storage_async-storage:bundleLibRuntimeToDirRelease
 Note: Some input files use or override a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
 Note: /home/expo/workingdir/build/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.0__088e8303e028f6e6ca5c16cc3d46621a/node_modules/@react-native-async-storage/async-storage/android/src/javaPackage/java/com/reactnativecommunity/asyncstorage/AsyncStoragePackage.java uses unchecked or unsafe operations.
 Note: Recompile with -Xlint:unchecked for details.
+> Task :react-native-async-storage_async-storage:bundleLibRuntimeToDirRelease
 > Task :react-native-svg:bundleLibRuntimeToDirRelease
 > Task :react-native-screens:buildCMakeRelWithDebInfo[x86_64]
 > Task :expo-modules-core:configureCMakeRelWithDebInfo[x86]
@@ -506,16 +507,18 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :react-native-screens:mergeReleaseNativeLibs
 > Task :app:checkReleaseDuplicateClasses
 > Task :react-native-screens:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :react-native-screens:copyReleaseJniLibsProjectOnly
 > Task :react-native-screens:generateReleaseBuildConfig
 > Task :react-native-screens:generateReleaseResValues
-> Task :react-native-screens:copyReleaseJniLibsProjectOnly
+> Task :react-native-worklets:buildCMakeRelWithDebInfo[armeabi-v7a][worklets]
 > Task :react-native-screens:generateReleaseResources
 > Task :react-native-screens:packageReleaseResources
 > Task :react-native-screens:parseReleaseLocalResources
-> Task :react-native-screens:generateReleaseRFile
 > Task :app:buildKotlinToolingMetadata
 > Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :app:generateReleaseBuildConfig
+> Task :react-native-screens:javaPreCompileRelease
+> Task :react-native-screens:generateReleaseRFile
 > Task :clerk-expo:writeReleaseAarMetadata
 > Task :expo:writeReleaseAarMetadata
 > Task :expo-constants:writeReleaseAarMetadata
@@ -531,7 +534,6 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :react-native-gesture-handler:writeReleaseAarMetadata
 > Task :react-native-keyboard-controller:writeReleaseAarMetadata
 > Task :react-native-reanimated:writeReleaseAarMetadata
-> Task :react-native-worklets:buildCMakeRelWithDebInfo[armeabi-v7a][worklets]
 > Task :react-native-safe-area-context:writeReleaseAarMetadata
 > Task :react-native-svg:writeReleaseAarMetadata
 > Task :solana-mobile_mobile-wallet-adapter-protocol:writeReleaseAarMetadata
@@ -539,6 +541,7 @@ Note: Recompile with -Xlint:unchecked for details.
 React Compiler enabled
 Starting Metro Bundler
 Android node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓░░░░░░░ 57.1% ( 888/1175)
 > Task :expo-modules-core:buildCMakeRelWithDebInfo[x86]
 > Task :react-native-screens:compileReleaseKotlin
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/RNScreensPackage.kt:56:9 The corresponding parameter in the supertype 'BaseReactPackage' is named 'name'. This may cause problems when calling this function with named arguments.
@@ -598,11 +601,9 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-screens@4.
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/bottomsheet/DimmingView.kt:68:9 The corresponding parameter in the supertype 'ReactCompoundViewGroup' is named 'touchX'. This may cause problems when calling this function with named arguments.
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/bottomsheet/DimmingView.kt:69:9 The corresponding parameter in the supertype 'ReactCompoundViewGroup' is named 'touchY'. This may cause problems when calling this function with named arguments.
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/gamma/tabs/TabsHostViewManager.kt:37:9 The corresponding parameter in the supertype 'TabsHostViewManager' is named 'view'. This may cause problems when calling this function with named arguments.
-> Task :react-native-screens:javaPreCompileRelease
 > Task :app:createBundleReleaseJsAndAssets
-Android node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 66.1% (1114/1404)
 Android node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (1829/1829)
-Android Bundled 8817ms node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js (1829 modules)
+Android Bundled 9947ms node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js (1829 modules)
 Android node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (1829/1829)
 Writing bundle output to: /home/expo/workingdir/build/artifacts/mobile/android/app/build/generated/assets/createBundleReleaseJsAndAssets/index.android.bundle
 Writing sourcemap output to: /home/expo/workingdir/build/artifacts/mobile/android/app/build/intermediates/sourcemaps/react/release/index.android.bundle.packager.map
@@ -758,8 +759,7 @@ Recommendation: remove package="com.solanamobile.mobilewalletadapter.reactnative
 > Task :hadaf-native:generateReleaseAssets UP-TO-DATE
 > Task :hadaf-native:mergeReleaseAssets
 > Task :react-native-async-storage_async-storage:mergeReleaseShaders
-> Task :react-native-async-storage_async-storage:compileReleaseShaders
-NO-SOURCE
+> Task :react-native-async-storage_async-storage:compileReleaseShaders NO-SOURCE
 > Task :react-native-async-storage_async-storage:generateReleaseAssets UP-TO-DATE
 > Task :react-native-async-storage_async-storage:mergeReleaseAssets
 > Task :react-native-gesture-handler:mergeReleaseShaders
@@ -835,22 +835,22 @@ NO-SOURCE
 > Task :react-native-reanimated:buildCMakeRelWithDebInfo[arm64-v8a][reanimated]
 > Task :react-native-worklets:mergeReleaseJniLibFolders
 > Task :react-native-worklets:mergeReleaseNativeLibs
-> Task :react-native-worklets:copyReleaseJniLibsProjectOnly
-> Task :react-native-worklets:generateReleaseBuildConfig
-> Task :react-native-worklets:generateReleaseResValues
-> Task :react-native-worklets:generateReleaseResources
 > Task :expo-modules-core:copyReleaseJniLibsProjectOnly
+> Task :react-native-worklets:generateReleaseBuildConfig
+> Task :react-native-worklets:copyReleaseJniLibsProjectOnly
 > Task :expo-modules-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :react-native-worklets:generateReleaseResValues
 > Task :expo-modules-core:generateReleaseBuildConfig
-> Task :react-native-worklets:packageReleaseResources
 > Task :expo-modules-core:generateReleaseResValues
-> Task :react-native-worklets:javaPreCompileRelease
-> Task :react-native-worklets:parseReleaseLocalResources
+> Task :react-native-worklets:generateReleaseResources
 > Task :expo-modules-core:generateReleaseResources
-> Task :react-native-worklets:generateReleaseRFile
+> Task :react-native-worklets:packageReleaseResources
 > Task :expo-modules-core:packageReleaseResources
 > Task :expo-modules-core:parseReleaseLocalResources
+> Task :react-native-worklets:parseReleaseLocalResources
 > Task :expo-modules-core:generateReleaseRFile
+> Task :react-native-worklets:generateReleaseRFile
+> Task :react-native-worklets:javaPreCompileRelease
 > Task :react-native-worklets:compileReleaseJavaWithJavac
 > Task :react-native-worklets:bundleLibCompileToJarRelease
 Note: /home/expo/workingdir/build/node_modules/.pnpm/react-native-worklets@0.5.1_@babel+core@7.29.0_react-native@0.81.5_@babel+core@7.29.0_@_e33ee53926cb739c160046f5657a922f/node_modules/react-native-worklets/android/src/main/java/com/swmansion/worklets/WorkletsPackage.java uses unchecked or unsafe operations.
@@ -858,20 +858,21 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :react-native-worklets:bundleLibRuntimeToDirRelease
 > Task :react-native-worklets:writeReleaseAarMetadata
 > Task :app:mapReleaseSourceSetPaths
+> Task :app:mergeReleaseResources
 > Task :expo-modules-core:javaPreCompileRelease
 > Task :expo-modules-core:writeReleaseAarMetadata
 > Task :app:checkReleaseAarMetadata
 > Task :expo-modules-core:extractDeepLinksRelease
+> Task :react-native-worklets:extractDeepLinksRelease
 > Task :expo-modules-core:processReleaseManifest
 /home/expo/workingdir/build/node_modules/.pnpm/expo-modules-core@3.0.30_react-native@0.81.5_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.0__react@19.1.0/node_modules/expo-modules-core/android/src/main/AndroidManifest.xml:8:9-11:45 Warning:
 	meta-data#com.facebook.soloader.enabled@android:value was tagged at AndroidManifest.xml:8 to replace other declarations but no other declaration present
-> Task :react-native-worklets:extractDeepLinksRelease
 > Task :react-native-worklets:processReleaseManifest
-> Task :app:mergeReleaseResources
 > Task :expo-modules-core:compileReleaseLibraryResources
 > Task :react-native-worklets:compileReleaseLibraryResources
 > Task :expo-modules-core:prepareReleaseArtProfile
 > Task :react-native-worklets:prepareReleaseArtProfile
+> Task :expo-modules-core:compileReleaseKotlin
 > Task :react-native-worklets:bundleLibRuntimeToJarRelease
 > Task :expo-modules-core:mergeReleaseShaders
 > Task :expo-modules-core:compileReleaseShaders NO-SOURCE
@@ -895,12 +896,12 @@ Note: Recompile with -Xlint:unchecked for details.
 	activity#expo.modules.imagepicker.ExpoCropImageActivity@android:exported was tagged at AndroidManifest.xml:0 to replace other declarations but no other declaration present
 > Task :app:processReleaseManifest
 > Task :app:processReleaseManifestForPackage
-> Task :expo-modules-core:compileReleaseKotlin
 > Task :react-native-worklets:generateReleaseLintModel
 > Task :react-native-worklets:prepareLintJarForPublish
 > Task :react-native-svg:processReleaseJavaRes NO-SOURCE
 > Task :react-native-svg:createFullJarRelease
 > Task :react-native-svg:extractProguardFiles
+> Task :react-native-svg:generateReleaseLintModel
 > Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
@@ -909,7 +910,6 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:extractProguardFiles
-> Task :react-native-svg:generateReleaseLintModel
 > Task :react-native-svg:prepareLintJarForPublish
 > Task :react-native-gesture-handler:prepareLintJarForPublish
 > Task :react-native-keyboard-controller:processReleaseJavaRes
@@ -943,8 +943,8 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :react-native-safe-area-context:extractReleaseAnnotations
 > Task :react-native-safe-area-context:mergeReleaseGeneratedProguardFiles
 > Task :react-native-keyboard-controller:extractReleaseAnnotations
-> Task :react-native-safe-area-context:mergeReleaseConsumerProguardFiles
 > Task :react-native-keyboard-controller:mergeReleaseGeneratedProguardFiles
+> Task :react-native-safe-area-context:mergeReleaseConsumerProguardFiles
 > Task :react-native-keyboard-controller:mergeReleaseConsumerProguardFiles
 > Task :react-native-safe-area-context:mergeReleaseJavaResource
 > Task :react-native-keyboard-controller:mergeReleaseJavaResource
@@ -969,19 +969,19 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :solana-mobile_mobile-wallet-adapter-protocol:bundleReleaseLocalLintAar
 > Task :expo:stripReleaseDebugSymbols NO-SOURCE
 > Task :expo:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-screens:syncReleaseLibJars
 > Task :expo:extractDeepLinksForAarRelease
 > Task :react-native-async-storage_async-storage:stripReleaseDebugSymbols NO-SOURCE
 > Task :react-native-async-storage_async-storage:copyReleaseJniLibsProjectAndLocalJars
-> Task :react-native-async-storage_async-storage:extractDeepLinksForAarRelease
-> Task :react-native-screens:syncReleaseLibJars
 > Task :react-native-screens:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-async-storage_async-storage:extractDeepLinksForAarRelease
 > Task :react-native-async-storage_async-storage:extractReleaseAnnotations
+> Task :react-native-screens:bundleReleaseLocalLintAar
 > Task :react-native-async-storage_async-storage:mergeReleaseGeneratedProguardFiles
 > Task :react-native-async-storage_async-storage:mergeReleaseConsumerProguardFiles
 > Task :react-native-async-storage_async-storage:mergeReleaseJavaResource
 > Task :react-native-async-storage_async-storage:syncReleaseLibJars
 > Task :react-native-async-storage_async-storage:bundleReleaseLocalLintAar
-> Task :react-native-screens:bundleReleaseLocalLintAar
 > Task :react-native-svg:stripReleaseDebugSymbols NO-SOURCE
 > Task :react-native-svg:copyReleaseJniLibsProjectAndLocalJars
 > Task :react-native-svg:extractDeepLinksForAarRelease
@@ -990,16 +990,16 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :react-native-svg:mergeReleaseConsumerProguardFiles
 > Task :react-native-svg:mergeReleaseJavaResource
 > Task :react-native-svg:syncReleaseLibJars
+> Task :react-native-worklets:stripReleaseDebugSymbols
 > Task :react-native-svg:bundleReleaseLocalLintAar
 > Task :react-native-worklets:extractDeepLinksForAarRelease
 > Task :react-native-worklets:extractReleaseAnnotations
 > Task :react-native-worklets:mergeReleaseGeneratedProguardFiles
 > Task :react-native-worklets:mergeReleaseConsumerProguardFiles
 > Task :react-native-worklets:mergeReleaseJavaResource
-> Task :react-native-worklets:stripReleaseDebugSymbols
+> Task :react-native-worklets:syncReleaseLibJars
 > Task :expo-dev-launcher:stripReleaseDebugSymbols NO-SOURCE
 > Task :expo-dev-launcher:copyReleaseJniLibsProjectAndLocalJars
-> Task :react-native-worklets:syncReleaseLibJars
 > Task :expo-dev-launcher:extractDeepLinksForAarRelease
 > Task :expo-dev-menu-interface:stripReleaseDebugSymbols NO-SOURCE
 > Task :expo-dev-menu-interface:copyReleaseJniLibsProjectAndLocalJars
@@ -1007,9 +1007,7 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :clerk-expo:stripReleaseDebugSymbols NO-SOURCE
 > Task :clerk-expo:copyReleaseJniLibsProjectAndLocalJars
 > Task :clerk-expo:extractDeepLinksForAarRelease
-> Task :hadaf-native:stripReleaseDebugSymbols NO-SOURCE
-> Task :hadaf-native:copyReleaseJniLibsProjectAndLocalJars
-> Task :hadaf-native:extractDeepLinksForAarRelease
+> Task :react-native-worklets:copyReleaseJniLibsProjectAndLocalJars
 > Task :expo-modules-core:stripReleaseDebugSymbols
 > Task :expo-modules-core:copyReleaseJniLibsProjectAndLocalJars
 > Task :expo-modules-core:extractDeepLinksForAarRelease
@@ -1029,14 +1027,17 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :expo-json-utils:copyReleaseJniLibsProjectAndLocalJars
 > Task :expo-json-utils:extractDeepLinksForAarRelease
 > Task :expo-updates-interface:stripReleaseDebugSymbols NO-SOURCE
-> Task :react-native-worklets:copyReleaseJniLibsProjectAndLocalJars
 > Task :expo-updates-interface:copyReleaseJniLibsProjectAndLocalJars
 > Task :expo-updates-interface:extractDeepLinksForAarRelease
+> Task :hadaf-native:stripReleaseDebugSymbols NO-SOURCE
+> Task :hadaf-native:copyReleaseJniLibsProjectAndLocalJars
+> Task :hadaf-native:extractDeepLinksForAarRelease
 > Task :expo-modules-core:writeReleaseLintModelMetadata
 > Task :clerk-expo:writeReleaseLintModelMetadata
 > Task :expo-constants:writeReleaseLintModelMetadata
 > Task :expo-dev-client:writeReleaseLintModelMetadata
 > Task :expo-dev-launcher:writeReleaseLintModelMetadata
+> Task :react-native-worklets:bundleReleaseLocalLintAar
 > Task :expo-dev-menu:writeReleaseLintModelMetadata
 > Task :expo-dev-menu-interface:writeReleaseLintModelMetadata
 > Task :expo-json-utils:writeReleaseLintModelMetadata
@@ -1044,8 +1045,6 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :expo-updates-interface:writeReleaseLintModelMetadata
 > Task :hadaf-native:writeReleaseLintModelMetadata
 > Task :expo:writeReleaseLintModelMetadata
-> Task :react-native-worklets:bundleReleaseLocalLintAar
-> Task :react-native-async-storage_async-storage:writeReleaseLintModelMetadata
 > Task :react-native-svg:writeReleaseLintModelMetadata
 > Task :react-native-worklets:writeReleaseLintModelMetadata
 > Task :react-native-gesture-handler:writeReleaseLintModelMetadata
@@ -1070,10 +1069,10 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :expo-modules-core:bundleLibCompileToJarRelease
 > Task :clerk-expo:compileReleaseKotlin
 > Task :react-native-async-storage_async-storage:lintVitalAnalyzeRelease
-> Task :react-native-keyboard-controller:lintVitalAnalyzeRelease
 > Task :clerk-expo:compileReleaseJavaWithJavac
 > Task :clerk-expo:bundleLibCompileToJarRelease
 > Task :expo-dev-client:compileReleaseKotlin NO-SOURCE
+> Task :react-native-keyboard-controller:lintVitalAnalyzeRelease
 > Task :expo-dev-client:compileReleaseJavaWithJavac
 > Task :expo-dev-client:bundleLibCompileToJarRelease
 > Task :expo-constants:compileReleaseKotlin
@@ -1083,13 +1082,13 @@ w: file:///home/expo/workingdir/build/node_modules/.pnpm/expo-constants@18.0.13_
 > Task :expo-dev-menu:compileReleaseKotlin
 > Task :expo-dev-launcher:compileReleaseKotlin
 w: file:///home/expo/workingdir/build/node_modules/.pnpm/expo-dev-launcher@57.0.5_expo@54.0.35_react-native@0.81.5_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.0_/node_modules/expo-dev-launcher/android/src/main/java/expo/modules/devlauncher/DevLauncherPackage.kt:15:16 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
-> Task :react-native-reanimated:buildCMakeRelWithDebInfo[armeabi-v7a][reanimated]
 > Task :expo-dev-menu:compileReleaseJavaWithJavac
 > Task :expo-dev-menu:bundleLibCompileToJarRelease
 > Task :expo-dev-menu-interface:compileReleaseKotlin NO-SOURCE
 > Task :expo-dev-launcher:compileReleaseJavaWithJavac
 > Task :expo-dev-launcher:bundleLibCompileToJarRelease
 > Task :expo-json-utils:compileReleaseKotlin
+> Task :react-native-reanimated:buildCMakeRelWithDebInfo[armeabi-v7a][reanimated]
 > Task :expo-json-utils:compileReleaseJavaWithJavac
 > Task :expo-json-utils:bundleLibCompileToJarRelease
 > Task :expo-dev-menu-interface:compileReleaseJavaWithJavac
@@ -1121,12 +1120,11 @@ e: file:///home/expo/workingdir/build/artifacts/mobile/modules/hadaf-native/andr
 e: file:///home/expo/workingdir/build/artifacts/mobile/modules/hadaf-native/android/src/main/java/com/hadaf/hadafnative/HadafNativePackage.kt:6:28 This type has a constructor, so it must be initialized here.
 e: file:///home/expo/workingdir/build/artifacts/mobile/modules/hadaf-native/android/src/main/java/com/hadaf/hadafnative/HadafNativePackage.kt:7:3 'createModules' overrides nothing.
 e: file:///home/expo/workingdir/build/artifacts/mobile/modules/hadaf-native/android/src/main/java/com/hadaf/hadafnative/UsageStatsModule.kt:43:44 Return type mismatch: expected 'Any?', actual 'Unit'.
-> Task :expo-modules-core:bundleLibRuntimeToDirRelease
 [Incubating] Problems report is available at: file:///home/expo/workingdir/build/artifacts/mobile/android/build/reports/problems/problems-report.html
 Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
 You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
 For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
-692 actionable tasks: 692 executed
+690 actionable tasks: 690 executed
 FAILURE: Build failed with an exception.
 * What went wrong:
 Execution failed for task ':hadaf-native:compileReleaseKotlin'.
@@ -1137,7 +1135,7 @@ Execution failed for task ':hadaf-native:compileReleaseKotlin'.
 > Run with --info or --debug option to get more log output.
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
-BUILD FAILED in 9m 47s
-See the profiling report at: file:///home/expo/workingdir/build/artifacts/mobile/android/build/reports/profile/profile-2026-07-18-11-56-06.html
+BUILD FAILED in 9m 48s
+See the profiling report at: file:///home/expo/workingdir/build/artifacts/mobile/android/build/reports/profile/profile-2026-07-18-12-12-33.html
 A fine-grained performance profile is available: use the --scan option.
 Error: Gradle build failed with unknown error. See logs for the "Run gradlew" phase for more information.
