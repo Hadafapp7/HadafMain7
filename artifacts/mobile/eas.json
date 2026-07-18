@@ -7,6 +7,7 @@
   "build": {
     "development": {
       "node": "22.13.0",
+      "image": "latest",
       "developmentClient": true,
       "distribution": "internal",
       "android": {
@@ -19,6 +20,7 @@
     },
     "preview": {
       "node": "22.13.0",
+      "image": "latest",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
@@ -26,6 +28,7 @@
     },
     "production": {
       "node": "22.13.0",
+      "image": "latest",
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"

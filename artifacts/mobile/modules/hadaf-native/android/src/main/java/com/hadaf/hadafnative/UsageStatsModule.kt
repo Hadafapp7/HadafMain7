@@ -19,23 +19,27 @@ class UsageStatsModule : Module() {
     // This permission cannot be granted programmatically — the user must
     // enable it manually in Settings > Apps > Special app access > Usage access.
     Function("hasUsagePermission") {
-      val ctx = appContext.reactContext ?: return@Function false
-      val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-      val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        appOps.unsafeCheckOpNoThrow(
-          AppOpsManager.OPSTR_GET_USAGE_STATS,
-          android.os.Process.myUid(),
-          ctx.packageName
-        )
+      val ctx = appContext.reactContext
+      if (ctx == null) {
+        false
       } else {
-        @Suppress("DEPRECATION")
-        appOps.checkOpNoThrow(
-          AppOpsManager.OPSTR_GET_USAGE_STATS,
-          android.os.Process.myUid(),
-          ctx.packageName
-        )
+        val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          appOps.unsafeCheckOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            android.os.Process.myUid(),
+            ctx.packageName
+          )
+        } else {
+          @Suppress("DEPRECATION")
+          appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            android.os.Process.myUid(),
+            ctx.packageName
+          )
+        }
+        mode == AppOpsManager.MODE_ALLOWED
       }
-      mode == AppOpsManager.MODE_ALLOWED
     }
 
     // Open the system Usage Access settings screen so the user can grant permission.

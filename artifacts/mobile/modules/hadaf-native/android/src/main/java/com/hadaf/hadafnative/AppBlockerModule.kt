@@ -37,8 +37,12 @@ class AppBlockerModule : Module() {
     // ── Permission checks ──────────────────────────────────────────────────
 
     Function("hasAccessibilityPermission") {
-      val ctx = appContext.reactContext ?: return@Function false
-      HadafAccessibilityService.isEnabled(ctx)
+      val ctx = appContext.reactContext
+      if (ctx == null) {
+        false
+      } else {
+        HadafAccessibilityService.isEnabled(ctx)
+      }
     }
 
     Function("openAccessibilitySettings") {
@@ -52,9 +56,16 @@ class AppBlockerModule : Module() {
     }
 
     Function("hasOverlayPermission") {
-      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return@Function true
-      val ctx = appContext.reactContext ?: return@Function false
-      Settings.canDrawOverlays(ctx)
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+        true
+      } else {
+        val ctx = appContext.reactContext
+        if (ctx == null) {
+          false
+        } else {
+          Settings.canDrawOverlays(ctx)
+        }
+      }
     }
 
     Function("openOverlaySettings") {
@@ -94,7 +105,7 @@ class AppBlockerModule : Module() {
       if (ctx != null) {
         prefs(ctx).edit()
           .putBoolean(KEY_ACTIVE, false)
-          .putStringSet(KEY_BLOCKED, emptySet())
+          .putStringSet(KEY_BLOCKED, emptySet<String>())
           .putLong(KEY_SESSION_END, 0L)
           .apply()
         HadafAccessibilityService.instance?.onSessionStopped()
@@ -102,16 +113,24 @@ class AppBlockerModule : Module() {
     }
 
     Function("isSessionActive") {
-      val ctx = appContext.reactContext ?: return@Function false
-      val p = prefs(ctx)
-      val active = p.getBoolean(KEY_ACTIVE, false)
-      val endMs  = p.getLong(KEY_SESSION_END, 0L)
-      active && System.currentTimeMillis() < endMs
+      val ctx = appContext.reactContext
+      if (ctx == null) {
+        false
+      } else {
+        val p = prefs(ctx)
+        val active = p.getBoolean(KEY_ACTIVE, false)
+        val endMs  = p.getLong(KEY_SESSION_END, 0L)
+        active && System.currentTimeMillis() < endMs
+      }
     }
 
     Function("getBlockedPackages") {
-      val ctx = appContext.reactContext ?: return@Function emptyList<String>()
-      prefs(ctx).getStringSet(KEY_BLOCKED, emptySet())?.toList() ?: emptyList()
+      val ctx = appContext.reactContext
+      if (ctx == null) {
+        emptyList<String>()
+      } else {
+        prefs(ctx).getStringSet(KEY_BLOCKED, emptySet<String>())?.toList() ?: emptyList<String>()
+      }
     }
   }
 }
