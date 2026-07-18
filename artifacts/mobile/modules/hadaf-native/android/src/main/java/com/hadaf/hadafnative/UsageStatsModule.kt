@@ -1,4 +1,4 @@
-package com.hadaf.native
+package com.hadaf.hadafnative
 
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager

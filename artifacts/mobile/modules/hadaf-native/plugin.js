@@ -50,7 +50,7 @@ function withAndroidAccessibilityService(config) {
 
     // Register HadafAccessibilityService
     if (!app.service) app.service = [];
-    const svcName = ".HadafAccessibilityService";
+    const svcName = "com.hadaf.hadafnative.HadafAccessibilityService";
     const svcExists = app.service.some(
       (s) => s.$?.["android:name"] === svcName
     );

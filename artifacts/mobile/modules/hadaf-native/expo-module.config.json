@@ -4,6 +4,6 @@
     "modules": ["HadafNativeModule"]
   },
   "android": {
-    "package": "com.hadaf.native.HadafNativePackage"
+    "package": "com.hadaf.hadafnative.HadafNativePackage"
   }
 }

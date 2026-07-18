@@ -1,4 +1,4 @@
-package com.hadaf.native
+package com.hadaf.hadafnative
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.package.Package

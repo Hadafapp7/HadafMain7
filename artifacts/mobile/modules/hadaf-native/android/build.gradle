@@ -1,7 +1,7 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
-group = 'com.hadaf.native'
+group = 'com.hadaf.hadafnative'
 version = '1.0.0'
 
 buildscript {
@@ -18,8 +18,8 @@ buildscript {
 }
 
 android {
-  namespace "com.hadaf.native"
-  compileSdkVersion safeExtGet("compileSdkVersion", 34)
+  namespace "com.hadaf.hadafnative"
+  compileSdk safeExtGet("compileSdk", 34)
 
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_17
@@ -31,8 +31,8 @@ android {
   }
 
   defaultConfig {
-    minSdkVersion safeExtGet("minSdkVersion", 23)
-    targetSdkVersion safeExtGet("targetSdkVersion", 34)
+    minSdk safeExtGet("minSdk", 23)
+    targetSdk safeExtGet("targetSdk", 34)
   }
 }
 
