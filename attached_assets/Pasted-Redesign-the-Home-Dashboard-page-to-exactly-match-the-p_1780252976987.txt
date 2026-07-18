@@ -1,0 +1,74 @@
+Redesign the Home/Dashboard page to exactly match the provided screenshot. Replicate every visual detail precisely — layout, typography, spacing, card shapes, colors, and component styles. The only exception: do not include the "Start Focus Session" button.
+
+Layout — Top to Bottom Order
+
+Header (top of page)
+
+Large bold text: "Good Evening, Alex 👋"
+Subtitle below in small caps/uppercase grey: "FOCUS MODE: OFF"
+Circular profile avatar in the top-right corner — dark grey circle with a silhouette icon inside
+
+
+Two side-by-side cards (equal width, rounded corners, light grey background)
+
+Left card — Screen Time:
+
+Small uppercase grey label: "SCREEN TIME"
+Large bold number: "4h 32m"
+Bottom-left: small pill/badge showing "↘ 23%" in light grey
+Bottom-right: a small vertical bar/spark indicator
+
+
+Right card — DoomScore:
+
+Small uppercase grey label: "DOOMSCORE"
+Large bold number: "68"
+Bottom row: "BETTER" label on left, "+4 PTS" on right in small caps
+Below that: a horizontal progress bar — dark filled portion on left, light grey remainder on right
+
+
+
+
+Start Focus Session button — DO NOT include this
+Most Used Apps card (full width, rounded corners, white/light background)
+
+Header row: small uppercase label "MOST USED APPS" on left, "···" (three dots) on right
+Two app rows, each containing:
+
+Rounded square app icon (dark grey background with white icon inside)
+App name in bold + category in small uppercase grey below
+Screen time in bold on the right + horizontal progress bar below it
+
+
+Row 1: Instagram / SOCIAL / 2h 15m — longer filled bar
+Row 2: TikTok / ENTERTAINMENT / 1h 45m — shorter filled bar
+Divider line between rows
+
+
+Three small circular cards in a row (equal size, pastel background tones)
+
+Left — Daily Tasks: light mint/green background, checkbox-list icon in green, label "DAILY TASKS" in green uppercase, green pill badge showing "3 LEFT"
+Centre — Mood Check: light peach/orange background, meditation figure icon in orange, label "MOOD CHECK" in orange uppercase, text "EMPTY" in orange below
+Right — Streaks: light peach/orange background, flame icon in orange, label "STREAKS" in orange uppercase, orange pill badge showing "7 DAYS"
+
+
+Bottom Navigation Bar
+
+4 tabs: Home (house icon, active — black with dot indicator), Analytics (bar chart icon, grey), Focus (target/circle icon, grey), Profile (person icon, grey)
+Active tab label bold/black, inactive tabs grey
+Thin top border separating nav from content
+
+
+
+
+Visual Style Rules
+
+Background: off-white / very light grey (#F5F5F5 or similar)
+Cards: white or near-white, rounded corners (large border-radius ~16–20px), subtle shadow
+Typography: bold heavy numerals for stats, small uppercase tracking for labels
+Icons: simple, minimal, monochrome or matching card accent color
+Spacing: generous padding inside cards, consistent vertical gap between sections
+Circular cards at the bottom: perfectly round, equal diameter, centered icons
+
+
+Do not change: any other page, the navigation bar tab order, or any existing functionality outside the Home page.

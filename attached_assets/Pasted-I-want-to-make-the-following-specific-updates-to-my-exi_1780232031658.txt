@@ -1,0 +1,66 @@
+I want to make the following specific updates to my existing focus/productivity application. Do not change the existing color theme, typography, or visual design language. Preserve all existing functionality unless explicitly replaced below.
+
+1. Replace Focus Page with Goals Page
+
+Rename the "Focus" tab in the bottom navigation to "Goals"
+This page displays the user's active daily goals
+Each goal card shows:
+
+Short name (bold, prominent)
+Intent (brief description/purpose)
+Active time (e.g. "9:00 AM – 11:00 AM")
+
+
+Show 3 example goals pre-populated in the UI using tabs (one tab per goal)
+Add a floating "Add Goal" button pinned just above the bottom navigation bar (not overlapping it)
+
+
+2. Add Goal Modal (triggered by "Add Goal" button)
+When user taps "Add Goal", open a modal/sheet with this form:
+
+Goal Name — text input
+Intent — text input (what is the purpose of this goal?)
+Type selector — toggle or radio between:
+
+Daily — repeats every day
+Scheduled — one-time or specific date
+
+
+If Daily selected: show two time pickers — "Active From" and "Active To"
+If Scheduled selected: show a date picker + time picker for when it activates
+Submit button to save the goal and display it as a new tab/card on the Goals page
+
+
+3. Add "Focus Session" Button to Bottom Navigation
+
+In the bottom navigation bar, add a "+" button positioned between the Analytics and Goals buttons
+Label it "Focus Session"
+Tapping it opens the original Focus Session page/flow exactly as it existed before (no changes to that page)
+Style this button to stand out slightly (e.g. elevated, accent color, slightly larger) — consistent with existing theme
+
+
+4. Update Dashboard
+
+Remove the existing "Start Focus Session" button from the Dashboard
+Add a Goals Progress section that shows progress for the top 3 active goals
+Each goal in this section shows:
+
+Goal name
+A progress bar or ring showing completion/progress for today
+Active time window
+
+
+
+
+5. Animations
+Add smooth, tasteful animations throughout:
+
+Goals page: cards animate in with a fade + slide-up on load
+Add Goal modal: slides up from bottom with spring easing
+Goal tabs: smooth crossfade when switching between tabs
+Dashboard goal progress bars: animate fill on page load
+"Focus Session" nav button: subtle pulse or bounce on first render to draw attention
+All animations should feel native and snappy — not slow or excessive
+
+
+Do not change: color palette, font choices, existing dashboard layout (except the removal noted above), or the Focus Session page internals.

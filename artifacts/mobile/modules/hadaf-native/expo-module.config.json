@@ -1,0 +1,12 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["HadafNativeModule"]
+  },
+  "android": {
+    "modules": [
+      "com.hadaf.hadafnative.UsageStatsModule",
+      "com.hadaf.hadafnative.AppBlockerModule"
+    ]
+  }
+}

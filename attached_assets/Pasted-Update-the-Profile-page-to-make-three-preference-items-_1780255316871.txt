@@ -1,0 +1,138 @@
+Update the Profile page to make three preference items navigate to their own dedicated sub-pages. Add a missing Achievements row, and build all three sub-pages exactly matching the provided screenshots. All pages must be fully interactive.
+
+Profile Page — Add Missing Preference Row
+Add an Achievements row to the Preferences list, positioned above the Notifications row:
+
+Icon: emoji_events (trophy) Material Symbol
+Label: "ACHIEVEMENTS"
+Same style as all other preference rows — white card, chevron-right, hover animation
+
+
+Sub-Page 1 — Achievements (Image 1)
+Tapping Achievements navigates to a new full page:
+Header
+
+Back arrow (←) on left + "ACHIEVEMENTS" bold uppercase label — same top app bar style as profile page
+
+Level Card (full width, black background, rounded-xl)
+
+Dark black card with subtle geometric/abstract dark pattern or bokeh texture in background
+Top-left pill badge: "LEVEL 12" — white text, dark pill background, small bold text
+Below: "MASTER OF FOCUS" — very large, ultra-bold white uppercase text, two lines
+Bottom row: "XP PROGRESS" label left, "850 / 1000" right — both small white text
+Below that: full-width horizontal progress bar — white filled portion (~85%), dark grey remainder, rounded ends
+
+Streak Row (two equal cards side by side, white/light grey background, rounded-xl)
+
+Left card: 🔥 flame emoji large, label "CURRENT STREAK" tiny uppercase grey, value "12 Days" large bold black
+Right card: 👑 crown emoji large, label "BEST STREAK" tiny uppercase grey, value "24 Days" large bold black
+
+Badge Gallery Section
+
+Section label: "BADGE GALLERY" — tiny uppercase bold, left-aligned
+Grid of badge circles (2 per row or wrapping flex):
+
+Earned badges: solid black circle, white icon inside, label below in bold black small text
+
+☀️ sun icon → "EARLY BIRD"
+🌙 moon icon → "NIGHT OWL"
+
+
+Locked badges: light grey dashed circle border, grey icon inside, grey label below
+
+🌱 plant icon → "FOCUS GURU"
+⚓ anchor icon → "DEEP DIVER"
+
+
+Add more locked badges below to fill the section naturally
+
+
+Badge circles: equal size, centered icon, label centered below
+
+Milestones Section
+
+Section label: "MILESTONES" — tiny uppercase bold, left-aligned
+Add 2–3 milestone rows with progress indicators (e.g. "Complete 50 focus sessions — 34/50" with a progress bar) matching the overall page style
+
+
+Sub-Page 2 — Notifications (Image 2)
+Tapping Notifications navigates to a new full page:
+Header
+
+Back arrow + "NOTIFICATIONS" bold uppercase label
+
+Push Notifications Section
+
+Section label: "PUSH NOTIFICATIONS" — tiny uppercase grey, left-aligned
+Three toggle rows, each: white card, rounded-xl, icon + label left, toggle switch right
+
+Clock icon → "Daily Reminders" — toggle ON (black)
+Trending-up icon → "Goal Progress" — toggle ON (black)
+Trophy icon → "Achievement Alerts" — toggle OFF (grey)
+
+
+
+Email Notifications Section
+
+Section label: "EMAIL NOTIFICATIONS" — tiny uppercase grey, left-aligned
+Two toggle rows:
+
+Refresh/update icon → "App Updates" — toggle ON (black)
+Analytics icon → "Performance Reports" — toggle OFF (grey)
+
+
+
+Focus Mode Info Card (bottom, full width)
+
+Solid black rounded-xl card
+Bold white title: "Focus Mode"
+Body text below in light grey: "System-wide notifications are silenced during active focus sessions to maintain peak cognitive clarity."
+
+Interactivity
+
+All toggles must be fully functional — tapping switches state between ON (black) and OFF (grey) with smooth animation
+
+
+Sub-Page 3 — Account (Image 3)
+Tapping Account navigates to a new full page:
+Header
+
+Back arrow + "ACCOUNT" bold uppercase label
+
+Profile Photo Section (centered)
+
+Circular avatar — dark background with illustrated/avatar style person inside
+Small black circular edit badge bottom-right of avatar with a pencil/edit icon
+Below avatar: "EDIT PROFILE PHOTO" — tiny uppercase grey, centered, tappable
+
+Editable Form Fields
+Each field has:
+
+Small uppercase bold label above
+Rounded-xl light grey input field below with current value inside
+Fields in order:
+
+NAME → Julian Stark
+EMAIL → julian.stark@monolith.io
+PHONE NUMBER → +1 (555) 890-2341
+GENDER → Male
+AGE → 28
+
+
+
+Interactivity
+
+All fields are tappable and editable — tapping focuses the field and opens keyboard
+Gender field: tapping opens a simple picker/dropdown (Male / Female / Non-binary / Prefer not to say)
+Age field: numeric input only
+Add a "Save Changes" solid black pill button at the bottom of the form
+
+
+Navigation Behavior (all sub-pages)
+
+Tapping back arrow returns to Profile page
+Page transition: slide in from right, slide back on dismiss — native feel
+All sub-pages use the same background color, font, and design tokens as the Profile page (#f9f9f9 bg, Inter font, same card styles)
+
+
+Do not change: any other page, the bottom navigation bar, Goals page, Focus page, Analytics page, or Home page.

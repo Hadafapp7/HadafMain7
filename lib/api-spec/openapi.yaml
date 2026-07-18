@@ -1,0 +1,604 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: users
+    description: User account operations
+  - name: goals
+    description: Goal / task operations
+  - name: app-usage
+    description: App usage log operations
+  - name: focus-sessions
+    description: Focus session operations
+  - name: blocked-apps
+    description: Blocked app list operations
+  - name: user-settings
+    description: User preference operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /me:
+    get:
+      operationId: getMe
+      tags: [users]
+      summary: Get the current authenticated user, creating a zeroed-out record on first sign-in
+      responses:
+        "200":
+          description: The current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /goals:
+    get:
+      operationId: listGoals
+      tags: [goals]
+      summary: List goals for the current user
+      responses:
+        "200":
+          description: List of goals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Goal"
+    post:
+      operationId: createGoal
+      tags: [goals]
+      summary: Create a goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoalInput"
+      responses:
+        "201":
+          description: Created goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+
+  /goals/{id}:
+    patch:
+      operationId: updateGoal
+      tags: [goals]
+      summary: Update a goal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoalUpdate"
+      responses:
+        "200":
+          description: Updated goal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+    delete:
+      operationId: deleteGoal
+      tags: [goals]
+      summary: Delete a goal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+
+  /app-usage:
+    get:
+      operationId: listAppUsageEntries
+      tags: [app-usage]
+      summary: List app usage log entries for the current user
+      responses:
+        "200":
+          description: List of app usage entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppUsageEntry"
+    post:
+      operationId: createAppUsageEntry
+      tags: [app-usage]
+      summary: Manually log an app usage session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppUsageEntryInput"
+      responses:
+        "201":
+          description: Created app usage entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUsageEntry"
+
+  /app-usage/summary:
+    get:
+      operationId: getAppUsageSummary
+      tags: [app-usage]
+      summary: Aggregated total duration per app for the current user
+      responses:
+        "200":
+          description: Per-app aggregated usage totals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppUsageSummaryItem"
+
+  /focus-sessions:
+    get:
+      operationId: listFocusSessions
+      tags: [focus-sessions]
+      summary: List focus session history for the current user
+      responses:
+        "200":
+          description: List of focus sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FocusSession"
+    post:
+      operationId: startFocusSession
+      tags: [focus-sessions]
+      summary: Start a focus session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FocusSessionInput"
+      responses:
+        "201":
+          description: Started focus session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FocusSession"
+
+  /focus-sessions/{id}/end:
+    post:
+      operationId: endFocusSession
+      tags: [focus-sessions]
+      summary: End (complete or stop) a focus session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FocusSessionEndInput"
+      responses:
+        "200":
+          description: Ended focus session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FocusSession"
+
+  /blocked-apps:
+    get:
+      operationId: listBlockedApps
+      tags: [blocked-apps]
+      summary: List the persisted blocked-app list for the current user
+      responses:
+        "200":
+          description: List of blocked apps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlockedApp"
+    post:
+      operationId: addBlockedApp
+      tags: [blocked-apps]
+      summary: Add an app to the blocked-app list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockedAppInput"
+      responses:
+        "201":
+          description: Added blocked app
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockedApp"
+
+  /blocked-apps/{id}:
+    delete:
+      operationId: removeBlockedApp
+      tags: [blocked-apps]
+      summary: Remove an app from the blocked-app list
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Removed
+
+  /user-settings:
+    get:
+      operationId: getUserSettings
+      tags: [user-settings]
+      summary: Get the current user's settings, creating defaults on first access
+      responses:
+        "200":
+          description: User settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettings"
+    patch:
+      operationId: updateUserSettings
+      tags: [user-settings]
+      summary: Update the current user's settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserSettingsUpdate"
+      responses:
+        "200":
+          description: Updated user settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSettings"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, email, createdAt]
+
+    Goal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        title:
+          type: string
+        intent:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [daily, scheduled]
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        startTime:
+          type: string
+        durationMinutes:
+          type: integer
+        scheduledDate:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, done]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - title
+        - type
+        - priority
+        - startTime
+        - durationMinutes
+        - status
+        - createdAt
+        - updatedAt
+
+    GoalInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        intent:
+          type: string
+        type:
+          type: string
+          enum: [daily, scheduled]
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        startTime:
+          type: string
+        durationMinutes:
+          type: integer
+          minimum: 1
+        scheduledDate:
+          type: string
+      required: [title, type, priority, startTime, durationMinutes]
+
+    GoalUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        intent:
+          type: string
+        type:
+          type: string
+          enum: [daily, scheduled]
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        startTime:
+          type: string
+        durationMinutes:
+          type: integer
+          minimum: 1
+        scheduledDate:
+          type: string
+        status:
+          type: string
+          enum: [pending, done]
+
+    AppUsageEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        appName:
+          type: string
+        category:
+          type: ["string", "null"]
+        durationMinutes:
+          type: integer
+        loggedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, userId, appName, durationMinutes, loggedAt, createdAt]
+
+    AppUsageEntryInput:
+      type: object
+      properties:
+        appName:
+          type: string
+          minLength: 1
+        category:
+          type: string
+        durationMinutes:
+          type: integer
+          minimum: 1
+        loggedAt:
+          type: string
+          format: date-time
+      required: [appName, durationMinutes]
+
+    AppUsageSummaryItem:
+      type: object
+      properties:
+        appName:
+          type: string
+        category:
+          type: ["string", "null"]
+        totalMinutes:
+          type: integer
+      required: [appName, totalMinutes]
+
+    FocusSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        intention:
+          type: ["string", "null"]
+        plannedDurationMinutes:
+          type: integer
+        blockedApps:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [running, paused, completed, stopped]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - id
+        - userId
+        - plannedDurationMinutes
+        - blockedApps
+        - status
+        - startedAt
+
+    FocusSessionInput:
+      type: object
+      properties:
+        intention:
+          type: string
+        plannedDurationMinutes:
+          type: integer
+          minimum: 1
+        blockedApps:
+          type: array
+          items:
+            type: string
+      required: [plannedDurationMinutes, blockedApps]
+
+    FocusSessionEndInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [completed, stopped]
+      required: [status]
+
+    BlockedApp:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        appName:
+          type: string
+        category:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, userId, appName, createdAt]
+
+    BlockedAppInput:
+      type: object
+      properties:
+        appName:
+          type: string
+          minLength: 1
+        category:
+          type: string
+      required: [appName]
+
+    UserSettings:
+      type: object
+      properties:
+        userId:
+          type: string
+        notificationsEnabled:
+          type: boolean
+        dailyReminderEnabled:
+          type: boolean
+        focusReminderEnabled:
+          type: boolean
+        appearance:
+          type: string
+          enum: [light, dark, system]
+        analyticsOptIn:
+          type: boolean
+        usageTrackingOptIn:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - userId
+        - notificationsEnabled
+        - dailyReminderEnabled
+        - focusReminderEnabled
+        - appearance
+        - analyticsOptIn
+        - usageTrackingOptIn
+        - updatedAt
+
+    UserSettingsUpdate:
+      type: object
+      properties:
+        notificationsEnabled:
+          type: boolean
+        dailyReminderEnabled:
+          type: boolean
+        focusReminderEnabled:
+          type: boolean
+        appearance:
+          type: string
+          enum: [light, dark, system]
+        analyticsOptIn:
+          type: boolean
+        usageTrackingOptIn:
+          type: boolean

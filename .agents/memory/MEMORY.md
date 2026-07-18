@@ -1,0 +1,1 @@
+- [Hadaf native modules](hadaf-native-modules.md) — Kotlin/Swift native modules written; require EAS Build / local Android Studio or Xcode to compile and run.

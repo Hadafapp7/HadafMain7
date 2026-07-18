@@ -1,0 +1,52 @@
+Make the following specific updates to the Home/Dashboard page only. Do not change any other page, the navigation bar, or any other existing functionality.
+
+1. Remove 3D Character & Update Card Styling
+
+Completely remove the 3D progress character from the top of the Home page — remove all associated code, assets, and the container section
+Remove the light highlight/tint colors from all cards
+Replace with a subtle grey shade on each card (uniform across all cards — a single consistent grey tint, not per-card colors)
+Cards should still feel elevated and clean — grey shade should be soft and translucent, not heavy or opaque
+
+
+2. Goals Progress Card — Simplified Rows + Full-Year Calendar Modal
+Remove the following from the Goals Progress card:
+
+Remove the horizontal swipe/scroll interaction from each row of circles
+Remove any calendar icon or button that was added to the card
+
+Keep:
+
+The 5 circles per row showing the fixed current day window
+The subtle row highlight background behind each row of circles
+
+Calendar Modal — updated behavior:
+
+Tapping anywhere on the Goals Progress card opens the calendar modal
+The calendar must show the entire current year (all 12 months, or a full scrollable year view — not just the current month)
+On each date, show a single small dot beneath or on the date number indicating goal status:
+
+🟢 Green dot — goal completed
+🔴 Red dot — goal missed/not completed
+⚫ Grey dot — goal terminated mid-session
+
+
+Dates with no goal activity show no dot
+Modal remains medium-sized, centered, with backdrop blur
+Modal closes on tap outside or via a close/X button
+Entrance animation: scale-up + fade-in with spring easing
+
+
+3. Remove Top Header Section Completely
+
+Remove the entire top section of the Home page that contains:
+
+The greeting message (e.g. "Good Evening, [Name]")
+The profile icon/avatar
+The Focus Mode status indicator or toggle
+
+
+Delete the full header bar/row — remove all associated code and layout space
+The page should now begin directly with the first card/content section, with appropriate top padding from the screen edge only
+
+
+Do not change: any other page, the bottom navigation bar, Goals page, Focus Session page, Analytics page, or any existing card content beyond styling updates specified above.

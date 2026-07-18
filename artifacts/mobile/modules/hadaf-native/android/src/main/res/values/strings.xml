@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="accessibility_service_description">
+    Hadaf uses Accessibility permission to detect when you try to open a blocked
+    app during a focus session. It immediately shows a reminder screen and
+    redirects you back to Hadaf. No keystrokes or personal data are recorded.
+  </string>
+</resources>

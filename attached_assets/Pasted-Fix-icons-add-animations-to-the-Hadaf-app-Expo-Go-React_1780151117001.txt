@@ -1,0 +1,134 @@
+Fix icons + add animations to the Hadaf app (Expo Go / React Native)
+Problem 1 — Icons show Chinese characters in Expo Go
+Root cause: Material Symbols Outlined is a web font loaded via Google CDN <link> tag. React Native (Expo Go) cannot use web fonts for icon rendering — it falls back to system CJK glyphs.
+Fix: Replace Material Symbols with @expo/vector-icons
+
+Install: npx expo install @expo/vector-icons
+Import in every file that uses icons:
+
+jsimport { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+
+Replace every <span className="material-symbols-outlined">icon_name</span> with the equivalent @expo/vector-icons component. Use MaterialIcons first; fall back to MaterialCommunityIcons if not found. Reference mapping:
+
+Material Symbols nameReplace withhome<MaterialIcons name="home" size={24} color={color} />bar_chart<MaterialIcons name="bar-chart" size={24} color={color} />timer<MaterialIcons name="timer" size={24} color={color} />person<MaterialIcons name="person" size={24} color={color} />play_arrow<MaterialIcons name="play-arrow" size={32} color="#fff" />more_horiz<MaterialIcons name="more-horiz" size={24} color={color} />photo_camera<MaterialIcons name="photo-camera" size={24} color={color} />movie<MaterialIcons name="movie" size={24} color={color} />smart_display<MaterialIcons name="smart-display" size={24} color={color} />south_east<MaterialIcons name="south-east" size={12} color={color} />chevron_right<MaterialIcons name="chevron-right" size={24} color={color} />settings<MaterialIcons name="settings" size={24} color={color} />close<MaterialIcons name="close" size={24} color={color} />add<MaterialIcons name="add" size={24} color={color} />remove<MaterialIcons name="remove" size={24} color={color} />notifications<MaterialIcons name="notifications" size={24} color={color} />lock<MaterialIcons name="lock" size={24} color={color} />download<MaterialIcons name="download" size={24} color={color} />help<MaterialIcons name="help" size={24} color={color} />logout<MaterialIcons name="logout" size={24} color={color} />emoji_events<MaterialIcons name="emoji-events" size={24} color={color} />
+
+Remove all <link> tags referencing fonts.googleapis.com/css2?family=Material+Symbols from any HTML or web entry point. They have zero effect in React Native.
+In app.json or app.config.js, ensure fonts are NOT blocking — @expo/vector-icons bundles its own font files and loads them automatically via useFonts or the built-in Expo asset pipeline. No manual font loading needed for vector icons.
+
+
+Problem 2 — Add animations to every component
+Install: npx expo install react-native-reanimated
+Add react-native-reanimated/plugin to babel.config.js plugins array.
+Card entrance animations (all 4 screens)
+Wrap every card/section in a FadeInDown animation using Reanimated's Animated.View with entering={FadeInDown.delay(index * 80).springify()}. Stagger each card by 80ms so they cascade in on screen mount.
+jsimport Animated, { FadeInDown } from 'react-native-reanimated';
+// Usage:
+<Animated.View entering={FadeInDown.delay(index * 80).springify()}>
+  {/* card content */}
+</Animated.View>
+Button press animation (all pressable elements)
+Replace all TouchableOpacity / Pressable with this pattern using useAnimatedStyle + useSharedValue:
+jsconst scale = useSharedValue(1);
+const animatedStyle = useAnimatedStyle(() => ({
+  transform: [{ scale: scale.value }],
+}));
+// onPressIn: scale.value = withSpring(0.95)
+// onPressOut: scale.value = withSpring(1)
+Apply to: Start Focus Session button, all cards, Quick Action chips, all list items.
+Bottom navigation tab animation
+When a tab is pressed:
+
+Scale the icon up to 1.2 then back to 1 with withSequence(withSpring(1.2), withSpring(1)).
+Translate the label down by 2px then back with withSpring.
+Add a small circular "ripple" behind the active icon using useSharedValue for opacity (1 → 0) and scale (0.5 → 1.8) on press, creating a burst effect.
+
+jsconst iconScale = useSharedValue(1);
+const rippleOpacity = useSharedValue(0);
+const rippleScale = useSharedValue(0.5);
+
+const handleTabPress = (tab) => {
+  iconScale.value = withSequence(withSpring(1.25), withSpring(1));
+  rippleOpacity.value = withSequence(withTiming(0.15), withTiming(0));
+  rippleScale.value = withSequence(withTiming(0.5, { duration: 0 }), withSpring(2));
+  setActiveTab(tab);
+};
+Progress bar animations
+On screen mount, animate all fill bars from 0% to their target width:
+jsconst progress = useSharedValue(0);
+useEffect(() => { progress.value = withDelay(300, withSpring(targetPercent)); }, []);
+const barStyle = useAnimatedStyle(() => ({ width: `${progress.value}%` }));
+Number counter animation (Screen Time, Doomscroll Score)
+Animate numbers counting up from 0 to their value on mount:
+jsconst count = useSharedValue(0);
+useEffect(() => { count.value = withDelay(200, withTiming(targetValue, { duration: 1000 })); }, []);
+// Use a derived value + animatedText or re-render via runOnJS
+
+Problem 3 — Continuously moving 3D background animation
+Add a subtle animated gradient mesh behind all screens. Use react-native-reanimated with a looping animation.
+Install: npx expo install expo-linear-gradient
+Implementation — AnimatedBackground.jsx
+Create a component that renders 3–4 large blurred circles that drift slowly in different directions, creating a parallax depth illusion:
+jsimport { useEffect } from 'react';
+import Animated, {
+  useSharedValue, useAnimatedStyle,
+  withRepeat, withTiming, Easing, interpolate
+} from 'react-native-reanimated';
+import { View, StyleSheet, Dimensions } from 'react-native';
+
+const { width, height } = Dimensions.get('window');
+
+function FloatingOrb({ size, startX, startY, endX, endY, duration, color, delay }) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withDelay(delay, withRepeat(
+      withTiming(1, { duration, easing: Easing.inOut(Easing.sin) }),
+      -1, true  // infinite, reverse = true for back-and-forth
+    ));
+  }, []);
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: interpolate(progress.value, [0, 1], [startX, endX]) },
+      { translateY: interpolate(progress.value, [0, 1], [startY, endY]) },
+      { scale: interpolate(progress.value, [0, 0.5, 1], [1, 1.08, 1]) },
+    ],
+    opacity: interpolate(progress.value, [0, 0.5, 1], [0.06, 0.10, 0.06]),
+  }));
+  return (
+    <Animated.View style={[{
+      position: 'absolute',
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      backgroundColor: color,
+      filter: 'blur(60px)',  // use style.filter on web; on native use blurRadius in Image or expo-blur
+    }, style]} />
+  );
+}
+
+export default function AnimatedBackground() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <FloatingOrb size={300} startX={-50}  startY={-50}  endX={30}   endY={80}   duration={7000} color="#000000" delay={0}    />
+      <FloatingOrb size={250} startX={200}  startY={100}  endX={150}  endY={200}  duration={9000} color="#3b3b3b" delay={500}  />
+      <FloatingOrb size={200} startX={50}   startY={400}  endX={120}  endY={320}  duration={6000} color="#5e5e5e" delay={1000} />
+      <FloatingOrb size={280} startX={100}  startY={600}  endX={60}   endY={500}  duration={8000} color="#000000" delay={1500} />
+    </View>
+  );
+}
+For true blur on native use expo-blur:
+npx expo install expo-blur
+Replace the backgroundColor + filter: blur approach with:
+jsimport { BlurView } from 'expo-blur';
+// Wrap orb content in <BlurView intensity={80} />
+Place <AnimatedBackground /> as first child inside every screen's root <View>. It sits behind all content via StyleSheet.absoluteFill + pointerEvents="none".
+3D depth effect enhancement: Add a second layer of 2 smaller, faster orbs at 40% opacity — these move faster than the background orbs, creating a parallax illusion of depth between foreground and background layers.
+
+Summary of installs needed
+bashnpx expo install @expo/vector-icons
+npx expo install react-native-reanimated
+npx expo install expo-linear-gradient
+npx expo install expo-blur
+Add to babel.config.js:
+jsplugins: ['react-native-reanimated/plugin']
+Restart dev server with --clear flag after babel change:
+bashnpx expo start --clear

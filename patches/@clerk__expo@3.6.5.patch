@@ -1,0 +1,57 @@
+diff --git a/dist/specs/NativeClerkModule.android.js b/dist/specs/NativeClerkModule.android.js
+--- a/dist/specs/NativeClerkModule.android.js
++++ b/dist/specs/NativeClerkModule.android.js
+@@ -1,7 +1,7 @@
+ let expo = require("expo");
+ 
+ //#region src/specs/NativeClerkModule.android.ts
+-var NativeClerkModule_android_default = (0, expo.requireNativeModule)("ClerkExpo");
++var NativeClerkModule_android_default = (0, expo.requireOptionalNativeModule)("ClerkExpo");
+ 
+ //#endregion
+ module.exports = NativeClerkModule_android_default;
+diff --git a/dist/utils/native-module.js b/dist/utils/native-module.js
+index 57aa99a6dd489f4346f28e2b70fcb2e706b44df0..f92e40353bccc4b080a0d098e6bede2930afb0d5 100644
+--- a/dist/utils/native-module.js
++++ b/dist/utils/native-module.js
+@@ -1,24 +1,29 @@
+ Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+ const require_runtime = require('../_virtual/_rolldown/runtime.js');
+ let react_native = require("react-native");
+-let src_specs_NativeClerkModule = require("../specs/NativeClerkModule");
++let src_specs_NativeClerkModule;
++try {
++src_specs_NativeClerkModule = require("../specs/NativeClerkModule");
+ src_specs_NativeClerkModule = require_runtime.__toESM(src_specs_NativeClerkModule);
++} catch (e) {
++src_specs_NativeClerkModule = { default: null };
++}
+ 
+ //#region src/utils/native-module.ts
+ const isNativeSupported = react_native.Platform.OS === "ios" || react_native.Platform.OS === "android";
+ function isClerkExpoModule(module) {
+-	if (!module || typeof module !== "object") return false;
+-	const maybeModule = module;
+-	return typeof maybeModule.configure === "function" && typeof maybeModule.getClientToken === "function" && typeof maybeModule.syncClientStateFromJs === "function";
++        if (!module || typeof module !== "object") return false;
++        const maybeModule = module;
++        return typeof maybeModule.configure === "function" && typeof maybeModule.getClientToken === "function" && typeof maybeModule.syncClientStateFromJs === "function";
+ }
+ function loadNativeModule() {
+-	if (!isNativeSupported) return null;
+-	let nativeModule = null;
+-	try {
+-		nativeModule = src_specs_NativeClerkModule.default;
+-	} catch (e) {}
+-	if (isClerkExpoModule(nativeModule)) return nativeModule;
+-	return null;
++        if (!isNativeSupported) return null;
++        let nativeModule = null;
++        try {
++                nativeModule = src_specs_NativeClerkModule.default;
++        } catch (e) {}
++        if (isClerkExpoModule(nativeModule)) return nativeModule;
++        return null;
+ }
+ const ClerkExpoModule = loadNativeModule();
+ 

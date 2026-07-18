@@ -1,0 +1,74 @@
+Make the following specific updates across Home, Goals, Analytics, and Focus pages. Do not change Profile page, navigation bar structure, or any untouched functionality.
+
+HOME PAGE
+Daily Tasks Card — Tap to Open Goals Status Modal
+
+The "Daily Tasks" circular card at the bottom of the Home page must be tappable
+On tap: open a centered modal with backdrop blur behind it
+Modal shows current status of all set goals in a row-by-row list:
+
+Each row: goal name on left, status indicator on right
+✅ Done — green checkmark or green pill label "DONE"
+⏳ Remaining — grey or orange indicator "REMAINING"
+Rows clearly separated, clean minimal style matching app theme
+
+
+Modal: white background, large rounded corners, backdrop blur
+Close on tap outside or X button
+Entrance: scale-up + fade-in with spring easing
+
+Screen Time & DoomScore Cards — Black Hero Style
+
+Make Screen Time card and DoomScore card solid black background with all text white
+Enlarge both cards — make them significantly taller and more prominent than all other cards on the page
+These two should be the most visually dominant elements on the Home page
+All other cards (Most Used Apps, Daily Tasks, Mood Check, Streaks) should appear smaller in comparison — reduce their padding/height slightly
+Maintain the existing layout order
+
+
+GOALS PAGE
+Goal Card — Edit Option
+
+Each goal card must have an edit button/icon (pencil ✏️ icon) alongside the existing delete icon
+Tapping edit opens the same Add Goal modal but pre-populated with that goal's existing data (name, intent, type, time)
+User can modify any field and save — updates the goal card in place
+Save button in edit mode should read "UPDATE GOAL" instead of "COMMIT TASK"
+
+Add Goal Form — Schedule vs Daily Toggle
+
+In the Add Goal form, the existing Daily/Scheduled type selector must work as follows:
+
+Daily task selected (default): show Active From + Active To drum time pickers — exactly as currently implemented, no change
+Scheduled selected: show Active From + Active To drum time pickers plus an additional date picker field below them labeled "SELECT DATE" — calendar or date drum picker style consistent with the rest of the form
+
+
+No other changes to the Add Goal form
+
+
+ANALYTICS PAGE
+Remove Two Cards
+
+Remove the Screen Time card (the large top card showing total/today's screen time)
+Remove the Top Apps card (the card below/beside the Daily Avg card showing app usage list)
+After removal: reflow the remaining cards so there are no gaps — cards stack naturally with consistent spacing
+Ensure the layout looks intentional and clean after removal, not like something is missing
+
+Usage Trends Chart — Fix Overflow
+
+The graph/chart inside the Usage Trends card must be fully contained within the card boundaries
+No content, axis labels, bars, or lines should overflow or clip outside the card edges
+Shrink chart margins/padding as needed so the entire chart fits cleanly inside the card
+X-axis labels (Mon/Tue/Wed or month names) must be visible and not cut off
+Chart should resize responsively to fit the card width at all screen sizes
+
+
+FOCUS PAGE
+Remove Duplicate Floating Button
+
+There is currently a floating circular "Start Focus Session" button that appears on the Focus page which looks identical to the Focus tab button in the bottom navigation bar — this causes visual confusion
+Remove the floating circular button entirely from the Focus page
+Keep only the full-width "Start Session" button that already exists inline on the Focus page
+Ensure no other duplicate or redundant button elements remain on the Focus page
+
+
+Do not change: Profile page, Achievements/Notifications/Account sub-pages, Goals modal designs, bottom navigation bar, or any other page not listed above.
