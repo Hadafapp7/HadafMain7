@@ -4,6 +4,11 @@ packages:
   - lib/integrations/*
   - scripts
 
+allowBuilds:
+  browser-tabs-lock: true
+  core-js: true
+  esbuild: true
+
 autoInstallPeers: false
 
 catalog:
@@ -41,6 +46,8 @@ onlyBuiltDependencies:
   - esbuild
   - msw
   - unrs-resolver
+  - browser-tabs-lock
+  - core-js
 
 overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0

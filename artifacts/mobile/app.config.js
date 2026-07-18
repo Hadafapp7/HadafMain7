@@ -61,5 +61,10 @@ module.exports = {
       typedRoutes: true,
       reactCompiler: true,
     },
+    extra: {
+      eas: {
+        projectId: "9b4acb69-b402-4920-9a52-5383a1d81b62"
+      }
+    }
   },
 };
