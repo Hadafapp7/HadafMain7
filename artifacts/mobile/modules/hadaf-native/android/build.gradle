@@ -18,6 +18,7 @@ buildscript {
 }
 
 android {
+  namespace "com.hadaf.native"
   compileSdkVersion safeExtGet("compileSdkVersion", 34)
 
   compileOptions {
