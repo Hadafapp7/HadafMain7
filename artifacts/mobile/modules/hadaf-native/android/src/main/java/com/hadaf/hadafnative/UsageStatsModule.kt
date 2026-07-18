@@ -40,11 +40,13 @@ class UsageStatsModule : Module() {
 
     // Open the system Usage Access settings screen so the user can grant permission.
     Function("openUsageAccessSettings") {
-      val ctx = appContext.reactContext ?: return@Function
-      val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        ctx.startActivity(intent)
       }
-      ctx.startActivity(intent)
     }
 
     // Return per-app usage stats for the last N days (default 7).

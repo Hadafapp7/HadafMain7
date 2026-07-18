@@ -4,6 +4,9 @@
     "modules": ["HadafNativeModule"]
   },
   "android": {
-    "package": "com.hadaf.hadafnative.HadafNativePackage"
+    "modules": [
+      "com.hadaf.hadafnative.UsageStatsModule",
+      "com.hadaf.hadafnative.AppBlockerModule"
+    ]
   }
 }

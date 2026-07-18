@@ -42,11 +42,13 @@ class AppBlockerModule : Module() {
     }
 
     Function("openAccessibilitySettings") {
-      val ctx = appContext.reactContext ?: return@Function
-      val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        ctx.startActivity(intent)
       }
-      ctx.startActivity(intent)
     }
 
     Function("hasOverlayPermission") {
@@ -56,8 +58,8 @@ class AppBlockerModule : Module() {
     }
 
     Function("openOverlaySettings") {
-      val ctx = appContext.reactContext ?: return@Function
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      val ctx = appContext.reactContext
+      if (ctx != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         val intent = Intent(
           Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
           Uri.parse("package:${ctx.packageName}")
@@ -74,25 +76,29 @@ class AppBlockerModule : Module() {
      * @param durationMinutes  session length in minutes
      */
     Function("startSession") { packageNames: List<String>, durationMinutes: Int ->
-      val ctx = appContext.reactContext ?: return@Function
-      val endMs = System.currentTimeMillis() + durationMinutes * 60_000L
-      prefs(ctx).edit()
-        .putBoolean(KEY_ACTIVE, true)
-        .putStringSet(KEY_BLOCKED, packageNames.toSet())
-        .putLong(KEY_SESSION_END, endMs)
-        .apply()
-      // Notify the running service immediately if it's active
-      HadafAccessibilityService.instance?.onSessionStarted(packageNames.toSet(), endMs)
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        val endMs = System.currentTimeMillis() + durationMinutes * 60_000L
+        prefs(ctx).edit()
+          .putBoolean(KEY_ACTIVE, true)
+          .putStringSet(KEY_BLOCKED, packageNames.toSet())
+          .putLong(KEY_SESSION_END, endMs)
+          .apply()
+        // Notify the running service immediately if it's active
+        HadafAccessibilityService.instance?.onSessionStarted(packageNames.toSet(), endMs)
+      }
     }
 
     Function("stopSession") {
-      val ctx = appContext.reactContext ?: return@Function
-      prefs(ctx).edit()
-        .putBoolean(KEY_ACTIVE, false)
-        .putStringSet(KEY_BLOCKED, emptySet())
-        .putLong(KEY_SESSION_END, 0L)
-        .apply()
-      HadafAccessibilityService.instance?.onSessionStopped()
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        prefs(ctx).edit()
+          .putBoolean(KEY_ACTIVE, false)
+          .putStringSet(KEY_BLOCKED, emptySet())
+          .putLong(KEY_SESSION_END, 0L)
+          .apply()
+        HadafAccessibilityService.instance?.onSessionStopped()
+      }
     }
 
     Function("isSessionActive") {
