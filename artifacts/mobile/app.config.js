@@ -56,6 +56,16 @@ module.exports = {
       "expo-font",
       "expo-web-browser",
       "./modules/hadaf-native/plugin",
+      [
+        "expo-build-properties",
+        {
+          android: {
+            packagingOptions: {
+              exclude: ["META-INF/versions/9/OSGI-INF/MANIFEST.MF"],
+            },
+          },
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,
