@@ -1,46 +1,18 @@
-apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
 
 group = 'com.hadaf.hadafnative'
 version = '1.0.0'
 
-buildscript {
-  def kotlinVersion = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : '1.9.24'
-
-  repositories {
-    google()
-    mavenCentral()
-  }
-
-  dependencies {
-    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
-  }
-}
-
 android {
   namespace "com.hadaf.hadafnative"
-  compileSdk safeExtGet("compileSdk", 34)
-
-  compileOptions {
-    sourceCompatibility JavaVersion.VERSION_17
-    targetCompatibility JavaVersion.VERSION_17
-  }
-
-  kotlinOptions {
-    jvmTarget = '17'
-  }
-
   defaultConfig {
-    minSdk safeExtGet("minSdk", 23)
-    targetSdk safeExtGet("targetSdk", 34)
+    versionCode 1
+    versionName "1.0.0"
   }
-}
-
-def safeExtGet(prop, fallback) {
-  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
-}
-
-dependencies {
-  implementation project(':expo-modules-core')
-  implementation "org.jetbrains.kotlin:kotlin-stdlib"
+  lintOptions {
+    abortOnError false
+  }
 }
