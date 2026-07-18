@@ -49,3 +49,8 @@ Thumbs.db
 .local/
 
 error_logs.txt
+
+# Environment variables
+.env
+.env.local
+.env.*.local
