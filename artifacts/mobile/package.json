@@ -63,5 +63,6 @@
   },
   "dependencies": {
     "expo-dev-client": "^57.0.5"
-  }
+  },
+  "packageManager": "pnpm@11.14.0"
 }

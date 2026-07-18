@@ -9,6 +9,8 @@ allowBuilds:
   core-js: true
   esbuild: true
 
+strictDepBuilds: false
+
 autoInstallPeers: false
 
 catalog:
@@ -46,6 +48,7 @@ onlyBuiltDependencies:
   - esbuild
   - msw
   - unrs-resolver
+
   - browser-tabs-lock
   - core-js
 
