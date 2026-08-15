@@ -80,26 +80,46 @@ export default function SignInScreen() {
     setLoading(true);
     setError(null);
 
+    console.log("[Verification] Starting code verification...", {
+      isSignUp,
+      code,
+      publishableKeyExists: !!process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
+      proxyUrl: process.env.EXPO_PUBLIC_CLERK_PROXY_URL,
+    });
+
     try {
       if (isSignUp) {
+        console.log("[Verification] Calling signUp!.attemptEmailAddressVerification...");
         const result = await signUp!.attemptEmailAddressVerification({ code });
+        console.log("[Verification] SignUp Attempt Result:", JSON.stringify(result, null, 2));
+        
         if (result.status === "complete" && result.createdSessionId) {
+          console.log("[Verification] SignUp verification successful, setting session active:", result.createdSessionId);
           await setActive!({ session: result.createdSessionId });
         } else {
-          setError("Verification incomplete. Please try again.");
+          const detailMsg = `SignUp Verification Incomplete: status=${result.status}, requiredFields=${JSON.stringify(result.requiredFields || [])}`;
+          console.warn("[Verification]", detailMsg);
+          setError(`Verification incomplete (status: ${result.status}).\nRequired fields: ${JSON.stringify(result.requiredFields || [])}`);
         }
       } else {
+        console.log("[Verification] Calling signIn!.attemptFirstFactor...");
         const result = await signIn!.attemptFirstFactor({
           strategy: "email_code",
           code,
         });
+        console.log("[Verification] SignIn Attempt Result:", JSON.stringify(result, null, 2));
+
         if (result.status === "complete" && result.createdSessionId) {
+          console.log("[Verification] SignIn verification successful, setting session active:", result.createdSessionId);
           await setActive!({ session: result.createdSessionId });
         } else {
-          setError("Verification incomplete. Please try again.");
+          const detailMsg = `SignIn Verification Incomplete: status=${result.status}`;
+          console.warn("[Verification]", detailMsg);
+          setError(`Verification incomplete (status: ${result.status}).`);
         }
       }
     } catch (err: unknown) {
+      console.error("[Verification] Exception caught during verification:", err);
       const msg =
         err instanceof Error ? err.message : "Incorrect code. Please try again.";
       setError(msg);
