@@ -724,7 +724,8 @@ export default function GoalsScreen() {
   const topPad  = isWeb ? 67 : insets.top;
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
 
-  const { data: goals = [], isLoading, isError, refetch } = useListGoals();
+  const { data: rawGoals, isLoading, isError, refetch } = useListGoals();
+  const goals = Array.isArray(rawGoals) ? rawGoals : [];
   const createGoal = useCreateGoal();
   const updateGoal = useUpdateGoal();
   const deleteGoal = useDeleteGoal();

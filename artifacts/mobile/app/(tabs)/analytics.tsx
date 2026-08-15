@@ -257,6 +257,8 @@ function TopAppsModal({
     opacity: opacity.value,
   }));
 
+  const appsList = Array.isArray(apps) ? apps : [];
+
   return (
     <Modal visible={visible} transparent animationType="none">
       <View style={styles.modalOuter}>
@@ -273,17 +275,17 @@ function TopAppsModal({
             </TouchableOpacity>
           </View>
 
-          {apps.length === 0 ? (
+          {appsList.length === 0 ? (
             <Text style={[styles.emptyText, { color: colors.outline }]}>
               No app usage logged yet.
             </Text>
           ) : (
-            apps.map((app, i) => (
+            appsList.map((app, i) => (
               <View
                 key={app.appName}
                 style={[
                   styles.topAppRow,
-                  i < apps.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
+                  i < appsList.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
                 ]}
               >
                 <View style={[styles.topAppIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
@@ -353,8 +355,10 @@ export default function AnalyticsScreen() {
   const [activeRange, setActiveRange] = useState("WEEK");
   const [showTopApps, setShowTopApps] = useState(false);
 
-  const { data: entries = [], isLoading: loadingEntries } = useListAppUsageEntries();
-  const { data: summary = [], isLoading: loadingSummary } = useGetAppUsageSummary();
+  const { data: rawEntries, isLoading: loadingEntries } = useListAppUsageEntries();
+  const entries = Array.isArray(rawEntries) ? rawEntries : [];
+  const { data: rawSummary, isLoading: loadingSummary } = useGetAppUsageSummary();
+  const summary = Array.isArray(rawSummary) ? rawSummary : [];
 
   const isLoading = loadingEntries || loadingSummary;
   const hasData   = entries.length > 0;

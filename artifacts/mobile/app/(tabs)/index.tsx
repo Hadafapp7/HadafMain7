@@ -3,6 +3,8 @@ import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useState } from "react";
 import {
+  AppState,
+  ActivityIndicator,
   Dimensions,
   Modal,
   Platform,
@@ -317,9 +319,9 @@ const QUICK_TIMES = [
 ];
 
 function AppRow({ app, index, last, maxMinutes }: {
-  app: AppUsageSummaryItem; index: number; last: boolean; maxMinutes: number;
+  app: any; index: number; last: boolean; maxMinutes: number;
 }) {
-  const percent  = maxMinutes > 0 ? Math.min(1, app.totalMinutes / maxMinutes) : 0;
+  const percent  = maxMinutes > 0 ? Math.min(1, app.dailyMinutes / maxMinutes) : 0;
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withDelay(400 + index * 120, withSpring(percent, { damping: 20 }));
@@ -337,8 +339,11 @@ function AppRow({ app, index, last, maxMinutes }: {
           <Text style={styles.appCategory}>{(app.category ?? "OTHER").toUpperCase()}</Text>
         </View>
         <View style={styles.appRight}>
-          <Text style={styles.appTime}>{formatDuration(app.totalMinutes)}</Text>
-          <View style={styles.appBarTrack}>
+          <Text style={styles.appTime}>{formatDuration(app.dailyMinutes)}</Text>
+          <Text style={{ fontSize: 10, color: "#888", marginTop: 1, fontFamily: "Inter_500Medium" }}>
+            weekly: {formatDuration(app.totalMinutes)}
+          </Text>
+          <View style={[styles.appBarTrack, { marginTop: 4 }]}>
             <Animated.View style={[styles.appBarFill, barStyle]} />
           </View>
         </View>
@@ -602,64 +607,162 @@ export default function HomeScreen() {
   const [showOptIn, setShowOptIn] = useState(false);
 
   // Native device usage state
-  const [deviceUsage,    setDeviceUsage]    = useState<AppUsageStat[]>([]);
+  interface MergedAppUsage {
+    appName: string;
+    packageName: string;
+    category?: string | null;
+    dailyMinutes: number;
+    totalMinutes: number;
+  }
+  const [deviceUsage,    setDeviceUsage]    = useState<MergedAppUsage[]>([]);
   const [nativePermGranted, setNativePermGranted] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   const { data: me } = useGetMe();
-  const { data: goals = [] } = useListGoals();
-  const { data: appUsage = [], refetch: refetchAppUsage } = useGetAppUsageSummary();
+  const { data: rawGoals } = useListGoals();
+  const goals = Array.isArray(rawGoals) ? rawGoals : [];
+  const { data: rawAppUsage, refetch: refetchAppUsage } = useGetAppUsageSummary();
+  const appUsage = Array.isArray(rawAppUsage) ? rawAppUsage : [];
   const { data: settings } = useGetUserSettings();
-  const { data: focusSessions = [] } = useListFocusSessions();
+  const { data: rawFocusSessions } = useListFocusSessions();
+  const focusSessions = Array.isArray(rawFocusSessions) ? rawFocusSessions : [];
   const updateSettings = useUpdateUserSettings();
   const createUsageEntry = useCreateAppUsageEntry();
 
   const streak = computeStreak(focusSessions);
 
-  // On mount: check native permission and load real device usage if available
-  useEffect(() => {
+  const checkAndLoadStats = React.useCallback(async () => {
+    console.log("[Home] checkAndLoadStats: Checking native device permission...");
     const perm = hasUsagePermission();
+    console.log(`[Home] checkAndLoadStats: hasUsagePermission returned: ${perm}`);
     setNativePermGranted(perm);
+
     if (perm) {
-      getDeviceUsageStats(7).then(setDeviceUsage).catch(() => {});
+      setLoadingStats(true);
+      console.log("[Home] checkAndLoadStats: Loading native usage stats (daily & weekly)...");
+      try {
+        const daily = await getDeviceUsageStats(1);
+        const weekly = await getDeviceUsageStats(7);
+        console.log(`[Home] checkAndLoadStats: Fetched ${daily.length} daily and ${weekly.length} weekly apps`);
+
+        const combined: MergedAppUsage[] = weekly.map(w => {
+          const d = daily.find(x => x.packageName === w.packageName);
+          return {
+            appName: w.appName,
+            packageName: w.packageName,
+            category: w.category,
+            dailyMinutes: d ? d.totalMinutes : 0,
+            totalMinutes: w.totalMinutes
+          };
+        });
+
+        setDeviceUsage(combined);
+
+        // Auto-sync stats with backend database
+        if (combined.length > 0) {
+          console.log(`[Home] checkAndLoadStats: Syncing ${combined.length} app usage stats to backend database...`);
+          // Sync today's usage (dailyMinutes) to the backend database!
+          for (const app of combined) {
+            try {
+              console.log(`[Home] checkAndLoadStats: Syncing ${app.appName} (${app.dailyMinutes}m)`);
+              await createUsageEntry.mutateAsync({
+                data: {
+                  appName: app.appName,
+                  category: app.category ?? undefined,
+                  durationMinutes: app.dailyMinutes,
+                }
+              });
+            } catch (err: any) {
+              console.error(`[Home] checkAndLoadStats: Failed to sync ${app.appName}:`, err.message || err);
+            }
+          }
+          console.log("[Home] checkAndLoadStats: Sync completed successfully. Refetching app usage summary...");
+          await refetchAppUsage();
+        }
+      } catch (err: any) {
+        console.error("[Home] checkAndLoadStats: Failed to query native stats:", err.message || err);
+      } finally {
+        setLoadingStats(false);
+        console.log("[Home] checkAndLoadStats: Loading complete.");
+      }
     }
+  }, [createUsageEntry, refetchAppUsage]);
+
+  const checkAndLoadStatsRef = React.useRef(checkAndLoadStats);
+  useEffect(() => {
+    checkAndLoadStatsRef.current = checkAndLoadStats;
+  }, [checkAndLoadStats]);
+
+  // Monitor mount and app foreground resumes (returning from Settings)
+  useEffect(() => {
+    console.log("[Home] App mounted. Performing initial stats and permission check...");
+    checkAndLoadStatsRef.current();
+
+    const sub = AppState.addEventListener("change", (nextState) => {
+      console.log(`[Home] AppState changed to: ${nextState}`);
+      if (nextState === "active") {
+        console.log("[Home] App resumed. Re-checking permission and stats...");
+        checkAndLoadStatsRef.current();
+      }
+    });
+
+    return () => {
+      console.log("[Home] App unmounted. Removing AppState listener.");
+      sub.remove();
+    };
   }, []);
 
   // Merge device usage with server usage — device data takes priority when available
-  const mergedUsage: AppUsageSummaryItem[] = deviceUsage.length > 0
-    ? deviceUsage.map(d => ({ appName: d.appName, category: d.category, totalMinutes: d.totalMinutes }))
-    : appUsage;
+  interface DisplayAppUsage {
+    appName: string;
+    category?: string | null;
+    dailyMinutes: number;
+    totalMinutes: number;
+  }
+
+  const mergedUsage: DisplayAppUsage[] = deviceUsage.length > 0
+    ? deviceUsage.map(d => ({
+        appName: d.appName,
+        category: d.category,
+        dailyMinutes: d.dailyMinutes,
+        totalMinutes: d.totalMinutes,
+      }))
+    : appUsage.map(a => ({
+        appName: a.appName,
+        category: a.category,
+        dailyMinutes: a.totalMinutes, // fallback to total for web/mock
+        totalMinutes: a.totalMinutes,
+      }));
 
   const handleOpenLogUsage = () => {
     Haptics.selectionAsync();
+    console.log(`[Home] handleOpenLogUsage called. nativePermGranted: ${nativePermGranted}`);
     if (nativePermGranted) {
-      // Already have real data — refresh and open the selection sheet
-      getDeviceUsageStats(7).then(stats => {
-        setDeviceUsage(stats);
-        setShowLogUsage(true);
-      }).catch(() => setShowLogUsage(true));
-    } else if (settings && !settings.usageTrackingOptIn) {
-      setShowOptIn(true);
+      // Already have real data — refresh and auto-sync in background, no modal needed!
+      checkAndLoadStats();
     } else {
-      setShowLogUsage(true);
+      // Permission not granted — open settings directly!
+      handleRequestPermission();
     }
   };
 
-  const handleEnableTracking = () => {
-    // Request native permission first on real devices
-    requestUsagePermission().then(granted => {
-      if (granted) {
-        setNativePermGranted(true);
-        return getDeviceUsageStats(7);
-      }
-      return Promise.resolve([] as AppUsageStat[]);
-    }).then(stats => {
-      if (stats.length > 0) setDeviceUsage(stats);
-    }).catch(() => {});
+  const handleRequestPermission = () => {
+    console.log("[Home] handleRequestPermission: Requesting native permission (redirecting to Settings)...");
+    void requestUsagePermission();
 
-    // Also update server-side opt-in flag
+    // Set server flag to opted-in
+    console.log("[Home] handleRequestPermission: Saving opt-in flag to backend server settings...");
     updateSettings.mutate(
       { data: { usageTrackingOptIn: true } },
-      { onSuccess: () => { setShowOptIn(false); setShowLogUsage(true); } }
+      {
+        onSuccess: () => {
+          console.log("[Home] handleRequestPermission: Saved opt-in to server successfully.");
+          setShowOptIn(false);
+        },
+        onError: (err) => {
+          console.error("[Home] handleRequestPermission: Failed to save opt-in to server:", err);
+        }
+      }
     );
   };
 
@@ -684,14 +787,23 @@ export default function HomeScreen() {
 
   const pendingGoals = goals.filter(g => g.status === "pending").length;
   const doneGoals    = goals.filter(g => g.status === "done").length;
-  const totalScreenMinutes = mergedUsage.reduce((sum, a) => sum + a.totalMinutes, 0);
-  const maxAppMinutes = Math.max(1, ...mergedUsage.map(a => a.totalMinutes));
-  const topApps = [...mergedUsage].sort((a, b) => b.totalMinutes - a.totalMinutes).slice(0, 4);
+  const totalScreenMinutes = mergedUsage.reduce((sum, a) => sum + a.dailyMinutes, 0);
+  const maxAppMinutes = Math.max(1, ...mergedUsage.map(a => a.dailyMinutes));
+  const topApps = [...mergedUsage].sort((a, b) => b.dailyMinutes - a.dailyMinutes).slice(0, 4);
 
+  // Sum daily screen time of distracting social apps: Instagram, TikTok, YouTube, Snapchat
+  const distractingApps = ["Instagram", "TikTok", "YouTube", "Snapchat"];
+  const distractingMinutes = mergedUsage
+    .filter(app => distractingApps.some(d => app.appName.toLowerCase().includes(d.toLowerCase())))
+    .reduce((sum, app) => sum + app.dailyMinutes, 0);
+
+  // Doom Score logic:
+  // - 70% based on distracting social apps usage (reaches max 70 pts at 180 minutes / 3 hours)
+  // - 30% based on pending goals completion rate
   const doomScore = mergedUsage.length === 0 && goals.length === 0
     ? 0
     : Math.min(100, Math.round(
-        (totalScreenMinutes / 480) * 70 +
+        Math.min(70, (distractingMinutes / 180) * 70) +
         (goals.length > 0 ? (pendingGoals / goals.length) * 30 : 0),
       ));
 
@@ -709,7 +821,7 @@ export default function HomeScreen() {
       <UsageOptInModal
         visible={showOptIn}
         onClose={() => setShowOptIn(false)}
-        onEnable={handleEnableTracking}
+        onEnable={handleRequestPermission}
         enabling={updateSettings.isPending}
       />
 
@@ -766,8 +878,8 @@ export default function HomeScreen() {
               style={styles.statNumber}
             />
             <View style={styles.doomRow}>
-              <Text style={styles.doomBetter}>{doomScore === 0 ? "GET STARTED" : doomScore < 40 ? "GREAT" : doomScore < 70 ? "MODERATE" : "HIGH"}</Text>
-              <Text style={styles.doomPts}>{doneGoals > 0 ? `${doneGoals} DONE` : "TODAY"}</Text>
+              <Text style={styles.doomBetter}>{distractingMinutes}M SOCIAL</Text>
+              <Text style={styles.doomPts}>{doomScore === 0 ? "START" : doomScore < 40 ? "GREAT" : doomScore < 70 ? "WARN" : "DOOM"}</Text>
             </View>
             <AnimatedProgressBar
               percent={doomScore / 100}
@@ -791,14 +903,34 @@ export default function HomeScreen() {
               <MaterialIcons name="add" size={16} color="#333" />
             </TouchableOpacity>
           </View>
-          {topApps.length === 0 && (
-            <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#999", paddingVertical: 8 }}>
-              No usage logged yet.
-            </Text>
+          {loadingStats ? (
+            <ActivityIndicator color={colors.primary} style={{ paddingVertical: 20 }} />
+          ) : (!nativePermGranted && Platform.OS !== "web") ? (
+            <TouchableOpacity
+              onPress={handleRequestPermission}
+              activeOpacity={0.8}
+              style={{ alignItems: "center", paddingVertical: 14, gap: 8 }}
+            >
+              <MaterialIcons name="security" size={24} color={colors.primary} />
+              <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#222", textAlign: "center" }}>
+                Enable Permission to View Most Used Apps
+              </Text>
+              <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#888", textAlign: "center", paddingHorizontal: 20, lineHeight: 16 }}>
+                Hadaf reads local app statistics to block distracting apps and compute your daily DoomScore.
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              {topApps.length === 0 && (
+                <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#999", paddingVertical: 8 }}>
+                  No usage logged yet.
+                </Text>
+              )}
+              {topApps.map((app, i) => (
+                <AppRow key={app.appName} app={app} index={i} last={i === topApps.length - 1} maxMinutes={maxAppMinutes} />
+              ))}
+            </>
           )}
-          {topApps.map((app, i) => (
-            <AppRow key={app.appName} app={app} index={i} last={i === topApps.length - 1} maxMinutes={maxAppMinutes} />
-          ))}
         </Animated.View>
 
         {/* ── Three oval accent cards ── */}

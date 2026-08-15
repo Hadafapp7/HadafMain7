@@ -34,6 +34,29 @@ export default function SignInScreen() {
   const otpRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
 
+  const generateRandomPassword = (): string => {
+    const lowercase = "abcdefghijklmnopqrstuvwxyz";
+    const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const numbers = "0123456789";
+    const special = "!@#$%^&*";
+    
+    let pass = "";
+    // Ensure we satisfy all standard rules: at least 1 lowercase, 1 uppercase, 1 number, 1 special
+    pass += lowercase[Math.floor(Math.random() * lowercase.length)];
+    pass += uppercase[Math.floor(Math.random() * uppercase.length)];
+    pass += numbers[Math.floor(Math.random() * numbers.length)];
+    pass += special[Math.floor(Math.random() * special.length)];
+    
+    // Fill the rest up to 20 characters
+    const allChars = lowercase + uppercase + numbers + special;
+    for (let i = 4; i < 20; i++) {
+      pass += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    
+    // Shuffle the password
+    return pass.split('').sort(() => 0.5 - Math.random()).join('');
+  };
+
   const sendCode = async () => {
     const trimmed = email.trim().toLowerCase();
     if (!trimmed) {
@@ -46,21 +69,30 @@ export default function SignInScreen() {
     setError(null);
 
     try {
+      console.log("[SignIn] Attempting to create sign-in factor for email:", trimmed);
       await signIn!.create({ strategy: "email_code", identifier: trimmed });
+      console.log("[SignIn] Sign-in factor created successfully.");
       setIsSignUp(false);
       setStep("otp");
       setTimeout(() => otpRef.current?.focus(), 200);
-    } catch {
+    } catch (err) {
+      console.log("[SignIn] Sign-in failed (possibly new user), trying to sign up:", err);
       try {
-        await signUp!.create({ emailAddress: trimmed });
+        const password = generateRandomPassword();
+        console.log("[SignUp] Creating new sign-up with bypass password...", {
+          emailAddress: trimmed,
+        });
+        await signUp!.create({ emailAddress: trimmed, password });
+        console.log("[SignUp] Preparing email verification code...");
         await signUp!.prepareEmailAddressVerification({ strategy: "email_code" });
         setIsSignUp(true);
         setStep("otp");
         setTimeout(() => otpRef.current?.focus(), 200);
-      } catch (err: unknown) {
+      } catch (signUpErr: unknown) {
+        console.error("[SignUp] Sign up attempt failed:", signUpErr);
         const msg =
-          err instanceof Error
-            ? err.message
+          signUpErr instanceof Error
+            ? signUpErr.message
             : "Could not send the code. Check the email address and try again.";
         setError(msg);
       }

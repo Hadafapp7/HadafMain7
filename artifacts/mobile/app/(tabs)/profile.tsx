@@ -133,8 +133,10 @@ export default function ProfileScreen() {
 
   const { signOut } = useAuth();
   const { data: me } = useGetMe();
-  const { data: focusSessions = [] } = useListFocusSessions();
-  const { data: goals = [] } = useListGoals();
+  const { data: rawFocusSessions } = useListFocusSessions();
+  const focusSessions = Array.isArray(rawFocusSessions) ? rawFocusSessions : [];
+  const { data: rawGoals } = useListGoals();
+  const goals = Array.isArray(rawGoals) ? rawGoals : [];
 
   const handleSignOut = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);

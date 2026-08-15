@@ -1,3 +1,14 @@
+import path from "path";
+import process from "process";
+
+try {
+  process.loadEnvFile(path.join(process.cwd(), ".env"));
+} catch (e) {
+  try {
+    process.loadEnvFile(path.join(process.cwd(), "artifacts/api-server/.env"));
+  } catch (err) {}
+}
+
 import app from "./app";
 import { logger } from "./lib/logger";
 

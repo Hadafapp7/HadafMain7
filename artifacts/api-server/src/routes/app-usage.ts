@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql, and, gte, lte } from "drizzle-orm";
 import { db, appUsageEntriesTable } from "@workspace/db";
 import {
   CreateAppUsageEntryBody,
@@ -55,12 +55,42 @@ router.post("/app-usage", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const [entry] = await db
-    .insert(appUsageEntriesTable)
-    .values({ ...parsed.data, userId: req.userId! })
-    .returning();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
-  res.status(201).json(entry);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  // Check if an entry for the same appName already exists today
+  const existing = await db
+    .select()
+    .from(appUsageEntriesTable)
+    .where(
+      and(
+        eq(appUsageEntriesTable.userId, req.userId!),
+        eq(appUsageEntriesTable.appName, parsed.data.appName),
+        gte(appUsageEntriesTable.loggedAt, todayStart),
+        lte(appUsageEntriesTable.loggedAt, todayEnd)
+      )
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    // Update the existing entry's duration to the latest value
+    const [updated] = await db
+      .update(appUsageEntriesTable)
+      .set({ durationMinutes: parsed.data.durationMinutes })
+      .where(eq(appUsageEntriesTable.id, existing[0].id))
+      .returning();
+    res.status(200).json(updated);
+  } else {
+    // Insert new entry
+    const [entry] = await db
+      .insert(appUsageEntriesTable)
+      .values({ ...parsed.data, userId: req.userId! })
+      .returning();
+    res.status(201).json(entry);
+  }
 });
 
 export default router;

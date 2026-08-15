@@ -111,38 +111,57 @@ class UsageStatsModule : Module() {
         .sortedByDescending { it.value }
         .take(30)
         .mapNotNull { (pkg, timeMs) ->
-          try {
+          val minutes = (timeMs / 60_000).toInt()
+          if (minutes < 1) return@mapNotNull null
+
+          val label = try {
             val appInfo = pm.getApplicationInfo(pkg, 0)
-            val label = pm.getApplicationLabel(appInfo).toString()
-            val minutes = (timeMs / 60_000).toInt()
-            if (minutes < 1) return@mapNotNull null
-
-            val category = when {
-              pkg.contains("instagram") || pkg.contains("facebook") ||
-              pkg.contains("twitter") || pkg.contains("snapchat") ||
-              pkg.contains("tiktok") || pkg.contains("reddit") ||
-              pkg.contains("discord") || pkg.contains("whatsapp") ||
-              pkg.contains("telegram") -> "Social"
-              pkg.contains("youtube") || pkg.contains("netflix") ||
-              pkg.contains("twitch") || pkg.contains("spotify") ||
-              pkg.contains("prime") -> "Entertainment"
-              pkg.contains("chrome") || pkg.contains("firefox") ||
-              pkg.contains("safari") || pkg.contains("browser") -> "Browser"
-              pkg.contains("gmail") || pkg.contains("outlook") ||
-              pkg.contains("slack") || pkg.contains("teams") -> "Productivity"
-              pkg.contains("game") || pkg.contains("games") -> "Gaming"
-              else -> "Other"
-            }
-
-            mapOf(
-              "appName" to label,
-              "packageName" to pkg,
-              "totalMinutes" to minutes,
-              "category" to category
-            )
+            pm.getApplicationLabel(appInfo).toString()
           } catch (_: Exception) {
-            null
+            // Friendly fallback names to bypass Android 11+ PACKAGE_USAGE_STATS query restrictions
+            when {
+              pkg.contains("instagram") -> "Instagram"
+              pkg.contains("tiktok") || pkg.contains("musically") -> "TikTok"
+              pkg.contains("youtube") -> "YouTube"
+              pkg.contains("snapchat") -> "Snapchat"
+              pkg.contains("facebook") -> "Facebook"
+              pkg.contains("twitter") -> "Twitter"
+              pkg.contains("reddit") -> "Reddit"
+              pkg.contains("discord") -> "Discord"
+              pkg.contains("whatsapp") -> "WhatsApp"
+              pkg.contains("telegram") -> "Telegram"
+              pkg.contains("netflix") -> "Netflix"
+              pkg.contains("twitch") -> "Twitch"
+              pkg.contains("spotify") -> "Spotify"
+              pkg.contains("chrome") -> "Chrome"
+              pkg.contains("firefox") -> "Firefox"
+              else -> pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+            }
           }
+
+          val category = when {
+            pkg.contains("instagram") || pkg.contains("facebook") ||
+            pkg.contains("twitter") || pkg.contains("snapchat") ||
+            pkg.contains("tiktok") || pkg.contains("reddit") ||
+            pkg.contains("discord") || pkg.contains("whatsapp") ||
+            pkg.contains("telegram") -> "Social"
+            pkg.contains("youtube") || pkg.contains("netflix") ||
+            pkg.contains("twitch") || pkg.contains("spotify") ||
+            pkg.contains("prime") -> "Entertainment"
+            pkg.contains("chrome") || pkg.contains("firefox") ||
+            pkg.contains("safari") || pkg.contains("browser") -> "Browser"
+            pkg.contains("gmail") || pkg.contains("outlook") ||
+            pkg.contains("slack") || pkg.contains("teams") -> "Productivity"
+            pkg.contains("game") || pkg.contains("games") -> "Gaming"
+            else -> "Other"
+          }
+
+          mapOf(
+            "appName" to label,
+            "packageName" to pkg,
+            "totalMinutes" to minutes,
+            "category" to category
+          )
         }
 
       promise.resolve(result)

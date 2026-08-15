@@ -9,7 +9,8 @@
  * still render. Real native behaviour only activates in a dev-client or
  * production build (EAS Build / Android Studio / Xcode).
  */
-import { Platform, NativeModules } from "react-native";
+import { Platform } from "react-native";
+import { requireNativeModule } from "expo";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,9 +29,22 @@ export interface NativePermissionStatus {
 
 // ── Module resolution ──────────────────────────────────────────────────────
 
-// These module names match the Name() declared in the Kotlin / Swift modules.
-const UsageStatsNative  = NativeModules.HadafUsageStats  ?? null;
-const AppBlockerNative  = NativeModules.HadafAppBlocker  ?? null;
+let UsageStatsNative: any = null;
+let AppBlockerNative: any = null;
+
+try {
+  UsageStatsNative = requireNativeModule("HadafUsageStats");
+} catch (e: any) {
+  console.log(`[HadafNative] HadafUsageStats module is not available in this build: ${e.message}`);
+}
+
+try {
+  AppBlockerNative = requireNativeModule("HadafAppBlocker");
+} catch (e: any) {
+  console.log(`[HadafNative] HadafAppBlocker module is not available in this build: ${e.message}`);
+}
+
+export const isNativeAppBlockerSupported = AppBlockerNative !== null;
 
 const isAndroid = Platform.OS === "android";
 const isIOS     = Platform.OS === "ios";
