@@ -1,12 +1,22 @@
+
+let Notifications: any = null;
+try {
+  Notifications = require("expo-notifications");
+} catch (e) {
+  console.warn("expo-notifications is not linked in this binary build");
+}
+
 import { useQueryClient } from "@tanstack/react-query";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   AppState,
   Dimensions,
   KeyboardAvoidingView,
+  Vibration,
   Modal,
   Platform,
   ScrollView,
@@ -51,6 +61,8 @@ import {
   startNativeSession,
   stopNativeSession,
   isNativeAppBlockerSupported,
+  showNativeNotification,
+  dismissNativeNotification,
 } from "../../modules/hadaf-native/src";
 
 const isWeb    = Platform.OS === "web";
@@ -192,7 +204,7 @@ function AppPickerModal({
           </TouchableOpacity>
         </View>
         <Text style={[styles.modalSub, { color: colors.outline }]}>Block distracting apps during your session</Text>
-        <ScrollView style={{ marginTop: 12 }} showsVerticalScrollIndicator={false}>
+        <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true} style={{ marginTop: 12 }} showsVerticalScrollIndicator={false}>
           {ALL_APPS.map((app, i) => {
             const isBlocked = blockedApps.includes(app.name);
             return (
@@ -448,6 +460,19 @@ function ConfirmModal({
 }
 
 // ── Main screen ────────────────────────────────────────────────────────────────
+
+if (Notifications && typeof Notifications.setNotificationHandler === "function") {
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldVibrate: true,
+  }),
+});
+}
+
 export default function FocusScreen() {
   const colors    = useColors();
   const insets    = useSafeAreaInsets();
@@ -484,8 +509,15 @@ export default function FocusScreen() {
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [remaining,    setRemaining]    = useState(duration * 60);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const setSessionId = useCallback((id: string | null) => {
+    setActiveSessionId(id);
+    activeSessionIdRef.current = id;
+  }, []);
   const [blockedAttempt, setBlockedAttempt] = useState<string | null>(null);
   const [showFocusReturn, setShowFocusReturn] = useState(false);
+  const startNotificationIdRef = useRef<string | null>(null);
+  const endNotificationIdRef = useRef<string | null>(null);
   const intervalRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const appStateRef      = useRef(AppState.currentState);
   const sessionStateRef  = useRef<SessionState>("idle");
@@ -499,6 +531,21 @@ export default function FocusScreen() {
     hasAccessibilityPermission: false,
     hasOverlayPermission: false,
   });
+
+  const top3Suggested = React.useMemo(() => {
+    const knownNames = new Set(ALL_APPS.map(a => a.name));
+    return appUsage
+      .filter(a => knownNames.has(a.appName))
+      .slice(0, 3)
+      .map(a => {
+        const matchingEntry = ALL_APPS.find(x => x.name === a.appName);
+        return {
+          name: a.appName,
+          icon: matchingEntry?.icon ?? "apps",
+          category: matchingEntry?.category ?? "App"
+        };
+      });
+  }, [appUsage]);
 
   const checkPerms = useCallback(() => {
     const status = getPermissionStatus();
@@ -598,16 +645,49 @@ export default function FocusScreen() {
       if (rem <= 0) {
         clearTimer();
         setSessionState("done");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setActiveSessionId((id) => {
-          if (id) {
-            endFocusSession.mutate(
-              { id, data: { status: "completed" } },
-              { onSuccess: invalidateSessions },
-            );
+        console.log("[FocusTimer] Focus session timer completed! Triggering vibration and notifications.");
+        
+        try {
+          dismissNativeNotification();
+        } catch (e) {
+          console.warn("[FocusTimer] Native dismiss failed:", e);
+        }
+
+        // Schedule immediate local notification using expo-notifications
+        if (Notifications) {
+          console.log("[FocusTimer] Scheduling immediate completion notification via expo-notifications...");
+          try {
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: "Focus Session Ended 🎯",
+                body: "Your focus session is over. Great job staying focused!",
+                sound: true,
+                vibrate: [0, 500, 250, 500, 250, 1000],
+                priority: "max",
+              },
+              trigger: null,
+            }).then((id: string) => {
+              console.log("[FocusTimer] Completion notification scheduled successfully. Id:", id);
+            }).catch((err: any) => {
+              console.warn("[FocusTimer] Failed to schedule completion notification:", err);
+            });
+          } catch (err) {
+            console.warn("[FocusTimer] Error scheduling notification:", err);
           }
-          return null;
-        });
+        } else {
+          console.warn("[FocusTimer] Notifications module is not available.");
+        }
+
+        Vibration.vibrate([0, 500, 200, 500, 200, 800]);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const currentId = activeSessionIdRef.current;
+        setSessionId(null);
+        if (currentId) {
+          endFocusSession.mutate(
+            { id: currentId, data: { status: "completed" } },
+            { onSuccess: invalidateSessions },
+          );
+        }
       }
     }, 500);
 
@@ -626,16 +706,47 @@ export default function FocusScreen() {
     setSessionState("running");
 
     // Resolve package names / bundle IDs for the native blocker
+    
+    
+    // Request notification permission if not already granted
+    if (Notifications) {
+      try {
+        Notifications.getPermissionsAsync().then(({ status }: any) => {
+          if (status !== 'granted') {
+            Notifications.requestPermissionsAsync();
+          }
+        });
+      } catch (e) {
+        console.warn("Failed to check notification permission status:", e);
+      }
+    }
+
+    // Schedule active focus session notifications
+    try {
+      console.log("[FocusTimer] Initializing active session miniplayer notification...");
+
+      
+      showNativeNotification(
+        "Focus Session Active ⏳",
+        `Intention: "${intention}"`,
+        true,
+        duration
+      );
+    } catch (e) {
+      console.warn("Failed to schedule notifications on start:", e);
+    }
+
     const nativeIdentifiers = blockedApps.flatMap(name =>
       Object.entries(KNOWN_APPS)
         .filter(([, v]) => v.name === name)
         .map(([pkg]) => pkg)
     );
+
     // Start native OS-level blocking (no-op on web / Expo Go)
     void startNativeSession(nativeIdentifiers, duration);
     startFocusSession.mutate(
       { data: { intention: intention.trim() || undefined, plannedDurationMinutes: duration, blockedApps } },
-      { onSuccess: (session) => setActiveSessionId(session.id) }
+      { onSuccess: (session) => setSessionId(session.id) }
     );
   };
 
@@ -666,6 +777,11 @@ export default function FocusScreen() {
   };
 
   const handlePause  = () => {
+    try {
+      dismissNativeNotification();
+    } catch (e) {}
+
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (startTime !== null) {
       const elapsedSinceLastResume = Math.floor((Date.now() - startTime) / 1000);
@@ -679,9 +795,28 @@ export default function FocusScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setStartTime(Date.now());
     setSessionState("running");
+
+    try {
+      showNativeNotification(
+        "Focus Session Active ⏳",
+        `You are in a focus session. Distracting apps are blocked!`,
+        true
+      );
+    } catch (e) {}
   };
 
   const handleStop   = () => {
+    try {
+      if (startNotificationIdRef.current) {
+        Notifications.cancelScheduledNotificationAsync(startNotificationIdRef.current);
+        startNotificationIdRef.current = null;
+      }
+      if (endNotificationIdRef.current) {
+        Notifications.cancelScheduledNotificationAsync(endNotificationIdRef.current);
+        endNotificationIdRef.current = null;
+      }
+    } catch (e) {}
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     clearTimer();
     setStartTime(null);
@@ -689,12 +824,13 @@ export default function FocusScreen() {
     setSessionState("idle");
     setRemaining(duration * 60);
     void stopNativeSession();
-    if (activeSessionId) {
+    const currentId = activeSessionIdRef.current;
+    setSessionId(null);
+    if (currentId) {
       endFocusSession.mutate(
-        { id: activeSessionId, data: { status: "stopped" } },
+        { id: currentId, data: { status: "stopped" } },
         { onSuccess: invalidateSessions },
       );
-      setActiveSessionId(null);
     }
   };
 
@@ -707,6 +843,19 @@ export default function FocusScreen() {
   };
 
   useEffect(() => () => clearTimer(), [clearTimer]);
+
+  // Background notification trigger when user switches away during active focus session
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "background" && sessionState === "running") {
+        try {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        } catch (e) {}
+      }
+    });
+    return () => subscription.remove();
+  }, [sessionState, remaining, intention]);
+
 
   const isActive = sessionState === "running" || sessionState === "paused";
   const cardW    = (SCREEN_W - 40 - 9 * 3) / 4;
@@ -1037,6 +1186,60 @@ export default function FocusScreen() {
                           </TouchableOpacity>
                         </View>
                       ))}
+                    </View>
+                  )}
+
+                  {top3Suggested.length > 0 && (
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={[styles.sectionLabel, { color: colors.outline, marginBottom: 8 }]}>
+                        SUGGESTED TO BLOCK
+                      </Text>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                        {top3Suggested.map(app => {
+                          const isBlocked = blockedApps.includes(app.name);
+                          return (
+                            <TouchableOpacity
+                              key={app.name}
+                              style={[
+                                styles.quickLaunchChip,
+                                {
+                                  backgroundColor: isBlocked ? colors.primary : colors.surfaceContainerHigh,
+                                  borderColor: isBlocked ? colors.primary : "transparent",
+                                  borderWidth: 1,
+                                  paddingVertical: 8,
+                                  paddingHorizontal: 12,
+                                  borderRadius: 10,
+                                }
+                              ]}
+                              onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                toggleApp(app.name);
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <MaterialIcons
+                                name={app.icon as any}
+                                size={14}
+                                color={isBlocked ? "#fff" : colors.outline}
+                              />
+                              <Text
+                                style={[
+                                  styles.quickLaunchChipText,
+                                  { color: isBlocked ? "#fff" : colors.onSurface, fontSize: 11, fontFamily: "Inter_600SemiBold" }
+                                ]}
+                              >
+                                {app.name}
+                              </Text>
+                              <MaterialIcons
+                                name={isBlocked ? "check" : "add"}
+                                size={14}
+                                color={isBlocked ? "#fff" : colors.outline}
+                                style={{ marginLeft: 4 }}
+                              />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
                     </View>
                   )}
                 </Animated.View>

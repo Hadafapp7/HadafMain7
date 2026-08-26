@@ -1,7 +1,19 @@
 package com.hadaf.hadafnative
 
 import android.content.Context
+
+import android.app.Activity
 import android.content.Intent
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.auth.api.identity.GetPhoneNumberHintIntentRequest
+
+import android.telephony.TelephonyManager
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import androidx.core.app.NotificationCompat
+
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -22,6 +34,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
  */
 class AppBlockerModule : Module() {
   companion object {
+    const val PHONE_HINT_REQUEST_CODE = 4202
     const val PREFS_NAME      = "HadafBlocker"
     const val KEY_ACTIVE      = "sessionActive"
     const val KEY_BLOCKED     = "blockedPackages"
@@ -125,6 +138,114 @@ class AppBlockerModule : Module() {
         val active = p.getBoolean(KEY_ACTIVE, false)
         val endMs  = p.getLong(KEY_SESSION_END, 0L)
         active && System.currentTimeMillis() < endMs
+      }
+    }
+
+    Function("showNotification") { title: String, body: String, sticky: Boolean, durationMinutes: Int ->
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "hadaf_focus_channel"
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          val channel = NotificationChannel(
+            channelId,
+            "Hadaf Focus Session",
+            NotificationManager.IMPORTANCE_LOW
+          )
+          manager.createNotificationChannel(channel)
+        }
+        
+        val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
+        val pendingIntent = PendingIntent.getActivity(
+          ctx,
+          0,
+          launchIntent,
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(ctx, channelId)
+          .setSmallIcon(android.R.drawable.ic_dialog_info)
+          .setContentTitle(title)
+          .setContentText(body)
+          .setPriority(NotificationCompat.PRIORITY_LOW)
+          .setOngoing(sticky)
+          .setContentIntent(pendingIntent)
+          .setAutoCancel(!sticky)
+
+        if (sticky && durationMinutes > 0) {
+          val endMs = System.currentTimeMillis() + durationMinutes * 60_000L
+          builder.setWhen(endMs)
+          builder.setUsesChronometer(true)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            builder.setChronometerCountDown(true)
+          }
+        }
+          
+        manager.notify(999, builder.build())
+      }
+      Unit
+    }
+
+    Function("dismissNotification") {
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(999)
+      }
+      Unit
+    }
+
+    Function("getDevicePhoneNumber") {
+      val ctx = appContext.reactContext
+      var num = ""
+      if (ctx != null) {
+        try {
+          val tMgr = ctx.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+          num = tMgr.line1Number ?: ""
+        } catch (e: Exception) {
+          // ignore
+        }
+      }
+      num
+    }
+
+    Function("requestPhoneNumberHint") {
+      val activity = appContext.currentActivity ?: return@Function false
+      val request = GetPhoneNumberHintIntentRequest.builder().build()
+      
+      Identity.getSignInClient(activity)
+        .getPhoneNumberHintIntent(request)
+        .addOnSuccessListener { pendingIntent ->
+          try {
+            activity.startIntentSenderForResult(
+              pendingIntent.intentSender,
+              PHONE_HINT_REQUEST_CODE,
+              null, 0, 0, 0
+            )
+          } catch (e: Exception) {
+            // ignore
+          }
+        }
+      true
+    }
+
+    Events("onPhoneNumberFetched")
+
+    OnActivityResult { _, payload ->
+      val requestCode = payload.requestCode
+      val resultCode = payload.resultCode
+      val data = payload.data
+      if (requestCode == PHONE_HINT_REQUEST_CODE && resultCode == Activity.RESULT_OK && data != null) {
+        try {
+          val ctx = appContext.reactContext
+          if (ctx != null) {
+            val phoneNumber = Identity.getSignInClient(ctx).getPhoneNumberFromIntent(data)
+            sendEvent("onPhoneNumberFetched", mapOf("phoneNumber" to phoneNumber))
+          }
+        } catch (e: Exception) {
+          // ignore
+        }
       }
     }
 

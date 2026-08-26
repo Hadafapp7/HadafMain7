@@ -1,3 +1,4 @@
+import { awardXpAndCheckBadges, updateStreak } from "../utils/gamification";
 import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, goalsTable } from "@workspace/db";
@@ -65,6 +66,11 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   if (!goal) {
     res.status(404).json({ error: "Goal not found" });
     return;
+  }
+
+  if (parsed.data.status === "done") {
+    await awardXpAndCheckBadges(req.userId!, 20, "goal_done");
+    await updateStreak(req.userId!);
   }
 
   res.json(UpdateGoalResponse.parse(goal));

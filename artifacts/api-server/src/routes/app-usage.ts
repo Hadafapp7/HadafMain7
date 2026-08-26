@@ -1,3 +1,4 @@
+import { updateStreak } from "../utils/gamification";
 import { Router, type IRouter } from "express";
 import { desc, eq, sql, and, gte, lte } from "drizzle-orm";
 import { db, appUsageEntriesTable } from "@workspace/db";
@@ -54,6 +55,7 @@ router.post("/app-usage", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  await updateStreak(req.userId!);
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);

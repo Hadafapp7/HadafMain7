@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
@@ -11,6 +13,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -36,6 +39,7 @@ import {
   useGetAppUsageSummary,
   useGetMe,
   useGetUserSettings,
+  useListAppUsageEntries,
   useListFocusSessions,
   useListGoals,
   useUpdateUserSettings,
@@ -257,7 +261,7 @@ function AnimatedProgressBar({ percent, delay = 0, trackColor, fillColor, height
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withDelay(delay, withSpring(percent, { damping: 20, stiffness: 90 }));
-  }, []);
+  }, [percent, delay]);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as any }));
   return (
     <View style={[styles.progressTrack, { backgroundColor: trackColor ?? "#e8e8e8", height, borderRadius: radius }]}>
@@ -276,8 +280,12 @@ function CounterNumber({ target, delay = 0, style: textStyle }: { target: number
     (cur, prev) => { if (cur !== prev) runOnJS(setDisplay)(cur); }
   );
   useEffect(() => {
-    if (!isWeb) count.value = withDelay(delay, withTiming(target, { duration: 1000 }));
-  }, []);
+    if (!isWeb) {
+      count.value = withDelay(delay, withTiming(target, { duration: 1000 }));
+    } else {
+      setDisplay(target);
+    }
+  }, [target, delay]);
   return <Text style={textStyle}>{display}</Text>;
 }
 
@@ -417,7 +425,7 @@ function SelectAppsModal({ visible, onClose, onSubmit, submitting }: {
             </View>
           </View>
 
-          <ScrollView style={styles.selectAppsList} showsVerticalScrollIndicator={false}>
+          <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true} style={styles.selectAppsList} showsVerticalScrollIndicator={false}>
             {POPULAR_APPS.map((app, i) => {
               const isSel = selected.includes(app.name);
               return (
@@ -562,6 +570,113 @@ function GoalsStatusModal({ visible, onClose, goals }: {
 
 // ─── Oval accent card (Daily Tasks / Mood Check / Streaks) ────────────────────
 
+
+// ── Mood Check Modal ────────────────────────────────────────────────────────────
+function MoodCheckModal({
+  visible,
+  onClose,
+  initialMood,
+  onSave,
+  isSaving,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  initialMood?: { moodScore: number; moodLabel: string; note?: string } | null;
+  onSave: (score: number, label: string, note: string) => void;
+  isSaving: boolean;
+}) {
+  const [selectedScore, setSelectedScore] = React.useState<number>(initialMood?.moodScore || 4);
+  const [note, setNote] = React.useState<string>(initialMood?.note || "");
+
+  React.useEffect(() => {
+    if (initialMood) {
+      setSelectedScore(initialMood.moodScore);
+      setNote(initialMood.note || "");
+    }
+  }, [initialMood, visible]);
+
+  const moods = [
+    { score: 5, label: "Great", emoji: "🤩" },
+    { score: 4, label: "Good", emoji: "😊" },
+    { score: 3, label: "Okay", emoji: "😐" },
+    { score: 2, label: "Low", emoji: "😔" },
+    { score: 1, label: "Bad", emoji: "😫" },
+  ];
+
+  const handleSave = () => {
+    const selected = moods.find((m) => m.score === selectedScore) || moods[1];
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onSave(selected.score, selected.label, note);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalBackdropOverlay}>
+        <View style={styles.moodModalCard}>
+          <View style={styles.moodModalHeader}>
+            <View>
+              <Text style={styles.moodModalTitle}>Daily Mood Check</Text>
+              <Text style={styles.moodModalSub}>How are you feeling today?</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.moodModalCloseBtn}>
+              <MaterialIcons name="close" size={22} color="#555" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.moodOptionsRow}>
+            {moods.map((m) => {
+              const isSelected = selectedScore === m.score;
+              return (
+                <TouchableOpacity
+                  key={m.score}
+                  style={[
+                    styles.moodOptionItem,
+                    isSelected && styles.moodOptionSelected,
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelectedScore(m.score);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.moodOptionEmoji}>{m.emoji}</Text>
+                  <Text style={[styles.moodOptionLabel, isSelected && styles.moodOptionLabelSelected]}>
+                    {m.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <TextInput
+            style={styles.moodNoteInput}
+            placeholder="Add a reflection note (optional)..."
+            placeholderTextColor="#999"
+            value={note}
+            onChangeText={setNote}
+            multiline
+            numberOfLines={3}
+          />
+
+          <TouchableOpacity
+            style={[styles.moodSaveBtn, isSaving && { opacity: 0.7 }]}
+            onPress={handleSave}
+            disabled={isSaving}
+            activeOpacity={0.85}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.moodSaveBtnText}>Save Today's Mood (+15 XP)</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Oval accent card (Daily Tasks / Mood Check / Streaks) ─────────────────────
 function OvalCard({ bg, iconColor, icon, label1, label2, badgeText, badgeBg, onPress }: {
   bg: string; iconColor: string;
   icon: React.ComponentProps<typeof MaterialIcons>["name"];
@@ -569,17 +684,11 @@ function OvalCard({ bg, iconColor, icon, label1, label2, badgeText, badgeBg, onP
   badgeText?: string; badgeBg?: string;
   onPress?: () => void;
 }) {
-  const scale      = useSharedValue(1);
-  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
-    <Animated.View
-      style={[styles.ovalCard, { backgroundColor: bg }, pressStyle]}
-      onTouchStart={() => { scale.value = withSpring(0.94, { damping: 12 }); }}
-      onTouchEnd={() => {
-        scale.value = withSpring(1, { damping: 12 });
-        onPress?.();
-      }}
-      onTouchCancel={() => { scale.value = withSpring(1, { damping: 12 }); }}
+    <TouchableOpacity
+      style={[styles.ovalCard, { backgroundColor: bg }]}
+      onPress={onPress}
+      activeOpacity={0.8}
     >
       <MaterialIcons name={icon} size={30} color={iconColor} />
       <Text style={[styles.ovalLabel, { color: iconColor }]}>{label1}</Text>
@@ -591,12 +700,11 @@ function OvalCard({ bg, iconColor, icon, label1, label2, badgeText, badgeBg, onP
       ) : (
         <Text style={[styles.ovalEmpty, { color: iconColor }]}>EMPTY</Text>
       )}
-    </Animated.View>
+    </TouchableOpacity>
   );
 }
 
-// ─── Home screen ──────────────────────────────────────────────────────────────
-
+// ── Home screen ───────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -626,10 +734,45 @@ export default function HomeScreen() {
   const { data: settings } = useGetUserSettings();
   const { data: rawFocusSessions } = useListFocusSessions();
   const focusSessions = Array.isArray(rawFocusSessions) ? rawFocusSessions : [];
+  const { data: rawEntries } = useListAppUsageEntries();
+  const entries = Array.isArray(rawEntries) ? rawEntries : [];
   const updateSettings = useUpdateUserSettings();
   const createUsageEntry = useCreateAppUsageEntry();
 
-  const streak = computeStreak(focusSessions);
+  const { data: userProfile, refetch: refetchProfile } = useQuery({
+    queryKey: ["userMe"],
+    queryFn: () => customFetch<any>("/api/users/me"),
+  });
+
+  const { data: todayMoodData, refetch: refetchTodayMood } = useQuery({
+    queryKey: ["todayMood"],
+    queryFn: () => customFetch<any>("/api/mood-logs/today"),
+  });
+
+  const [showMoodModal, setShowMoodModal] = React.useState(false);
+  const [isSavingMood, setIsSavingMood] = React.useState(false);
+
+  const handleSaveMood = async (score: number, label: string, note: string) => {
+    setIsSavingMood(true);
+    try {
+      await customFetch("/api/mood-logs", {
+        method: "POST",
+        body: JSON.stringify({ moodScore: score, moodLabel: label, note }),
+      });
+      setShowMoodModal(false);
+      refetchTodayMood();
+      refetchProfile();
+    } catch (err) {
+      console.error("[Home] Save mood error:", err);
+    } finally {
+      setIsSavingMood(false);
+    }
+  };
+
+  const calculatedStreak = computeStreak(focusSessions);
+  const streak = (userProfile?.currentStreak !== undefined && userProfile.currentStreak > 0)
+    ? userProfile.currentStreak
+    : calculatedStreak;
 
   const checkAndLoadStats = React.useCallback(async () => {
     console.log("[Home] checkAndLoadStats: Checking native device permission...");
@@ -663,6 +806,10 @@ export default function HomeScreen() {
           console.log(`[Home] checkAndLoadStats: Syncing ${combined.length} app usage stats to backend database...`);
           // Sync today's usage (dailyMinutes) to the backend database!
           for (const app of combined) {
+            if (app.dailyMinutes <= 0) {
+              console.log(`[Home] checkAndLoadStats: Skipping sync for ${app.appName} because usage is 0m`);
+              continue;
+            }
             try {
               console.log(`[Home] checkAndLoadStats: Syncing ${app.appName} (${app.dailyMinutes}m)`);
               await createUsageEntry.mutateAsync({
@@ -797,15 +944,55 @@ export default function HomeScreen() {
     .filter(app => distractingApps.some(d => app.appName.toLowerCase().includes(d.toLowerCase())))
     .reduce((sum, app) => sum + app.dailyMinutes, 0);
 
-  // Doom Score logic:
-  // - 70% based on distracting social apps usage (reaches max 70 pts at 180 minutes / 3 hours)
-  // - 30% based on pending goals completion rate
-  const doomScore = mergedUsage.length === 0 && goals.length === 0
-    ? 0
-    : Math.min(100, Math.round(
-        Math.min(70, (distractingMinutes / 180) * 70) +
-        (goals.length > 0 ? (pendingGoals / goals.length) * 30 : 0),
-      ));
+  // Find which of these distracting apps are actually present/used on the device
+  const presentDistractingApps = distractingApps.filter(d =>
+    mergedUsage.some(app => app.appName.toLowerCase().includes(d.toLowerCase()))
+  );
+
+  // Dynamic limit: 120 minutes (2 hours) allowed per present distracting app
+  const maxSocialLimit = Math.max(120, presentDistractingApps.length * 120);
+
+  function calculateDoomScore(mins: number): number {
+    return Math.min(100, Math.round((mins / maxSocialLimit) * 100));
+  }
+
+  const doomScore = calculateDoomScore(distractingMinutes);
+
+  // Group entries by date (YYYY-MM-DD) over the last 7 days to calculate weekly averages
+  const dailyTotals: Record<string, { total: number; distracting: number }> = {};
+  entries.forEach(entry => {
+    const dateStr = entry.loggedAt.slice(0, 10);
+    const entryDate = new Date(entry.loggedAt);
+    const diffTime = Math.abs(Date.now() - entryDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 7) {
+      if (!dailyTotals[dateStr]) {
+        dailyTotals[dateStr] = { total: 0, distracting: 0 };
+      }
+      dailyTotals[dateStr].total += entry.durationMinutes;
+
+      const isDistracting = distractingApps.some(d => 
+        entry.appName.toLowerCase().includes(d.toLowerCase())
+      );
+      if (isDistracting) {
+        dailyTotals[dateStr].distracting += entry.durationMinutes;
+      }
+    }
+  });
+
+  const activeDays = Object.keys(dailyTotals);
+  const numDays = activeDays.length || 1;
+
+  const totalWeeklyScreenTime = activeDays.reduce((sum, d) => sum + dailyTotals[d].total, 0);
+  const avgScreenTime = Math.round(totalWeeklyScreenTime / numDays);
+
+  const totalWeeklyDoomScore = activeDays.reduce((sum, d) => 
+    sum + calculateDoomScore(dailyTotals[d].distracting), 0
+  );
+  const avgDoomScore = Math.round(totalWeeklyDoomScore / numDays);
+
+  const progressColor = doomScore < 30 ? "#4ade80" : doomScore < 70 ? "#facc15" : "#f87171";
 
   return (
     <View style={[styles.root, { backgroundColor: "#f5f5f5" }]}>
@@ -825,7 +1012,7 @@ export default function HomeScreen() {
         enabling={updateSettings.isPending}
       />
 
-      <ScrollView
+      <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true}
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
@@ -857,15 +1044,13 @@ export default function HomeScreen() {
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>SCREEN TIME</Text>
             <Text style={styles.statNumber}>{formatDuration(totalScreenMinutes)}</Text>
-            <View style={styles.statCardBottom}>
-              <View style={styles.statBadge}>
-                <MaterialIcons name="apps" size={11} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.statBadgeText}> {appUsage.length} apps</Text>
-              </View>
-              <View style={styles.sparkBars}>
-                <View style={[styles.sparkBar, { height: 14, backgroundColor: "rgba(255,255,255,0.3)" }]} />
-                <View style={[styles.sparkBar, { height: 24, backgroundColor: "#fff" }]} />
-              </View>
+            <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)", paddingTop: 8, marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.5)", letterSpacing: 0.8 }}>
+                WEEKLY AVG
+              </Text>
+              <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" }}>
+                {formatDuration(avgScreenTime)}
+              </Text>
             </View>
           </View>
 
@@ -877,18 +1062,23 @@ export default function HomeScreen() {
               delay={200}
               style={styles.statNumber}
             />
-            <View style={styles.doomRow}>
-              <Text style={styles.doomBetter}>{distractingMinutes}M SOCIAL</Text>
-              <Text style={styles.doomPts}>{doomScore === 0 ? "START" : doomScore < 40 ? "GREAT" : doomScore < 70 ? "WARN" : "DOOM"}</Text>
-            </View>
+
             <AnimatedProgressBar
               percent={doomScore / 100}
               delay={350}
               height={5}
               radius={3}
               trackColor="rgba(255,255,255,0.2)"
-              fillColor="#fff"
+              fillColor={progressColor}
             />
+            <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)", paddingTop: 8, marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.5)", letterSpacing: 0.8 }}>
+                WEEKLY AVG
+              </Text>
+              <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" }}>
+                {avgDoomScore} pts
+              </Text>
+            </View>
           </View>
         </Animated.View>
 
@@ -949,21 +1139,40 @@ export default function HomeScreen() {
             onPress={() => setShowGoals(true)}
           />
           <OvalCard
-            bg="#fff3e0"
-            iconColor="#d84315"
+            bg={todayMoodData?.logged ? "#e8f5e9" : "#fff3e0"}
+            iconColor={todayMoodData?.logged ? "#2e7d32" : "#d84315"}
             icon="self-improvement"
             label1="MOOD"
-            label2="CHECK"
+            label2={todayMoodData?.logged ? (todayMoodData.log?.moodLabel || "LOGGED") : "CHECK"}
+            badgeText={todayMoodData?.logged ? "LOGGED" : "CHECK IN"}
+            badgeBg={todayMoodData?.logged ? "#2e7d32" : "#d84315"}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setShowMoodModal(true);
+            }}
           />
           <OvalCard
             bg="#fff3e0"
             iconColor="#d84315"
             icon="local-fire-department"
             label1="STREAKS"
-            badgeText={streak > 0 ? `${streak} ${streak === 1 ? "DAY" : "DAYS"}` : undefined}
+            label2={streak > 0 ? `${streak} ${streak === 1 ? "DAY" : "DAYS"}` : "0 DAYS"}
+            badgeText={`${streak}d`}
             badgeBg="#d84315"
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/achievements" as any);
+            }}
           />
         </Animated.View>
+
+        <MoodCheckModal
+          visible={showMoodModal}
+          onClose={() => setShowMoodModal(false)}
+          initialMood={todayMoodData?.log}
+          onSave={handleSaveMood}
+          isSaving={isSavingMood}
+        />
 
       </ScrollView>
     </View>
@@ -973,6 +1182,112 @@ export default function HomeScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  modalBackdropOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    justifyContent: "flex-end",
+  },
+  moodModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f4f4f5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  moodModalCard: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === "ios" ? 40 : 28,
+    gap: 20,
+    width: "100%",
+  },
+  sheetDragBar: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#e4e4e7",
+    alignSelf: "center",
+    marginBottom: 4,
+  },
+  moodModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  moodModalTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    color: "#000",
+    letterSpacing: -0.5,
+  },
+  moodModalSub: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: "#71717a",
+    marginTop: 2,
+  },
+  moodOptionsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginVertical: 4,
+  },
+  moodOptionItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#eee",
+    backgroundColor: "#fafafa",
+    gap: 6,
+  },
+  moodOptionSelected: {
+    borderColor: "#000",
+    backgroundColor: "#f4f4f5",
+    transform: [{ scale: 1.04 }],
+  },
+  moodOptionEmoji: {
+    fontSize: 32,
+  },
+  moodOptionLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    color: "#71717a",
+  },
+  moodOptionLabelSelected: {
+    color: "#000",
+    fontFamily: "Inter_700Bold",
+  },
+  moodNoteInput: {
+    backgroundColor: "#f4f4f5",
+    borderRadius: 16,
+    padding: 16,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: "#000",
+    minHeight: 80,
+    textAlignVertical: "top",
+    borderWidth: 1,
+    borderColor: "#e4e4e7",
+  },
+  moodSaveBtn: {
+    backgroundColor: "#000",
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  moodSaveBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.5,
+  },
   root:   { flex: 1 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, gap: 16 },

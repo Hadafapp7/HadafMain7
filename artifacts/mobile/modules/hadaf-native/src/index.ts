@@ -215,3 +215,47 @@ export const KNOWN_APPS: Record<string, { name: string; category: string }> = {
   "net.whatsapp.WhatsApp":          { name: "WhatsApp",   category: "Social"         },
   "com.spotify.client":             { name: "Spotify",    category: "Entertainment"  },
 };
+
+export function showNativeNotification(title: string, body: string, sticky: boolean, durationMinutes: number): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    AppBlockerNative.showNotification(title, body, sticky, durationMinutes);
+  } catch (e) {
+    console.warn("[HadafNative] showNotification failed:", e);
+  }
+}
+
+export function dismissNativeNotification(): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    AppBlockerNative.dismissNotification();
+  } catch (e) {
+    console.warn("[HadafNative] dismissNotification failed:", e);
+  }
+}
+
+export function getDevicePhoneNumber(): string {
+  if (!isNative || !AppBlockerNative) return "";
+  try {
+    return AppBlockerNative.getDevicePhoneNumber() || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+import { EventEmitter } from "expo-modules-core";
+
+const emitter = new EventEmitter(AppBlockerNative);
+
+export function addPhoneNumberListener(listener: (event: { phoneNumber: string }) => void) {
+  return emitter.addListener("onPhoneNumberFetched", listener);
+}
+
+export function requestPhoneNumberHint(): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    AppBlockerNative.requestPhoneNumberHint();
+  } catch (e) {
+    console.warn("[HadafNative] requestPhoneNumberHint failed:", e);
+  }
+}

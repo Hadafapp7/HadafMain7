@@ -1,3 +1,4 @@
+import { awardXpAndCheckBadges, updateStreak } from "../utils/gamification";
 import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { db, focusSessionsTable } from "@workspace/db";
@@ -75,6 +76,13 @@ router.post(
     if (!session) {
       res.status(404).json({ error: "Focus session not found" });
       return;
+    }
+
+    if (parsed.data.status === "completed") {
+      await awardXpAndCheckBadges(req.userId!, 50, "focus_session", {
+        durationMinutes: session.plannedDurationMinutes,
+      });
+      await updateStreak(req.userId!);
     }
 
     res.json(EndFocusSessionResponse.parse(session));

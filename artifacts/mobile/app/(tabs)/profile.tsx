@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/expo";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import React from "react";
 import {
   Platform,
@@ -46,7 +46,7 @@ function usePrefs(onSignOut: () => void): PrefRow[] {
     { icon: "notifications",    label: "Notifications",     right: "chevron", route: "/notifications-settings" },
     { icon: "lock",             label: "Privacy & Security",right: "chevron", route: "/privacy-security" },
     { icon: "help",             label: "Help",              right: "chevron", route: "/help" },
-    { icon: "palette",          label: "Appearance",        right: "chevron", route: "/appearance" },
+
     { icon: "logout",           label: "Sign Out",          danger: true, onPress: onSignOut },
   ];
 }
@@ -55,15 +55,10 @@ function usePrefs(onSignOut: () => void): PrefRow[] {
 function PressCard({ children, style, delay = 0 }: {
   children: React.ReactNode; style?: any; delay?: number;
 }) {
-  const scale = useSharedValue(1);
-  const anim  = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
     <Animated.View
-      style={[anim, style]}
+      style={style}
       entering={isWeb ? undefined : FadeInDown.delay(delay).springify()}
-      onTouchStart={() => { scale.value = withSpring(0.98, { damping: 14 }); }}
-      onTouchEnd={()   => { scale.value = withSpring(1,    { damping: 14 }); }}
-      onTouchCancel={() => { scale.value = withSpring(1,   { damping: 14 }); }}
     >
       {children}
     </Animated.View>
@@ -132,11 +127,20 @@ export default function ProfileScreen() {
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
 
   const { signOut } = useAuth();
-  const { data: me } = useGetMe();
-  const { data: rawFocusSessions } = useListFocusSessions();
+  const { data: me, refetch: refetchMe } = useGetMe();
+  const { data: rawFocusSessions, refetch: refetchSessions } = useListFocusSessions();
   const focusSessions = Array.isArray(rawFocusSessions) ? rawFocusSessions : [];
-  const { data: rawGoals } = useListGoals();
+  const { data: rawGoals, refetch: refetchGoals } = useListGoals();
   const goals = Array.isArray(rawGoals) ? rawGoals : [];
+
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log("[Profile] Tab focused. Refreshing stats...");
+      refetchSessions();
+      refetchGoals();
+      refetchMe();
+    }, [refetchSessions, refetchGoals, refetchMe])
+  );
 
   const handleSignOut = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -154,7 +158,7 @@ export default function ProfileScreen() {
     { label: "GOALS DONE", value: String(goalsDone) },
   ];
 
-  const displayName = me?.name?.toUpperCase() ?? me?.email?.split("@")[0].toUpperCase() ?? "";
+  const displayName = me?.name?.toUpperCase() ?? me?.email?.split("@")[0].toUpperCase() ?? me?.phone ?? "HADAF USER";
 
   return (
     <View style={styles.root}>
@@ -166,7 +170,7 @@ export default function ProfileScreen() {
         <Text style={styles.topBarTitle}>ACCOUNT</Text>
       </View>
 
-      <ScrollView
+      <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true}
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
@@ -190,7 +194,7 @@ export default function ProfileScreen() {
           </View>
 
           <Text style={styles.profileName}>{displayName}</Text>
-          <Text style={styles.profileEmail}>{me?.email ?? ""}</Text>
+          <Text style={styles.profileEmail}>{me?.email ?? me?.phone ?? ""}</Text>
         </Animated.View>
 
         {/* ── Stats Row ── */}
