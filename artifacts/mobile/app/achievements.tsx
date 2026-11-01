@@ -1,7 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react";
+import { useFocusEffect } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import {
+  ActivityIndicator,
   Platform,
   ScrollView,
   StyleSheet,
@@ -14,24 +18,30 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const isWeb = Platform.OS === "web";
 
-const BADGES = [
-  { icon: "wb-sunny",    label: "EARLY BIRD",  earned: true  },
-  { icon: "bedtime",     label: "NIGHT OWL",   earned: true  },
-  { icon: "spa",         label: "FOCUS GURU",  earned: false },
-  { icon: "anchor",      label: "DEEP DIVER",  earned: false },
-  { icon: "bolt",        label: "SPEEDSTER",   earned: false },
-  { icon: "self-improvement", label: "ZEN MODE",earned: false },
-];
-
-const MILESTONES = [
-  { label: "Complete 50 focus sessions", current: 34, total: 50 },
-  { label: "Log 100 goals",              current: 61, total: 100 },
-  { label: "Maintain a 30-day streak",   current: 12, total: 30  },
-];
-
 export default function AchievementsScreen() {
   const insets = useSafeAreaInsets();
   const topPad = isWeb ? 0 : insets.top;
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["achievements"],
+    queryFn: () => customFetch<any>("/api/achievements"),
+  });
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  if (isLoading || !data) {
+    return (
+      <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color="#000" />
+      </View>
+    );
+  }
+
+  const titlePrefix = data.level < 5 ? "NOVICE OF" : data.level < 10 ? "ADEPT OF" : "MASTER OF";
 
   return (
     <View style={styles.root}>
@@ -45,6 +55,9 @@ export default function AchievementsScreen() {
 
       <ScrollView
         style={styles.scroll}
+        scrollEventThrottle={16}
+        decelerationRate="normal"
+        overScrollMode="never"
         contentContainerStyle={[
           styles.content,
           { paddingTop: topPad + 72, paddingBottom: 48 },
@@ -62,15 +75,15 @@ export default function AchievementsScreen() {
           <View style={styles.levelDeco3} />
 
           <View style={styles.levelBadge}>
-            <Text style={styles.levelBadgeText}>LEVEL 12</Text>
+            <Text style={styles.levelBadgeText}>LEVEL {data.level}</Text>
           </View>
-          <Text style={styles.levelTitle}>{"MASTER OF\nFOCUS"}</Text>
+          <Text style={styles.levelTitle}>{`${titlePrefix}\nFOCUS`}</Text>
           <View style={styles.xpRow}>
             <Text style={styles.xpLabel}>XP PROGRESS</Text>
-            <Text style={styles.xpValue}>850 / 1000</Text>
+            <Text style={styles.xpValue}>{data.xp} / {data.xpNeeded}</Text>
           </View>
           <View style={styles.xpBarBg}>
-            <View style={[styles.xpBarFill, { width: "85%" }]} />
+            <View style={[styles.xpBarFill, { width: `${(data.xp / data.xpNeeded) * 100}%` }]} />
           </View>
         </Animated.View>
 
@@ -80,14 +93,14 @@ export default function AchievementsScreen() {
           style={styles.streakRow}
         >
           <View style={styles.streakCard}>
-            <Text style={styles.streakEmoji}>🔥</Text>
+            <Text style={styles.streakEmoji}>{"\uD83D\uDD25"}</Text>
             <Text style={styles.streakLabel}>CURRENT STREAK</Text>
-            <Text style={styles.streakValue}>12 Days</Text>
+            <Text style={styles.streakValue}>{data.currentStreak} {data.currentStreak === 1 ? "Day" : "Days"}</Text>
           </View>
           <View style={styles.streakCard}>
-            <Text style={styles.streakEmoji}>👑</Text>
+            <Text style={styles.streakEmoji}>{"\uD83C\uDFC6"}</Text>
             <Text style={styles.streakLabel}>BEST STREAK</Text>
-            <Text style={styles.streakValue}>24 Days</Text>
+            <Text style={styles.streakValue}>{data.bestStreak} {data.bestStreak === 1 ? "Day" : "Days"}</Text>
           </View>
         </Animated.View>
 
@@ -98,7 +111,7 @@ export default function AchievementsScreen() {
         >
           <Text style={styles.sectionLabel}>BADGE GALLERY</Text>
           <View style={styles.badgeGrid}>
-            {BADGES.map((badge, i) => (
+            {data.badges.map((badge: any, i: number) => (
               <View key={i} style={styles.badgeItem}>
                 <View style={[styles.badgeCircle, badge.earned ? styles.badgeEarned : styles.badgeLocked]}>
                   <MaterialIcons
@@ -122,7 +135,7 @@ export default function AchievementsScreen() {
         >
           <Text style={styles.sectionLabel}>MILESTONES</Text>
           <View style={styles.milestoneList}>
-            {MILESTONES.map((m, i) => (
+            {data.milestones.map((m: any, i: number) => (
               <View key={i} style={styles.milestoneCard}>
                 <View style={styles.milestoneTop}>
                   <Text style={styles.milestoneLabel}>{m.label}</Text>
@@ -159,7 +172,6 @@ const styles = StyleSheet.create({
   backBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   topBarTitle: { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.5, color: "#000" },
 
-  // Level card
   levelCard: {
     backgroundColor: "#0a0a0a",
     borderRadius: 24,
@@ -197,7 +209,6 @@ const styles = StyleSheet.create({
   xpBarBg:{ height: 6, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 3, overflow: "hidden" },
   xpBarFill:{ height: 6, backgroundColor: "#fff", borderRadius: 3 },
 
-  // Streak
   streakRow: { flexDirection: "row", gap: 14 },
   streakCard: {
     flex: 1, backgroundColor: "#fff", borderRadius: 22,
@@ -208,11 +219,9 @@ const styles = StyleSheet.create({
   streakLabel: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2, textAlign: "center" },
   streakValue: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#000" },
 
-  // Sections
   section:      { gap: 14 },
   sectionLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#555", letterSpacing: 2.5 },
 
-  // Badge grid
   badgeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 18 },
   badgeItem: { alignItems: "center", gap: 8, width: 72 },
   badgeCircle:{
@@ -227,7 +236,6 @@ const styles = StyleSheet.create({
   badgeLabel:      { fontSize: 9, fontFamily: "Inter_700Bold", color: "#000", textAlign: "center", letterSpacing: 0.5 },
   badgeLabelLocked:{ color: "#bbb" },
 
-  // Milestones
   milestoneList: { gap: 12 },
   milestoneCard: {
     backgroundColor: "#fff", borderRadius: 18,

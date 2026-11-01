@@ -3,6 +3,8 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -13,18 +15,61 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useSubscription } from "@/hooks/useSubscription";
+
 const isWeb = Platform.OS === "web";
 
 const PRO_FEATURES = [
-  { icon: "all-inclusive",       label: "Unlimited focus sessions" },
-  { icon: "insights",            label: "Advanced usage analytics" },
-  { icon: "block",                label: "Unlimited app blocking rules" },
-  { icon: "support-agent",       label: "Priority support" },
+  { icon: "all-inclusive", label: "Unlimited focus sessions, any duration" },
+  { icon: "flag",          label: "Unlimited goals & scheduling" },
+  { icon: "insights",      label: "Full usage analytics & insights" },
+  { icon: "block",         label: "Unlimited app blocking rules" },
+  { icon: "support-agent", label: "Priority support" },
+];
+
+const FREE_LIMITS = [
+  { icon: "timer",    label: "1 focus session per day, max 5 minutes" },
+  { icon: "flag",     label: "No goals" },
+  { icon: "lock",     label: "Analytics locked" },
 ];
 
 export default function SubscriptionScreen() {
   const insets = useSafeAreaInsets();
   const topPad = isWeb ? 0 : insets.top;
+  const sub = useSubscription();
+
+  const planName =
+    sub.plan === "pro"
+      ? "Hadaf Pro"
+      : sub.plan === "limited"
+        ? "Free (Limited)"
+        : "Free Trial";
+  const planBody =
+    sub.plan === "pro"
+      ? `You have unlimited access to every feature.${sub.proExpiresAt ? ` Renews / ends ${new Date(sub.proExpiresAt).toLocaleDateString()}.` : ""}`
+      : sub.plan === "limited"
+        ? "Your 5-day trial has ended. You're on the limited plan - upgrade to unlock everything again."
+        : `${sub.trialDaysLeft || 5} days left of your free trial - every feature is unlocked. After that you'll move to the limited plan.`;
+
+  const onUpgrade = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const result = await sub.purchase();
+    if (result.success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("You're Pro!", "Thank you - every feature is now unlocked.", [{ text: "Let's go", onPress: () => router.back() }]);
+    } else if (!result.cancelled) {
+      Alert.alert("Purchase not completed", result.error ?? "Something went wrong. You haven't been charged.");
+    }
+  };
+
+  const onRestore = async () => {
+    Haptics.selectionAsync();
+    const result = await sub.restore();
+    Alert.alert(
+      result.success ? "Purchases restored" : "Nothing to restore",
+      result.success ? "Hadaf Pro is active on your account." : result.error ?? "We couldn't find an active subscription for this account.",
+    );
+  };
 
   return (
     <View style={styles.root}>
@@ -42,20 +87,26 @@ export default function SubscriptionScreen() {
       >
         <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()} style={styles.currentPlanCard}>
           <Text style={styles.currentPlanLabel}>CURRENT PLAN</Text>
-          <Text style={styles.currentPlanName}>Free</Text>
-          <Text style={styles.currentPlanBody}>
-            You're on the free plan. Upgrade to Pro for unlimited focus sessions and advanced analytics.
-          </Text>
+          <Text style={styles.currentPlanName}>{planName}</Text>
+          <Text style={styles.currentPlanBody}>{planBody}</Text>
         </Animated.View>
 
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(80).springify()} style={styles.section}>
+        {sub.plan !== "pro" && (
+          <Animated.View entering={isWeb ? undefined : FadeInDown.delay(60).springify()} style={styles.priceCard}>
+            <Text style={styles.priceLabel}>HADAF PRO</Text>
+            <View style={styles.priceRow}>
+              <Text style={styles.price}>{sub.priceLabel}</Text>
+              <Text style={styles.pricePer}> / month</Text>
+            </View>
+            <Text style={styles.priceNote}>Cancel anytime in Google Play.</Text>
+          </Animated.View>
+        )}
+
+        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(100).springify()} style={styles.section}>
           <Text style={styles.sectionLabel}>PRO INCLUDES</Text>
           <View style={styles.cardList}>
             {PRO_FEATURES.map((f, i) => (
-              <View
-                key={f.label}
-                style={[styles.featureRow, i < PRO_FEATURES.length - 1 && styles.featureDivider]}
-              >
+              <View key={f.label} style={[styles.featureRow, i < PRO_FEATURES.length - 1 && styles.featureDivider]}>
                 <MaterialIcons name={f.icon as any} size={20} color="#000" />
                 <Text style={styles.featureLabel}>{f.label}</Text>
               </View>
@@ -63,15 +114,84 @@ export default function SubscriptionScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()}>
-          <TouchableOpacity
-            style={styles.upgradeBtn}
-            activeOpacity={0.85}
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
-          >
-            <Text style={styles.upgradeBtnText}>UPGRADE TO PRO</Text>
-          </TouchableOpacity>
-        </Animated.View>
+        {sub.plan !== "pro" && (
+          <Animated.View entering={isWeb ? undefined : FadeInDown.delay(140).springify()} style={styles.section}>
+            <Text style={styles.sectionLabel}>FREE PLAN AFTER THE 5-DAY TRIAL</Text>
+            <View style={styles.cardList}>
+              {FREE_LIMITS.map((f, i) => (
+                <View key={f.label} style={[styles.featureRow, i < FREE_LIMITS.length - 1 && styles.featureDivider]}>
+                  <MaterialIcons name={f.icon as any} size={20} color="#888" />
+                  <Text style={[styles.featureLabel, { color: "#666" }]}>{f.label}</Text>
+                </View>
+              ))}
+            </View>
+          </Animated.View>
+        )}
+
+        {sub.plan !== "pro" && (
+          <Animated.View entering={isWeb ? undefined : FadeInDown.delay(180).springify()} style={{ gap: 14 }}>
+            <TouchableOpacity
+              style={[styles.upgradeBtn, sub.purchasing && { opacity: 0.6 }]}
+              activeOpacity={0.85}
+              disabled={sub.purchasing}
+              onPress={onUpgrade}
+            >
+              {sub.purchasing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.upgradeBtnText}>UPGRADE TO PRO · {sub.priceLabel}/MO</Text>
+              )}
+            </TouchableOpacity>
+            {!sub.purchasesReady && (
+              <Text style={styles.hint}>
+                {sub.purchasesIssue ?? "Subscriptions are still loading. If this doesn't go away, make sure you're running a build that includes in-app purchases."}
+              </Text>
+            )}
+            <TouchableOpacity onPress={onRestore} disabled={sub.purchasing} hitSlop={10}>
+              <Text style={styles.restore}>Restore purchases</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+        {/* Developer testing shortcuts (only shown in development) */}
+        {__DEV__ && (
+          <View style={{ marginTop: 24, padding: 18, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb", gap: 10 }}>
+            <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: "#6b7280", letterSpacing: 1.5 }}>
+              🧪 DEVELOPER TESTING SHORTCUTS
+            </Text>
+            <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#4b5563" }}>
+              Switch app state immediately without waiting for store:
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <TouchableOpacity
+                style={{ backgroundColor: "#10b981", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                onPress={async () => {
+                  await sub.testPlan("pro");
+                  Alert.alert("Switched to Pro", "Unlimited access activated.");
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Test Pro</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ backgroundColor: "#f59e0b", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                onPress={async () => {
+                  await sub.testPlan("limited");
+                  Alert.alert("Switched to Limited", "Free tier after 5-day trial expired (5 min focus, blur, no goals).");
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Test Limited</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ backgroundColor: "#6366f1", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                onPress={async () => {
+                  await sub.testPlan("trial");
+                  Alert.alert("Reset Trial", "5 days full access restored.");
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Reset Trial</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -96,6 +216,15 @@ const styles = StyleSheet.create({
   currentPlanName: { fontSize: 24, fontFamily: "Inter_700Bold", color: "#fff" },
   currentPlanBody: { fontSize: 13, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.65)", lineHeight: 20 },
 
+  priceCard: {
+    backgroundColor: "#fff", borderRadius: 22, padding: 24, gap: 6, borderWidth: 2, borderColor: "#000",
+  },
+  priceLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2.5 },
+  priceRow: { flexDirection: "row", alignItems: "flex-end" },
+  price: { fontSize: 38, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: -1 },
+  pricePer: { fontSize: 15, fontFamily: "Inter_500Medium", color: "#666", marginBottom: 7 },
+  priceNote: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#888" },
+
   section:      { gap: 12 },
   sectionLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2.5 },
   cardList: {
@@ -104,8 +233,10 @@ const styles = StyleSheet.create({
   },
   featureRow: { flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 20, paddingVertical: 16 },
   featureDivider: { borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
-  featureLabel: { fontSize: 14, fontFamily: "Inter_500Medium", color: "#000" },
+  featureLabel: { fontSize: 14, fontFamily: "Inter_500Medium", color: "#000", flexShrink: 1 },
 
-  upgradeBtn: { backgroundColor: "#000", borderRadius: 999, paddingVertical: 16, alignItems: "center" },
+  upgradeBtn: { backgroundColor: "#000", borderRadius: 999, paddingVertical: 16, alignItems: "center", minHeight: 52, justifyContent: "center" },
   upgradeBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 1.2 },
+  hint: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#888", textAlign: "center", lineHeight: 18 },
+  restore: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#000", textAlign: "center", textDecorationLine: "underline" },
 });

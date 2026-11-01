@@ -1,9 +1,21 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+let Notifications: any = null;
+try {
+  Notifications = require("expo-notifications");
+} catch (e) {
+  console.warn("expo-notifications is not linked in this binary build");
+}
+
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React from "react";
+import { Alert, Linking } from "react-native";
 import {
   ActivityIndicator,
+  AppState,
+  PermissionsAndroid,
   Platform,
   ScrollView,
   StyleSheet,
@@ -59,10 +71,41 @@ export default function NotificationsSettingsScreen() {
   const { data: settings, isLoading } = useGetUserSettings();
   const updateSettings = useUpdateUserSettings();
 
-  const toggle = (key: keyof Pick<UserSettings, "notificationsEnabled" | "dailyReminderEnabled" | "focusReminderEnabled">) => {
+  const [localEnabled, setLocalEnabled] = React.useState<boolean>(true);
+
+  React.useEffect(() => {
+    if (settings) {
+      AsyncStorage.getItem("local_notifications_enabled").then((val) => {
+        if (val !== null) {
+          setLocalEnabled(val === "true");
+        } else {
+          setLocalEnabled(settings.notificationsEnabled);
+        }
+      });
+    }
+  }, [settings]);
+
+  const toggle = async () => {
     Haptics.selectionAsync();
     if (!settings) return;
-    updateSettings.mutate({ data: { [key]: !settings[key] } });
+    const nextVal = !localEnabled;
+    setLocalEnabled(nextVal);
+    await AsyncStorage.setItem("local_notifications_enabled", String(nextVal));
+
+    if (nextVal && Platform.OS !== "web") {
+      await AsyncStorage.setItem("shouldRedirectToNotifications", "true");
+      updateSettings.mutate({ data: { notificationsEnabled: true } });
+      Alert.alert(
+        "Enable Notifications",
+        "Please enable notifications in your system settings to receive focus alerts and daily reminders.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => Linking.openSettings() }
+        ]
+      );
+    } else {
+      updateSettings.mutate({ data: { notificationsEnabled: false } });
+    }
   };
 
   return (
@@ -92,22 +135,8 @@ export default function NotificationsSettingsScreen() {
                   icon="notifications-active"
                   label="Enable Notifications"
                   sub="Master switch for all push notifications"
-                  value={settings?.notificationsEnabled ?? true}
-                  onToggle={() => toggle("notificationsEnabled")}
-                />
-                <ToggleRow
-                  icon="alarm"
-                  label="Daily Reminders"
-                  sub="A nudge to check your goals each day"
-                  value={settings?.dailyReminderEnabled ?? true}
-                  onToggle={() => toggle("dailyReminderEnabled")}
-                />
-                <ToggleRow
-                  icon="self-improvement"
-                  label="Focus Session Reminders"
-                  sub="Alerts about upcoming or ending focus sessions"
-                  value={settings?.focusReminderEnabled ?? true}
-                  onToggle={() => toggle("focusReminderEnabled")}
+                  value={localEnabled}
+                  onToggle={toggle}
                 />
               </View>
             </Animated.View>

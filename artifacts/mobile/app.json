@@ -22,7 +22,12 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#f9f9f9"
       },
-      "package": "com.hadaf.mobile"
+      "package": "com.hadaf.mobile",
+      "permissions": [
+        "android.permission.QUERY_ALL_PACKAGES",
+        "android.permission.PACKAGE_USAGE_STATS",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"

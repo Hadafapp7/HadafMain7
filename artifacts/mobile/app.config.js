@@ -56,6 +56,16 @@ module.exports = {
       "expo-font",
       "expo-web-browser",
       "./modules/hadaf-native/plugin",
+      [
+        "expo-build-properties",
+        {
+          android: {
+            packagingOptions: {
+              exclude: ["META-INF/versions/9/OSGI-INF/MANIFEST.MF"],
+            },
+          },
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,
@@ -63,8 +73,9 @@ module.exports = {
     },
     extra: {
       eas: {
-        projectId: "9b4acb69-b402-4920-9a52-5383a1d81b62"
+        projectId: "cd0e5f1d-d9b1-4a84-b6fa-7c96653f7c69"
       }
-    }
+    },
+    owner: "tauqirmomin77",
   },
 };

@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import React, { useEffect, useMemo, useState } from "react";
@@ -30,7 +32,15 @@ import {
   type AppUsageSummaryItem,
   useGetAppUsageSummary,
   useListAppUsageEntries,
+  useCreateAppUsageEntry,
+  getListAppUsageEntriesQueryKey,
+  getGetAppUsageSummaryQueryKey,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useFocusEffect } from "expo-router";
+import LockedOverlay from "@/components/LockedOverlay";
+import { useSubscription } from "@/hooks/useSubscription";
+import { hasUsagePermission, getDeviceUsageStats } from "../../modules/hadaf-native/src";
 
 const isWeb    = Platform.OS === "web";
 const SCREEN_W = Dimensions.get("window").width;
@@ -257,6 +267,8 @@ function TopAppsModal({
     opacity: opacity.value,
   }));
 
+  const appsList = Array.isArray(apps) ? apps : [];
+
   return (
     <Modal visible={visible} transparent animationType="none">
       <View style={styles.modalOuter}>
@@ -273,17 +285,17 @@ function TopAppsModal({
             </TouchableOpacity>
           </View>
 
-          {apps.length === 0 ? (
+          {appsList.length === 0 ? (
             <Text style={[styles.emptyText, { color: colors.outline }]}>
               No app usage logged yet.
             </Text>
           ) : (
-            apps.map((app, i) => (
+            appsList.map((app, i) => (
               <View
                 key={app.appName}
                 style={[
                   styles.topAppRow,
-                  i < apps.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
+                  i < appsList.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
                 ]}
               >
                 <View style={[styles.topAppIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
@@ -350,11 +362,71 @@ export default function AnalyticsScreen() {
   const colors      = useColors();
   const insets      = useSafeAreaInsets();
   const topPad      = isWeb ? 24 : insets.top;
+  const sub         = useSubscription();
   const [activeRange, setActiveRange] = useState("WEEK");
   const [showTopApps, setShowTopApps] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  const { data: entries = [], isLoading: loadingEntries } = useListAppUsageEntries();
-  const { data: summary = [], isLoading: loadingSummary } = useGetAppUsageSummary();
+  const queryClient = useQueryClient();
+  const createUsageEntry = useCreateAppUsageEntry();
+
+  const { data: rawEntries, isLoading: loadingEntries, refetch: refetchEntries } = useListAppUsageEntries();
+  const entries = Array.isArray(rawEntries) ? rawEntries : [];
+  const { data: rawSummary, isLoading: loadingSummary, refetch: refetchSummary } = useGetAppUsageSummary();
+  const summary = Array.isArray(rawSummary) ? rawSummary : [];
+
+  const syncStats = React.useCallback(async () => {
+    if (Platform.OS === "web") return;
+    console.log("[Analytics] Checking native usage permission for sync...");
+    const perm = hasUsagePermission();
+    if (!perm) {
+      console.log("[Analytics] Native permission not granted. Skipping auto-sync.");
+      return;
+    }
+
+    setSyncing(true);
+    console.log("[Analytics] Syncing real-time device stats to server...");
+    try {
+      const stats = await getDeviceUsageStats(1); // Today's stats
+      console.log(`[Analytics] Fetched ${stats.length} daily stats from device`);
+      if (stats.length > 0) {
+        for (const app of stats) {
+          if (app.totalMinutes <= 0) {
+            console.log(`[Analytics] Skipping sync for ${app.appName} because usage is 0m`);
+            continue;
+          }
+          try {
+            console.log(`[Analytics] Syncing ${app.appName} (${app.totalMinutes}m)`);
+            await createUsageEntry.mutateAsync({
+              data: {
+                appName: app.appName,
+                category: app.category ?? undefined,
+                durationMinutes: app.totalMinutes,
+              }
+            });
+          } catch (e: any) {
+            console.warn(`[Analytics] Failed to sync ${app.appName}:`, e.message || e);
+          }
+        }
+        console.log("[Analytics] Sync completed. Invalidate and refetching server summary...");
+        await queryClient.invalidateQueries({ queryKey: getListAppUsageEntriesQueryKey() });
+        await queryClient.invalidateQueries({ queryKey: getGetAppUsageSummaryQueryKey() });
+        refetchEntries();
+        refetchSummary();
+      }
+    } catch (err: any) {
+      console.warn("[Analytics] Error during stats sync:", err.message || err);
+    } finally {
+      setSyncing(false);
+      console.log("[Analytics] Sync complete.");
+    }
+  }, [createUsageEntry, queryClient, refetchEntries, refetchSummary]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      syncStats();
+    }, [])
+  );
 
   const isLoading = loadingEntries || loadingSummary;
   const hasData   = entries.length > 0;
@@ -380,7 +452,7 @@ export default function AnalyticsScreen() {
         apps={summary}
       />
 
-      <ScrollView
+      <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true}
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
@@ -425,11 +497,10 @@ export default function AnalyticsScreen() {
               ))}
             </Animated.View>
 
-            {/* 3-column KPIs */}
-            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(180).springify()} style={styles.kpiRow}>
-              <KpiCard icon="alarm"  label="PEAK TIME"  value={peakTime} />
-              <KpiCard icon="timer"  label="DAILY AVG"  value={dailyAvg} />
-              <KpiCard icon="apps"   label="TOP APP"    value={hasData ? topApp : "—"} />
+            {/* 2-column KPIs */}
+            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(180).springify()} style={[styles.kpiRow, { gap: 14 }]}>
+              <KpiCard icon="alarm" label="PEAK USAGE" value={peakTime} />
+              <KpiCard icon="timer" label="DAILY AVG" value={dailyAvg} />
             </Animated.View>
 
             {/* Activity chart */}
@@ -504,22 +575,14 @@ export default function AnalyticsScreen() {
               </Animated.View>
             )}
 
-            {/* Empty state when no data at all */}
-            {!hasData && (
-              <Animated.View
-                entering={isWeb ? undefined : FadeInDown.delay(360).springify()}
-                style={[styles.chartCard, styles.emptyCard, { backgroundColor: colors.card }]}
-              >
-                <MaterialIcons name="smartphone" size={40} color={colors.outline} />
-                <Text style={[styles.emptyHeading, { color: colors.onSurface }]}>No screen time yet</Text>
-                <Text style={[styles.emptyText, { color: colors.outline }]}>
-                  Log your first app session from the Home tab to see your usage data here.
-                </Text>
-              </Animated.View>
-            )}
+            
           </>
         )}
       </ScrollView>
+
+      {sub.analyticsLocked && (
+        <LockedOverlay bottomOffset={isWeb ? 84 : 62 + insets.bottom} />
+      )}
     </View>
   );
 }
@@ -576,6 +639,105 @@ const styles = StyleSheet.create({
   emptyText:    { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20 },
 
   // Top Apps Modal
+
+  // Comparison Chart Styles
+  compRowItem: {
+    padding: 12,
+    backgroundColor: "#fafafa",
+    borderRadius: 14,
+    gap: 8,
+  },
+  compAppHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  compAppLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+  },
+  compAppIconBg: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  compAppName: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  compBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  compBadgeText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+  },
+  compBarsWrap: {
+    gap: 6,
+    marginTop: 2,
+  },
+  compSingleBarRow: {
+    gap: 3,
+  },
+  compBarLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+  },
+  compBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  compBarFillToday: {
+    height: 6,
+    borderRadius: 3,
+  },
+  compBarFillAvg: {
+    height: 6,
+    borderRadius: 3,
+  },
+
+  // Mood History Styles
+  moodHistoryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  moodDayCard: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    alignItems: "center",
+    gap: 2,
+  },
+  moodEmoji: {
+    fontSize: 20,
+    marginBottom: 2,
+  },
+  moodScoreNum: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+  },
+  moodDayLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+  },
+  moodDateNum: {
+    fontSize: 8,
+    fontFamily: "Inter_400Regular",
+  },
+
   modalOuter: { flex: 1, alignItems: "center", justifyContent: "center" },
   modalSheet: {
     width: SCREEN_W * 0.88,

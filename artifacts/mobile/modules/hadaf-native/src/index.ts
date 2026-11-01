@@ -9,7 +9,8 @@
  * still render. Real native behaviour only activates in a dev-client or
  * production build (EAS Build / Android Studio / Xcode).
  */
-import { Platform, NativeModules } from "react-native";
+import { Platform } from "react-native";
+import { requireNativeModule, EventEmitter } from "expo";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,9 +29,22 @@ export interface NativePermissionStatus {
 
 // ── Module resolution ──────────────────────────────────────────────────────
 
-// These module names match the Name() declared in the Kotlin / Swift modules.
-const UsageStatsNative  = NativeModules.HadafUsageStats  ?? null;
-const AppBlockerNative  = NativeModules.HadafAppBlocker  ?? null;
+let UsageStatsNative: any = null;
+let AppBlockerNative: any = null;
+
+try {
+  UsageStatsNative = requireNativeModule("HadafUsageStats");
+} catch (e: any) {
+  console.log(`[HadafNative] HadafUsageStats module is not available in this build: ${e.message}`);
+}
+
+try {
+  AppBlockerNative = requireNativeModule("HadafAppBlocker");
+} catch (e: any) {
+  console.log(`[HadafNative] HadafAppBlocker module is not available in this build: ${e.message}`);
+}
+
+export const isNativeAppBlockerSupported = AppBlockerNative !== null;
 
 const isAndroid = Platform.OS === "android";
 const isIOS     = Platform.OS === "ios";
@@ -201,3 +215,46 @@ export const KNOWN_APPS: Record<string, { name: string; category: string }> = {
   "net.whatsapp.WhatsApp":          { name: "WhatsApp",   category: "Social"         },
   "com.spotify.client":             { name: "Spotify",    category: "Entertainment"  },
 };
+
+export function showNativeNotification(title: string, body: string, sticky: boolean, durationMinutes: number): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    AppBlockerNative.showNotification(title, body, sticky, durationMinutes);
+  } catch (e) {
+    console.warn("[HadafNative] showNotification failed:", e);
+  }
+}
+
+export function dismissNativeNotification(): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    AppBlockerNative.dismissNotification();
+  } catch (e) {
+    console.warn("[HadafNative] dismissNotification failed:", e);
+  }
+}
+
+export function getDevicePhoneNumber(): string {
+  if (!isNative || !AppBlockerNative) return "";
+  try {
+    return AppBlockerNative.getDevicePhoneNumber() || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+const emitter = AppBlockerNative ? new EventEmitter(AppBlockerNative) : null;
+
+export function addPhoneNumberListener(listener: (event: { phoneNumber: string }) => void) {
+  if (!emitter) return { remove: () => {} };
+  return (emitter as any).addListener("onPhoneNumberFetched", listener);
+}
+
+export function requestPhoneNumberHint(): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    AppBlockerNative.requestPhoneNumberHint();
+  } catch (e) {
+    console.warn("[HadafNative] requestPhoneNumberHint failed:", e);
+  }
+}

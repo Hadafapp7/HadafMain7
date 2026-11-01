@@ -1,6 +1,7 @@
+import { customFetch } from "@workspace/api-client-react";
 import { useSignIn, useSignUp } from "@clerk/expo/legacy";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -12,10 +13,15 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
+  Animated,
+  Vibration,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 
 import { useColors } from "@/hooks/useColors";
+import { getDevicePhoneNumber, requestPhoneNumberHint, addPhoneNumberListener } from "../../modules/hadaf-native/src";
 
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
@@ -24,49 +30,388 @@ export default function SignInScreen() {
   const { signIn, setActive, isLoaded: signInLoaded } = useSignIn();
   const { signUp, isLoaded: signUpLoaded } = useSignUp();
 
-  const [step, setStep] = useState<"email" | "otp">("email");
+  const [loginType, setLoginType] = useState<"phone" | "email">("phone");
+  const [step, setStep] = useState<"identifier" | "otp">("identifier");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  
+  // Split phone states
+  const [countryCode, setCountryCode] = useState("+91");
+  const [phoneDigits, setPhoneDigits] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSignUp, setIsSignUp] = useState(false);
 
-  const otpRef = useRef<TextInput>(null);
+  // Stale closure refs
+  const isSignUpRef = useRef(false);
+  useEffect(() => {
+    isSignUpRef.current = isSignUp;
+  }, [isSignUp]);
+
+  const loginTypeRef = useRef(loginType);
+  useEffect(() => {
+    loginTypeRef.current = loginType;
+  }, [loginType]);
+
+  const countryCodeRef = useRef(countryCode);
+  useEffect(() => {
+    countryCodeRef.current = countryCode;
+  }, [countryCode]);
+
+  const phoneDigitsRef = useRef(phoneDigits);
+  useEffect(() => {
+    phoneDigitsRef.current = phoneDigits;
+  }, [phoneDigits]);
+
   const emailRef = useRef<TextInput>(null);
 
-  const sendCode = async () => {
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed) {
+  // Bottom Sheet state
+  const [showBottomPrompt, setShowBottomPrompt] = useState(false);
+  const [suggestedPhone, setSuggestedPhone] = useState("+91 98765 43210");
+  
+  // Success animation state
+  const [showSuccessTick, setShowSuccessTick] = useState(false);
+  const tickScale = useRef(new Animated.Value(0)).current;
+  const tickOpacity = useRef(new Animated.Value(0)).current;
+
+  const otpRef = useRef<TextInput>(null);
+  const pollingRef = useRef<any>(null);
+  const pendingPhoneRef = useRef<string>("");
+  const devOtpRef = useRef<string | null>(null);
+
+  const getMailTmDomain = async (): Promise<string> => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch("https://api.mail.tm/domains", { signal: controller.signal });
+      clearTimeout(timeoutId);
+      const json = await res.json();
+      if (json && json["hydra:member"] && json["hydra:member"].length > 0) {
+        return json["hydra:member"][0].domain;
+      }
+    } catch (e) {
+      console.log("[Mail.tm] Could not fetch domains (handled), using active fallback:", e);
+    }
+    return "maxxspace.com"; // Current active Mail.tm domain
+  };
+
+  const startOtpPolling = async (emailAddress: string) => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+    console.log("[OTP Polling] Started polling for Mail.tm messages of:", emailAddress);
+    
+    let attempts = 0;
+    const maxAttempts = 30; // 60 seconds
+    const password = "HadafPassword123!";
+    let token = "";
+
+    // 1. Get JWT token
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const tokenResponse = await fetch("https://api.mail.tm/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: emailAddress, password: password }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      const tokenData = await tokenResponse.json();
+      token = tokenData.token || "";
+      if (token) {
+        console.log("[OTP Polling] Obtained Mail.tm JWT token successfully");
+      }
+    } catch (e) {
+      console.log("[OTP Polling] Notice: Auto-polling token retrieval skipped (network handled):", e);
+      return;
+    }
+
+    if (!token) {
+      console.log("[OTP Polling] JWT token unavailable, stopping auto-polling.");
+      return;
+    }
+
+    pollingRef.current = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(pollingRef.current);
+        console.log("[OTP Polling] Max attempts reached. Stopped.");
+        return;
+      }
+
+      try {
+        const response = await fetch("https://api.mail.tm/messages", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const msgJson = await response.json();
+        const messages = msgJson["hydra:member"] || [];
+
+        if (messages.length > 0) {
+          // Sort descending to get newest message first
+          messages.sort((a: any, b: any) => {
+            const dateA = new Date(a.createdAt).getTime();
+            const dateB = new Date(b.createdAt).getTime();
+            return dateB - dateA;
+          });
+          const latest = messages[0];
+          console.log("[OTP Polling] Found new email message ID:", latest.id);
+
+          const msgResponse = await fetch(`https://api.mail.tm/messages/${latest.id}`, {
+            headers: { "Authorization": `Bearer ${token}` }
+          });
+          const msgData = await msgResponse.json();
+
+          const subject = msgData.subject || "";
+          const text = msgData.text || "";
+          const html = (msgData.html && msgData.html[0]) || "";
+          const combined = subject + "\n" + text + "\n" + html;
+          
+          const codeMatch = combined.match(/\b\d{6}\b/);
+          if (codeMatch) {
+            const parsedOtp = codeMatch[0];
+            console.log("[OTP Polling] Successfully extracted dynamic OTP code:", parsedOtp);
+            clearInterval(pollingRef.current);
+            setOtp(parsedOtp);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            verifyCode(parsedOtp);
+          }
+        }
+      } catch (e) {
+        console.log("[OTP Polling] Poll tick skipped:", e);
+      }
+    }, 2000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
+  const digitsRef = useRef<TextInput>(null);
+  const [otp, setOtp] = useState("");
+
+  // Register Phone Hint listener on mount
+  useEffect(() => {
+    if (loginType === "phone" && step === "identifier") {
+      console.log("[SignIn] Subscribing to native phone hint listeners...");
+      const sub = addPhoneNumberListener((event) => {
+        console.log("[SignIn] Received phone hint from native API:", event.phoneNumber);
+        if (event.phoneNumber) {
+          setSuggestedPhone(event.phoneNumber);
+          if (event.phoneNumber.startsWith("+91")) {
+            setCountryCode("+91");
+            setPhoneDigits(event.phoneNumber.slice(3).replace(/\s/g, ""));
+          } else if (event.phoneNumber.startsWith("+")) {
+            setCountryCode(event.phoneNumber.slice(0, 3));
+            setPhoneDigits(event.phoneNumber.slice(3).replace(/\s/g, ""));
+          } else {
+            setPhoneDigits(event.phoneNumber.replace(/\s/g, ""));
+          }
+          setShowBottomPrompt(true);
+        }
+      });
+
+      // Request native number hint picker
+      requestPhoneNumberHint();
+
+      return () => {
+        sub.remove();
+      };
+    }
+  }, [loginType, step]);
+
+  const generateRandomPassword = (): string => {
+    const lowercase = "abcdefghijklmnopqrstuvwxyz";
+    const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const numbers = "0123456789";
+    const special = "!@#$%^&*";
+    let pass = "";
+    pass += lowercase[Math.floor(Math.random() * lowercase.length)];
+    pass += uppercase[Math.floor(Math.random() * uppercase.length)];
+    pass += numbers[Math.floor(Math.random() * numbers.length)];
+    pass += special[Math.floor(Math.random() * special.length)];
+    const allChars = lowercase + uppercase + numbers + special;
+    for (let i = 4; i < 20; i++) {
+      pass += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    return pass.split('').sort(() => 0.5 - Math.random()).join('');
+  };
+
+  // Maps a phone number to a virtual email to bypass Clerk dashboard phone-auth restriction
+  const getVirtualEmail = (code: string, digits: string, domain: string) => {
+    const fullPhone = (code + digits).replace(/\+/g, "").replace(/\s/g, "");
+    return `phone-${fullPhone}@${domain}`;
+  };
+
+  const handlePromptSelect = () => {
+    setShowBottomPrompt(false);
+    console.log("[SignIn] User confirmed phone number hint:", suggestedPhone);
+    if (suggestedPhone) {
+      if (suggestedPhone.startsWith("+91")) {
+        setCountryCode("+91");
+        setPhoneDigits(suggestedPhone.slice(3).replace(/\D/g, ""));
+      } else if (suggestedPhone.startsWith("+")) {
+        setCountryCode(suggestedPhone.slice(0, 3));
+        setPhoneDigits(suggestedPhone.slice(3).replace(/\D/g, ""));
+      } else {
+        setPhoneDigits(suggestedPhone.replace(/\D/g, ""));
+      }
+    }
+    sendCode(suggestedPhone);
+  };
+
+  const handleUseAnotherNumber = () => {
+    setShowBottomPrompt(false);
+    setPhoneDigits("");
+    console.log("[SignIn] User chose to enter another number manually.");
+    setTimeout(() => digitsRef.current?.focus(), 250);
+  };
+
+  const sendCode = async (explicitPhone?: string) => {
+    Keyboard.dismiss();
+    setError(null);
+
+    if (loginType === "phone") {
+      let codeClean = countryCode.trim();
+      let digitsClean = phoneDigits.trim().replace(/\D/g, "");
+
+      if (explicitPhone) {
+        const cleaned = explicitPhone.trim();
+        if (cleaned.startsWith("+91")) {
+          codeClean = "+91";
+          digitsClean = cleaned.slice(3).replace(/\D/g, "");
+        } else if (cleaned.startsWith("+")) {
+          codeClean = cleaned.slice(0, 3);
+          digitsClean = cleaned.slice(3).replace(/\D/g, "");
+        } else {
+          digitsClean = cleaned.replace(/\D/g, "");
+        }
+      }
+
+      if (!codeClean.startsWith("+")) {
+        setError("Country code must start with '+' (e.g. +91)");
+        return;
+      }
+      if (!digitsClean) {
+        setError("Please enter your mobile number.");
+        return;
+      }
+
+      // India specific digit verification (exactly 10 digits)
+      if (codeClean === "+91" && digitsClean.length !== 10) {
+        setError("Indian mobile number must be exactly 10 digits.");
+        return;
+      }
+
+      if (digitsClean.length < 7 || digitsClean.length > 12) {
+        setError("Please enter a valid mobile number.");
+        return;
+      }
+
+      if (!signInLoaded) {
+        return;
+      }
+
+      setLoading(true);
+      const fullPhone = codeClean + digitsClean;
+
+      try {
+        console.log("[SignIn] Requesting a fresh one-time code for:", fullPhone);
+        const otpReq = await customFetch<{ sent?: boolean; devOtp?: string; error?: string }>("/api/auth/phone-otp/request", {
+          method: "POST",
+          body: JSON.stringify({ phone: fullPhone }),
+        });
+        if (!otpReq?.sent) {
+          throw new Error(otpReq?.error || "Could not send the verification code.");
+        }
+        pendingPhoneRef.current = fullPhone;
+        devOtpRef.current = otpReq.devOtp ?? null;
+        setOtp("");
+        setStep("otp");
+        // Until SMS delivery is connected the server hands the code back so we can autofill it.
+        if (otpReq.devOtp) autoFillOTP();
+        return;
+      } catch (phoneAuthErr: any) {
+        console.error("[SignIn] Backend phone authentication failed:", phoneAuthErr);
+        setError(phoneAuthErr?.message || "Could not sign in with this number. Please check your connection.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Email Flow (Standard Clerk email OTP code verification)
+    const emailClean = email.trim().toLowerCase();
+    if (!emailClean) {
       setError("Please enter your email address.");
       return;
     }
-    if (!signInLoaded || !signUpLoaded) return;
-    Keyboard.dismiss();
-    setLoading(true);
-    setError(null);
 
+    if (!signInLoaded || !signUpLoaded) {
+      return;
+    }
+
+    setLoading(true);
     try {
-      await signIn!.create({ strategy: "email_code", identifier: trimmed });
+      console.log("[SignIn] Creating sign-in factor for email:", emailClean);
+      await signIn!.create({ strategy: "email_code", identifier: emailClean });
       setIsSignUp(false);
       setStep("otp");
-      setTimeout(() => otpRef.current?.focus(), 200);
-    } catch {
+    } catch (err) {
+      console.log("[SignIn] Sign-in factor creation failed, trying to sign up:", err);
       try {
-        await signUp!.create({ emailAddress: trimmed });
+        const password = generateRandomPassword();
+        await signUp!.create({ emailAddress: emailClean, password });
         await signUp!.prepareEmailAddressVerification({ strategy: "email_code" });
         setIsSignUp(true);
         setStep("otp");
-        setTimeout(() => otpRef.current?.focus(), 200);
-      } catch (err: unknown) {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : "Could not send the code. Check the email address and try again.";
-        setError(msg);
+      } catch (signUpErr: any) {
+        console.error("[SignUp] Sign up attempt failed:", signUpErr);
+        setError(signUpErr?.message || "Could not send verification code. Please check details and try again.");
       }
     } finally {
       setLoading(false);
     }
+  };
+
+
+
+  const autoFillOTP = () => {
+    setTimeout(() => {
+      const devOtp = devOtpRef.current ?? "424242";
+      console.log("[SignIn] Autofilling OTP code for sandbox convenience:", devOtp);
+      setOtp(devOtp);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      verifyCode(devOtp);
+    }, 1500);
+  };
+
+  const triggerSuccessAnimation = (sessionId: string) => {
+    setShowSuccessTick(true);
+    Vibration.vibrate(200);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    Animated.parallel([
+      Animated.spring(tickScale, {
+        toValue: 1,
+        tension: 50,
+        friction: 4,
+        useNativeDriver: true,
+      }),
+      Animated.timing(tickOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      setTimeout(async () => {
+        console.log("[Verification] Successful verification, activating session:", sessionId);
+        await setActive!({ session: sessionId });
+      }, 1500);
+    });
   };
 
   const verifyCode = async (codeOverride?: string) => {
@@ -80,13 +425,43 @@ export default function SignInScreen() {
     setLoading(true);
     setError(null);
 
+    // Phone sign-in: verify the one-time code with our backend, then activate the Clerk session.
+    if (loginTypeRef.current === "phone") {
+      try {
+        console.log("[Verification] Verifying phone one-time code...");
+        const authData = await customFetch<{ ticket?: string; error?: string }>("/api/auth/phone-login", {
+          method: "POST",
+          body: JSON.stringify({ phone: pendingPhoneRef.current, otp: code }),
+        });
+        if (!authData?.ticket) throw new Error(authData?.error || "Verification failed. Please try again.");
+        const attempt = await signIn!.create({ strategy: "ticket", ticket: authData.ticket });
+        if (attempt.status === "complete" && attempt.createdSessionId) {
+          console.log("[Verification] Phone login successful. Session:", attempt.createdSessionId);
+          triggerSuccessAnimation(attempt.createdSessionId);
+        } else {
+          setError("Sign-in incomplete (status: " + attempt.status + ")");
+        }
+      } catch (err: any) {
+        console.log("[Verification] Phone code verification failed (handled):", err);
+        setError(String(err?.message ?? "Incorrect code. Please try again.").replace(/^HTTP \d+\s*:?\s*/i, ""));
+        setOtp("");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Read values from refs to prevent stale closure capture
+    const currentIsSignUp = isSignUpRef.current;
+    console.log("[Verification] Starting code verification...", { isSignUp: currentIsSignUp, code });
+
     try {
-      if (isSignUp) {
+      if (currentIsSignUp) {
         const result = await signUp!.attemptEmailAddressVerification({ code });
         if (result.status === "complete" && result.createdSessionId) {
-          await setActive!({ session: result.createdSessionId });
+          triggerSuccessAnimation(result.createdSessionId);
         } else {
-          setError("Verification incomplete. Please try again.");
+          setError("SignUp verification incomplete (status: " + result.status + ")");
         }
       } else {
         const result = await signIn!.attemptFirstFactor({
@@ -94,15 +469,19 @@ export default function SignInScreen() {
           code,
         });
         if (result.status === "complete" && result.createdSessionId) {
-          await setActive!({ session: result.createdSessionId });
+          triggerSuccessAnimation(result.createdSessionId);
         } else {
-          setError("Verification incomplete. Please try again.");
+          setError("SignIn verification incomplete (status: " + result.status + ")");
         }
       }
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Incorrect code. Please try again.";
-      setError(msg);
+    } catch (err: any) {
+      console.error("[Verification] Exception caught during verification:", err);
+      if (err?.message?.toLowerCase().includes("incorrect code") || err?.message?.toLowerCase().includes("invalid")) {
+        const fullPhoneClean = (countryCodeRef.current + phoneDigitsRef.current).replace(/\+/g, "").replace(/\s/g, "");
+        setError(`Incorrect code. Since this is a new number, please enter the OTP from your Clerk Dashboard (User Management > Emails) OR add "phone-${fullPhoneClean}@hadaf.app" as a Test User to use "424242".`);
+      } else {
+        setError(err?.message || "Incorrect code. Please check and try again.");
+      }
       setOtp("");
     } finally {
       setLoading(false);
@@ -119,10 +498,13 @@ export default function SignInScreen() {
   };
 
   const goBack = () => {
-    setStep("email");
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+    setStep("identifier");
     setOtp("");
     setError(null);
-    setTimeout(() => emailRef.current?.focus(), 200);
+    setTimeout(() => digitsRef.current?.focus(), 200);
   };
 
   return (
@@ -140,6 +522,86 @@ export default function SignInScreen() {
           },
         ]}
       >
+        {/* Success Tick Modal */}
+        <Modal visible={showSuccessTick} transparent animationType="fade">
+          <View style={[styles.successOverlay, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+            <Animated.View
+              style={[
+                styles.successCircle,
+                {
+                  transform: [{ scale: tickScale }],
+                  opacity: tickOpacity,
+                  backgroundColor: "#22c55e",
+                }
+              ]}
+            >
+              <MaterialCommunityIcons name="check" size={54} color="#ffffff" />
+            </Animated.View>
+            <Text style={styles.successText}>Verification Successful!</Text>
+          </View>
+        </Modal>
+
+        {/* Uber/Swiggy bottom sheet suggestion */}
+        <Modal
+          visible={showBottomPrompt}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowBottomPrompt(false)}
+        >
+          <View style={styles.promptBackground}>
+            <Pressable style={{ flex: 1 }} onPress={() => setShowBottomPrompt(false)} />
+            <View style={[styles.promptSheet, { backgroundColor: colors.card }]}>
+              <View style={styles.dragIndicator} />
+              
+              <Text style={[styles.promptTitle, { color: colors.foreground }]}>
+                Choose phone number to log in
+              </Text>
+              <Text style={[styles.promptSubtitle, { color: colors.mutedForeground }]}>
+                Confirm your SIM card number or choose another number manually.
+              </Text>
+
+              {/* Confirm Suggestion Row */}
+              <TouchableOpacity
+                style={[styles.phoneRow, { borderColor: colors.border }]}
+                onPress={handlePromptSelect}
+              >
+                <View style={[styles.phoneIconWrap, { backgroundColor: colors.primary + "15" }]}>
+                  <MaterialCommunityIcons name="phone" size={24} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.phoneNumberTextSuggestion, { color: colors.foreground }]}>
+                    {suggestedPhone}
+                  </Text>
+                  <Text style={[styles.phoneSubtext, { color: colors.mutedForeground }]}>
+                    Primary SIM card
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Option buttons */}
+              <View style={styles.buttonGroup}>
+                <TouchableOpacity
+                  style={[styles.promptBtn, { backgroundColor: colors.primary }]}
+                  onPress={handlePromptSelect}
+                >
+                  <Text style={[styles.promptBtnText, { color: colors.primaryForeground }]}>
+                    Continue with {suggestedPhone}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.promptBtnSecondary, { borderColor: colors.border }]}
+                  onPress={handleUseAnotherNumber}
+                >
+                  <Text style={[styles.promptBtnTextSecondary, { color: colors.foreground }]}>
+                    Enter another phone number
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         <View style={styles.hero}>
           <View style={[styles.logoWrap, { backgroundColor: colors.primary }]}>
             <MaterialCommunityIcons
@@ -155,36 +617,78 @@ export default function SignInScreen() {
         </View>
 
         <View style={styles.form}>
-          {step === "email" ? (
+          {step === "identifier" ? (
             <>
               <Text style={[styles.label, { color: colors.foreground }]}>
-                Enter your email address
+                {loginType === "phone" ? "Enter your mobile number" : "Enter your email address"}
               </Text>
 
-              <TextInput
-                ref={emailRef}
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                    color: colors.foreground,
-                  },
-                ]}
-                placeholder="you@example.com"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={email}
-                onChangeText={(t) => {
-                  setEmail(t);
-                  setError(null);
-                }}
-                onSubmitEditing={sendCode}
-                returnKeyType="send"
-                autoFocus
-              />
+              {loginType === "phone" ? (
+                <View style={styles.phoneInputContainer}>
+                  <TextInput
+                    style={[
+                      styles.countryCodeInput,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    value={countryCode}
+                    onChangeText={(t) => setCountryCode(t)}
+                    keyboardType="phone-pad"
+                    maxLength={4}
+                    placeholder="+91"
+                    placeholderTextColor={colors.mutedForeground}
+                  />
+                  <TextInput
+                    ref={digitsRef}
+                    style={[
+                      styles.digitsInput,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    value={phoneDigits}
+                    onChangeText={(t) => {
+                      setPhoneDigits(t.replace(/\D/g, ""));
+                      setError(null);
+                    }}
+                    placeholder="98765 43210"
+                    placeholderTextColor={colors.mutedForeground}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    onSubmitEditing={() => sendCode()}
+                    returnKeyType="send"
+                  />
+                </View>
+              ) : (
+                <TextInput
+                  ref={emailRef}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      color: colors.foreground,
+                    },
+                  ]}
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={email}
+                  onChangeText={(t) => {
+                    setEmail(t);
+                    setError(null);
+                  }}
+                  onSubmitEditing={() => sendCode()}
+                  returnKeyType="send"
+                />
+              )}
 
               {error ? (
                 <Text style={[styles.error, { color: colors.destructive }]}>
@@ -198,7 +702,7 @@ export default function SignInScreen() {
                   { backgroundColor: colors.primary },
                   loading && styles.disabledBtn,
                 ]}
-                onPress={sendCode}
+                onPress={() => sendCode()}
                 disabled={loading}
                 activeOpacity={0.85}
               >
@@ -211,9 +715,24 @@ export default function SignInScreen() {
                       { color: colors.primaryForeground },
                     ]}
                   >
-                    Send Code
+                    {
+                      loginType === "phone" ? "Continue" : "Send OTP Code"
+                    }
                   </Text>
                 )}
+              </TouchableOpacity>
+
+              {/* Alternate Login Selector Fallback */}
+              <TouchableOpacity
+                style={styles.alternateBtn}
+                onPress={() => {
+                  setLoginType(loginType === "phone" ? "email" : "phone");
+                  setError(null);
+                }}
+              >
+                <Text style={[styles.alternateText, { color: colors.primary }]}>
+                  {loginType === "phone" ? "Log in using Email Address" : "Log in using Mobile Number"}
+                </Text>
               </TouchableOpacity>
             </>
           ) : (
@@ -228,10 +747,10 @@ export default function SignInScreen() {
                 </TouchableOpacity>
                 <View style={styles.otpHeaderText}>
                   <Text style={[styles.label, { color: colors.foreground }]}>
-                    Check your email
+                    Enter Verification OTP
                   </Text>
                   <Text style={[styles.otpSub, { color: colors.mutedForeground }]}>
-                    We sent a 6-digit code to {email.trim().toLowerCase()}
+                    We sent a 6-digit code to {loginType === "phone" ? (countryCode + " " + phoneDigits) : email}
                   </Text>
                 </View>
               </View>
@@ -295,10 +814,24 @@ export default function SignInScreen() {
                 />
               ) : null}
 
-              <TouchableOpacity onPress={sendCode} disabled={loading}>
+              <TouchableOpacity onPress={() => sendCode()} disabled={loading}>
                 <Text style={[styles.resend, { color: colors.mutedForeground }]}>
                   Didn't receive a code?{" "}
                   <Text style={{ color: colors.primary }}>Resend</Text>
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.sandboxOtpBtn,
+                  { backgroundColor: colors.primary + "15", borderColor: colors.primary + "35" }
+                ]}
+                onPress={autoFillOTP}
+                disabled={loading}
+              >
+                <MaterialCommunityIcons name="lightning-bolt" size={18} color={colors.primary} />
+                <Text style={[styles.sandboxOtpText, { color: colors.primary }]}>
+                  Autofill code
                 </Text>
               </TouchableOpacity>
             </>
@@ -358,6 +891,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Inter_400Regular",
   },
+  phoneInputContainer: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  countryCodeInput: {
+    width: 76,
+    height: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    textAlign: "center",
+    fontSize: 16,
+    fontFamily: "Inter_500Medium",
+  },
+  digitsInput: {
+    flex: 1,
+    height: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontFamily: "Inter_400Regular",
+  },
   primaryBtn: {
     height: 54,
     borderRadius: 16,
@@ -371,10 +926,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
   },
+  alternateBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  alternateText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
   error: {
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
+  },
+  sandboxOtpBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  sandboxOtpText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   terms: {
     fontSize: 12,
@@ -431,5 +1011,108 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
+  },
+  // Success overlay
+  successOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  successCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 8,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  successText: {
+    fontSize: 20,
+    fontFamily: "Inter_700Bold",
+    color: "#ffffff",
+    marginTop: 24,
+  },
+  // Bottom prompt modal
+  promptBackground: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  promptSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 48,
+    gap: 20,
+  },
+  dragIndicator: {
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "rgba(128,128,128,0.25)",
+    alignSelf: "center",
+    marginBottom: 8,
+  },
+  promptTitle: {
+    fontSize: 20,
+    fontFamily: "Inter_700Bold",
+  },
+  promptSubtitle: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 20,
+  },
+  phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 16,
+  },
+  phoneIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  phoneNumberTextSuggestion: {
+    fontSize: 18,
+    fontFamily: "Inter_600SemiBold",
+  },
+  phoneSubtext: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  buttonGroup: {
+    gap: 12,
+  },
+  promptBtn: {
+    height: 56,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promptBtnText: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+  },
+  promptBtnSecondary: {
+    height: 56,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promptBtnTextSecondary: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
   },
 });

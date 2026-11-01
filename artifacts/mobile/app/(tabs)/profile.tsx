@@ -1,7 +1,8 @@
+import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@clerk/expo";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import React from "react";
 import {
   Platform,
@@ -35,18 +36,18 @@ function formatHours(totalMinutes: number): string {
 
 // ── Preference rows ────────────────────────────────────────────────────────────
 type PrefRow =
-  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger?: false; right?: "chevron" | "light"; route?: string; onPress?: never }
+  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; badge?: string; badgeType?: "pro" | "trial" | "limited"; danger?: false; right?: "chevron" | "light"; route?: string; onPress?: never }
   | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger: true;  right?: never; route?: never; onPress: () => void };
 
-function usePrefs(onSignOut: () => void): PrefRow[] {
+function usePrefs(onSignOut: () => void, planBadge?: { badge: string; type: "pro" | "trial" | "limited" }): PrefRow[] {
   return [
     { icon: "account-circle",   label: "Account",           right: "chevron", route: "/account-settings" },
-    { icon: "credit-card",      label: "Subscription",      right: "chevron", route: "/subscription" },
+    { icon: "credit-card",      label: "Subscription",      badge: planBadge?.badge, badgeType: planBadge?.type, right: "chevron", route: "/subscription" },
     { icon: "emoji-events",     label: "Achievements",      right: "chevron", route: "/achievements" },
     { icon: "notifications",    label: "Notifications",     right: "chevron", route: "/notifications-settings" },
     { icon: "lock",             label: "Privacy & Security",right: "chevron", route: "/privacy-security" },
     { icon: "help",             label: "Help",              right: "chevron", route: "/help" },
-    { icon: "palette",          label: "Appearance",        right: "chevron", route: "/appearance" },
+
     { icon: "logout",           label: "Sign Out",          danger: true, onPress: onSignOut },
   ];
 }
@@ -55,15 +56,10 @@ function usePrefs(onSignOut: () => void): PrefRow[] {
 function PressCard({ children, style, delay = 0 }: {
   children: React.ReactNode; style?: any; delay?: number;
 }) {
-  const scale = useSharedValue(1);
-  const anim  = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
     <Animated.View
-      style={[anim, style]}
+      style={style}
       entering={isWeb ? undefined : FadeInDown.delay(delay).springify()}
-      onTouchStart={() => { scale.value = withSpring(0.98, { damping: 14 }); }}
-      onTouchEnd={()   => { scale.value = withSpring(1,    { damping: 14 }); }}
-      onTouchCancel={() => { scale.value = withSpring(1,   { damping: 14 }); }}
     >
       {children}
     </Animated.View>
@@ -114,6 +110,13 @@ function PrefItem({ item }: { item: PrefRow }) {
         </View>
         {!item.danger && (
           <Animated.View style={[styles.prefRight, chevAnim]}>
+            {item.badge ? (
+              <View style={[styles.prefBadge, item.badgeType === "pro" ? styles.badgePro : item.badgeType === "limited" ? styles.badgeLimited : styles.badgeTrial]}>
+                <Text style={[styles.prefBadgeText, item.badgeType === "pro" ? styles.badgeTextPro : item.badgeType === "limited" ? styles.badgeTextLimited : styles.badgeTextTrial]}>
+                  {item.badge}
+                </Text>
+              </View>
+            ) : null}
             {item.right === "light" && (
               <Text style={styles.prefRightLabel}>LIGHT</Text>
             )}
@@ -132,9 +135,21 @@ export default function ProfileScreen() {
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
 
   const { signOut } = useAuth();
-  const { data: me } = useGetMe();
-  const { data: focusSessions = [] } = useListFocusSessions();
-  const { data: goals = [] } = useListGoals();
+  const sub = useSubscription();
+  const { data: me, refetch: refetchMe } = useGetMe();
+  const { data: rawFocusSessions, refetch: refetchSessions } = useListFocusSessions();
+  const focusSessions = Array.isArray(rawFocusSessions) ? rawFocusSessions : [];
+  const { data: rawGoals, refetch: refetchGoals } = useListGoals();
+  const goals = Array.isArray(rawGoals) ? rawGoals : [];
+
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log("[Profile] Tab focused. Refreshing stats...");
+      refetchSessions();
+      refetchGoals();
+      refetchMe();
+    }, [refetchSessions, refetchGoals, refetchMe])
+  );
 
   const handleSignOut = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -152,7 +167,7 @@ export default function ProfileScreen() {
     { label: "GOALS DONE", value: String(goalsDone) },
   ];
 
-  const displayName = me?.name?.toUpperCase() ?? me?.email?.split("@")[0].toUpperCase() ?? "";
+  const displayName = me?.name?.toUpperCase() ?? me?.email?.split("@")[0].toUpperCase() ?? (me as any)?.phone ?? "HADAF USER";
 
   return (
     <View style={styles.root}>
@@ -164,7 +179,7 @@ export default function ProfileScreen() {
         <Text style={styles.topBarTitle}>ACCOUNT</Text>
       </View>
 
-      <ScrollView
+      <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true}
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
@@ -188,7 +203,7 @@ export default function ProfileScreen() {
           </View>
 
           <Text style={styles.profileName}>{displayName}</Text>
-          <Text style={styles.profileEmail}>{me?.email ?? ""}</Text>
+          <Text style={styles.profileEmail}>{me?.email ?? (me as any)?.phone ?? ""}</Text>
         </Animated.View>
 
         {/* ── Stats Row ── */}
@@ -222,9 +237,12 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={styles.proBtn}
               activeOpacity={0.85}
-              onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                router.push("/subscription" as any);
+              }}
             >
-              <Text style={styles.proBtnText}>UNLOCK PRO ACCESS</Text>
+              <Text style={styles.proBtnText}>{sub.isPro ? "MANAGE SUBSCRIPTION" : "UNLOCK PRO ACCESS"}</Text>
             </TouchableOpacity>
           </View>
         </PressCard>
@@ -319,6 +337,39 @@ const styles = StyleSheet.create({
   prefCardWrap: {
     backgroundColor: "#fff", borderRadius: 18,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 8, elevation: 1,
+  },
+
+  prefBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginRight: 4,
+  },
+  badgePro: {
+    backgroundColor: "#fef3c7",
+    borderColor: "#fde68a",
+  },
+  badgeTrial: {
+    backgroundColor: "#eff6ff",
+    borderColor: "#bfdbfe",
+  },
+  badgeLimited: {
+    backgroundColor: "#fee2e2",
+    borderColor: "#fecaca",
+  },
+  prefBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+  },
+  badgeTextPro: {
+    color: "#b45309",
+  },
+  badgeTextTrial: {
+    color: "#1d4ed8",
+  },
+  badgeTextLimited: {
+    color: "#b91c1c",
   },
   prefRow: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
