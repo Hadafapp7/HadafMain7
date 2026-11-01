@@ -147,6 +147,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   
   const testPlan = useCallback(async (targetPlan: "pro" | "trial" | "limited") => {
     try {
+      setRcPro(targetPlan === "pro");
       await customFetch("/api/subscription/test-plan", {
         method: "POST",
         body: JSON.stringify({ plan: targetPlan }),
@@ -204,8 +205,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const value = useMemo<SubscriptionState>(() => {
     const server = status.data;
-    const isPro = rcPro || Boolean(server?.isPro);
-    const plan: SubscriptionState["plan"] = isPro ? "pro" : server ? server.plan : "loading";
+    // Server is the source of truth for user plan.
+    const isPro = server ? Boolean(server.isPro) : rcPro;
+    const plan: SubscriptionState["plan"] = server ? server.plan : (isPro ? "pro" : "loading");
     const isLimited = plan === "limited";
     return {
       plan,

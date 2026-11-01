@@ -74,11 +74,6 @@ export function isCustomerInfoPro(customerInfo: any): boolean {
   // 3. Any active entitlement at all
   if (activeKeys.length > 0) return true;
 
-  // 4. Any active subscription in Test Store / Google Play
-  if (Array.isArray(customerInfo.activeSubscriptions) && customerInfo.activeSubscriptions.length > 0) {
-    return true;
-  }
-
   return false;
 }
 
