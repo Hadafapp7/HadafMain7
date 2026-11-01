@@ -206,8 +206,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const value = useMemo<SubscriptionState>(() => {
     const server = status.data;
     // Server is the source of truth for user plan.
-    const isPro = server ? Boolean(server.isPro) : rcPro;
-    const plan: SubscriptionState["plan"] = server ? server.plan : (isPro ? "pro" : "loading");
+    const isPro = rcPro || Boolean(server?.isPro);
+    const plan: SubscriptionState["plan"] = isPro ? "pro" : server ? server.plan : "loading";
     const isLimited = plan === "limited";
     return {
       plan,
