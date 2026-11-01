@@ -4,7 +4,7 @@ import { db, usersTable, achievementsTable, focusSessionsTable, appUsageEntriesT
 export async function awardXpAndCheckBadges(
   userId: string,
   xpGained: number,
-  actionType: "focus_session" | "goal_done",
+  actionType: "focus_session" | "goal_done" | "mood_checkin",
   context: { durationMinutes?: number; localHour?: number } = {}
 ) {
   try {

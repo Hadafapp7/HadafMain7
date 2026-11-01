@@ -26,6 +26,24 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+
+import { pool } from "@workspace/db";
+
+// Database connectivity check on boot
+pool.query("SELECT 1")
+  .then(() => {
+    logger.info("Database connection to Supabase verified successfully.");
+  })
+  .catch((err: any) => {
+    if (err?.message?.includes("tenant") || err?.message?.includes("ENOTFOUND") || err?.code === "XX000") {
+      console.warn("\n⚠️  [SUPABASE DATABASE PAUSED] ⚠️");
+      console.warn("Could not connect to Supabase database: " + (err.message || err));
+      console.warn("Your Supabase project appears to be PAUSED. Visit https://supabase.com/dashboard and click 'Restore project' to resume it.\n");
+    } else {
+      logger.warn({ err: err?.message || err }, "Database initial query check failed");
+    }
+  });
+
 app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");

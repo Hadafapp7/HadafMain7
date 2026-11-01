@@ -14,6 +14,10 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { router } from "expo-router";
+
+import { useSubscription } from "@/hooks/useSubscription";
+import { syncGuiltNotifications } from "@/lib/guiltNotifications";
 import Animated, {
   FadeInDown,
   FadeOut,
@@ -727,6 +731,7 @@ export default function GoalsScreen() {
   const { data: rawGoals, isLoading, isError, refetch } = useListGoals();
   const goals = Array.isArray(rawGoals) ? rawGoals : [];
   const createGoal = useCreateGoal();
+  const sub = useSubscription();
   const updateGoal = useUpdateGoal();
   const deleteGoal = useDeleteGoal();
 
@@ -779,7 +784,7 @@ export default function GoalsScreen() {
   };
 
   const handleAddGoal = (draft: GoalDraft) => {
-    createGoal.mutate({ data: draftToInput(draft) }, { onSuccess: () => refetch() });
+    createGoal.mutate({ data: draftToInput(draft) }, { onSuccess: () => { refetch(); void syncGuiltNotifications(true); } });
   };
 
   const handleUpdateGoal = (id: string, draft: GoalDraft) => {
@@ -800,7 +805,7 @@ export default function GoalsScreen() {
   const handleToggleDone = (goal: Goal) => {
     updateGoal.mutate(
       { id: goal.id, data: { status: goal.status === "done" ? "pending" : "done" } },
-      { onSuccess: () => refetch() }
+      { onSuccess: () => { refetch(); void syncGuiltNotifications(true); } }
     );
     setDetailGoal(null);
   };
@@ -840,6 +845,21 @@ export default function GoalsScreen() {
           </TouchableOpacity>
         </Animated.View>
 
+        {sub.isLimited && (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => router.push("/subscription" as any)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.primary, borderRadius: 18, padding: 16, marginBottom: 14 }}
+          >
+            <MaterialIcons name="lock" size={22} color="#fff" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>Goals are a Pro feature</Text>
+              <Text style={{ color: "rgba(255,255,255,0.75)", fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 }}>Your free trial ended. Upgrade to create and track goals.</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={22} color="#fff" />
+          </TouchableOpacity>
+        )}
+
         {isLoading && (
           <Text style={[styles.emptyText, { color: colors.outline }]}>Loading goals…</Text>
         )}
@@ -874,6 +894,10 @@ export default function GoalsScreen() {
           style={[styles.addGoalBtn, { backgroundColor: colors.primary }]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (sub.isLimited) {
+              router.push("/subscription" as any);
+              return;
+            }
             setEditingGoal(null);
             setShowAddModal(true);
           }}

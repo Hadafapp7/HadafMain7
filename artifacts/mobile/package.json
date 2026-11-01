@@ -68,7 +68,8 @@
     "expo-dev-client": "^6.0.21",
     "expo-notifications": "^0.32.17",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "react-native-purchases": "^10.14.0"
   },
   "packageManager": "pnpm@11.14.0"
 }

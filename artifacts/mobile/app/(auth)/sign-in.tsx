@@ -1,3 +1,4 @@
+import { customFetch } from "@workspace/api-client-react";
 import { useSignIn, useSignUp } from "@clerk/expo/legacy";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useRef, useState, useEffect } from "react";
@@ -75,18 +76,23 @@ export default function SignInScreen() {
 
   const otpRef = useRef<TextInput>(null);
   const pollingRef = useRef<any>(null);
+  const pendingPhoneRef = useRef<string>("");
+  const devOtpRef = useRef<string | null>(null);
 
   const getMailTmDomain = async (): Promise<string> => {
     try {
-      const res = await fetch("https://api.mail.tm/domains");
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch("https://api.mail.tm/domains", { signal: controller.signal });
+      clearTimeout(timeoutId);
       const json = await res.json();
       if (json && json["hydra:member"] && json["hydra:member"].length > 0) {
         return json["hydra:member"][0].domain;
       }
     } catch (e) {
-      console.error("[Mail.tm] Error fetching domain:", e);
+      console.log("[Mail.tm] Could not fetch domains (handled), using active fallback:", e);
     }
-    return "emalupe.com"; // fallback
+    return "maxxspace.com"; // Current active Mail.tm domain
   };
 
   const startOtpPolling = async (emailAddress: string) => {
@@ -102,21 +108,27 @@ export default function SignInScreen() {
 
     // 1. Get JWT token
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       const tokenResponse = await fetch("https://api.mail.tm/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: emailAddress, password: password })
+        body: JSON.stringify({ address: emailAddress, password: password }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       const tokenData = await tokenResponse.json();
       token = tokenData.token || "";
-      console.log("[OTP Polling] Obtained Mail.tm JWT token successfully");
+      if (token) {
+        console.log("[OTP Polling] Obtained Mail.tm JWT token successfully");
+      }
     } catch (e) {
-      console.error("[OTP Polling] Error fetching JWT token:", e);
+      console.log("[OTP Polling] Notice: Auto-polling token retrieval skipped (network handled):", e);
       return;
     }
 
     if (!token) {
-      console.error("[OTP Polling] JWT token is empty, stopping polling.");
+      console.log("[OTP Polling] JWT token unavailable, stopping auto-polling.");
       return;
     }
 
@@ -166,7 +178,7 @@ export default function SignInScreen() {
           }
         }
       } catch (e) {
-        console.error("[OTP Polling] Error during fetching/parsing messages:", e);
+        console.log("[OTP Polling] Poll tick skipped:", e);
       }
     }, 2000);
   };
@@ -236,8 +248,19 @@ export default function SignInScreen() {
 
   const handlePromptSelect = () => {
     setShowBottomPrompt(false);
-    console.log("[SignIn] User confirmed suggestions. Current states:", { countryCode, phoneDigits });
-    sendCode();
+    console.log("[SignIn] User confirmed phone number hint:", suggestedPhone);
+    if (suggestedPhone) {
+      if (suggestedPhone.startsWith("+91")) {
+        setCountryCode("+91");
+        setPhoneDigits(suggestedPhone.slice(3).replace(/\D/g, ""));
+      } else if (suggestedPhone.startsWith("+")) {
+        setCountryCode(suggestedPhone.slice(0, 3));
+        setPhoneDigits(suggestedPhone.slice(3).replace(/\D/g, ""));
+      } else {
+        setPhoneDigits(suggestedPhone.replace(/\D/g, ""));
+      }
+    }
+    sendCode(suggestedPhone);
   };
 
   const handleUseAnotherNumber = () => {
@@ -247,15 +270,27 @@ export default function SignInScreen() {
     setTimeout(() => digitsRef.current?.focus(), 250);
   };
 
-  const sendCode = async () => {
-    let activeIdentifier = "";
-    let isPhoneLogin = false;
-    let mailTmDomain = "emalupe.com";
-    
+  const sendCode = async (explicitPhone?: string) => {
+    Keyboard.dismiss();
+    setError(null);
+
     if (loginType === "phone") {
-      const codeClean = countryCode.trim();
-      const digitsClean = phoneDigits.trim();
-      
+      let codeClean = countryCode.trim();
+      let digitsClean = phoneDigits.trim().replace(/\D/g, "");
+
+      if (explicitPhone) {
+        const cleaned = explicitPhone.trim();
+        if (cleaned.startsWith("+91")) {
+          codeClean = "+91";
+          digitsClean = cleaned.slice(3).replace(/\D/g, "");
+        } else if (cleaned.startsWith("+")) {
+          codeClean = cleaned.slice(0, 3);
+          digitsClean = cleaned.slice(3).replace(/\D/g, "");
+        } else {
+          digitsClean = cleaned.replace(/\D/g, "");
+        }
+      }
+
       if (!codeClean.startsWith("+")) {
         setError("Country code must start with '+' (e.g. +91)");
         return;
@@ -264,78 +299,75 @@ export default function SignInScreen() {
         setError("Please enter your mobile number.");
         return;
       }
-      
+
       // India specific digit verification (exactly 10 digits)
       if (codeClean === "+91" && digitsClean.length !== 10) {
         setError("Indian mobile number must be exactly 10 digits.");
         return;
       }
-      
+
       if (digitsClean.length < 7 || digitsClean.length > 12) {
         setError("Please enter a valid mobile number.");
         return;
       }
-      
-      isPhoneLogin = true;
-      setLoading(true);
-      setError(null);
-      mailTmDomain = await getMailTmDomain();
-      activeIdentifier = getVirtualEmail(codeClean, digitsClean, mailTmDomain);
-    } else {
-      const emailClean = email.trim().toLowerCase();
-      if (!emailClean) {
-        setError("Please enter your email address.");
+
+      if (!signInLoaded) {
         return;
       }
-      activeIdentifier = emailClean;
+
+      setLoading(true);
+      const fullPhone = codeClean + digitsClean;
+
+      try {
+        console.log("[SignIn] Requesting a fresh one-time code for:", fullPhone);
+        const otpReq = await customFetch<{ sent?: boolean; devOtp?: string; error?: string }>("/api/auth/phone-otp/request", {
+          method: "POST",
+          body: JSON.stringify({ phone: fullPhone }),
+        });
+        if (!otpReq?.sent) {
+          throw new Error(otpReq?.error || "Could not send the verification code.");
+        }
+        pendingPhoneRef.current = fullPhone;
+        devOtpRef.current = otpReq.devOtp ?? null;
+        setOtp("");
+        setStep("otp");
+        // Until SMS delivery is connected the server hands the code back so we can autofill it.
+        if (otpReq.devOtp) autoFillOTP();
+        return;
+      } catch (phoneAuthErr: any) {
+        console.error("[SignIn] Backend phone authentication failed:", phoneAuthErr);
+        setError(phoneAuthErr?.message || "Could not sign in with this number. Please check your connection.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Email Flow (Standard Clerk email OTP code verification)
+    const emailClean = email.trim().toLowerCase();
+    if (!emailClean) {
+      setError("Please enter your email address.");
+      return;
     }
 
     if (!signInLoaded || !signUpLoaded) {
-      setLoading(false);
       return;
     }
-    Keyboard.dismiss();
+
     setLoading(true);
-    setError(null);
-
-    // If phone login, make sure the Mail.tm account exists first
-    if (isPhoneLogin) {
-      try {
-        console.log("[Mail.tm] Registering disposable mailbox address:", activeIdentifier);
-        await fetch("https://api.mail.tm/accounts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address: activeIdentifier, password: "HadafPassword123!" })
-        });
-      } catch (e) {
-        console.log("[Mail.tm] Mailbox already exists or registration failed (ignored):", e);
-      }
-    }
-
-    console.log("[SignIn] Final parsed identifier for Clerk authentication:", activeIdentifier);
-
     try {
-      console.log("[SignIn] Attempting to create sign-in factor for:", activeIdentifier);
-      await signIn!.create({ strategy: "email_code", identifier: activeIdentifier });
-      console.log("[SignIn] Sign-in factor created successfully.");
+      console.log("[SignIn] Creating sign-in factor for email:", emailClean);
+      await signIn!.create({ strategy: "email_code", identifier: emailClean });
       setIsSignUp(false);
       setStep("otp");
-      if (isPhoneLogin) {
-        startOtpPolling(activeIdentifier);
-      }
     } catch (err) {
       console.log("[SignIn] Sign-in factor creation failed, trying to sign up:", err);
       try {
         const password = generateRandomPassword();
-        console.log("[SignUp] Creating new sign-up with bypass password...", { emailAddress: activeIdentifier });
-        await signUp!.create({ emailAddress: activeIdentifier, password });
-        console.log("[SignUp] Preparing email verification code...");
+        await signUp!.create({ emailAddress: emailClean, password });
         await signUp!.prepareEmailAddressVerification({ strategy: "email_code" });
         setIsSignUp(true);
         setStep("otp");
-        if (isPhoneLogin) {
-          startOtpPolling(activeIdentifier);
-        }
       } catch (signUpErr: any) {
         console.error("[SignUp] Sign up attempt failed:", signUpErr);
         setError(signUpErr?.message || "Could not send verification code. Please check details and try again.");
@@ -345,9 +377,11 @@ export default function SignInScreen() {
     }
   };
 
+
+
   const autoFillOTP = () => {
     setTimeout(() => {
-      const devOtp = "424242";
+      const devOtp = devOtpRef.current ?? "424242";
       console.log("[SignIn] Autofilling OTP code for sandbox convenience:", devOtp);
       setOtp(devOtp);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -390,6 +424,32 @@ export default function SignInScreen() {
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
+
+    // Phone sign-in: verify the one-time code with our backend, then activate the Clerk session.
+    if (loginTypeRef.current === "phone") {
+      try {
+        console.log("[Verification] Verifying phone one-time code...");
+        const authData = await customFetch<{ ticket?: string; error?: string }>("/api/auth/phone-login", {
+          method: "POST",
+          body: JSON.stringify({ phone: pendingPhoneRef.current, otp: code }),
+        });
+        if (!authData?.ticket) throw new Error(authData?.error || "Verification failed. Please try again.");
+        const attempt = await signIn!.create({ strategy: "ticket", ticket: authData.ticket });
+        if (attempt.status === "complete" && attempt.createdSessionId) {
+          console.log("[Verification] Phone login successful. Session:", attempt.createdSessionId);
+          triggerSuccessAnimation(attempt.createdSessionId);
+        } else {
+          setError("Sign-in incomplete (status: " + attempt.status + ")");
+        }
+      } catch (err: any) {
+        console.log("[Verification] Phone code verification failed (handled):", err);
+        setError(String(err?.message ?? "Incorrect code. Please try again.").replace(/^HTTP \d+\s*:?\s*/i, ""));
+        setOtp("");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     // Read values from refs to prevent stale closure capture
     const currentIsSignUp = isSignUpRef.current;
@@ -655,7 +715,9 @@ export default function SignInScreen() {
                       { color: colors.primaryForeground },
                     ]}
                   >
-                    Send OTP Code
+                    {
+                      loginType === "phone" ? "Continue" : "Send OTP Code"
+                    }
                   </Text>
                 )}
               </TouchableOpacity>
@@ -756,6 +818,20 @@ export default function SignInScreen() {
                 <Text style={[styles.resend, { color: colors.mutedForeground }]}>
                   Didn't receive a code?{" "}
                   <Text style={{ color: colors.primary }}>Resend</Text>
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.sandboxOtpBtn,
+                  { backgroundColor: colors.primary + "15", borderColor: colors.primary + "35" }
+                ]}
+                onPress={autoFillOTP}
+                disabled={loading}
+              >
+                <MaterialCommunityIcons name="lightning-bolt" size={18} color={colors.primary} />
+                <Text style={[styles.sandboxOtpText, { color: colors.primary }]}>
+                  Autofill code
                 </Text>
               </TouchableOpacity>
             </>
@@ -864,6 +940,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
+  },
+  sandboxOtpBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  sandboxOtpText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   terms: {
     fontSize: 12,

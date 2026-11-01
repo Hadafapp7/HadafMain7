@@ -26,6 +26,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { router } from "expo-router";
+
+import { useSubscription } from "@/hooks/useSubscription";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -490,6 +493,11 @@ export default function FocusScreen() {
   const removeBlockedApp = useRemoveBlockedApp();
   const startFocusSession = useStartFocusSession();
   const endFocusSession   = useEndFocusSession();
+  const sub = useSubscription();
+  // Limited plan (after the 5-day trial): a single 5-minute session per day.
+  const durationOptions = sub.isLimited
+    ? [{ minutes: sub.maxFocusMinutes ?? 5, label: "Free" }]
+    : DURATION_OPTIONS;
 
   const weeklyStats = getWeeklyStats(allSessions);
   const invalidateSessions = useCallback(
@@ -498,6 +506,12 @@ export default function FocusScreen() {
   );
 
   const [duration,    setDuration]    = useState(30);
+  useEffect(() => {
+    if (sub.isLimited && sub.maxFocusMinutes && duration !== sub.maxFocusMinutes) {
+      setDuration(sub.maxFocusMinutes);
+      setShowCustom(false);
+    }
+  }, [sub.isLimited, sub.maxFocusMinutes, duration]);
   const [intention,   setIntention]   = useState("");
   const [blockedApps, setBlockedApps] = useState<string[]>([]);
   const [showPicker,  setShowPicker]  = useState(false);
@@ -752,6 +766,22 @@ export default function FocusScreen() {
 
   // Attempt to start: validate first
   const handleAttemptStart = () => {
+    if (sub.isLimited) {
+      const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      const used = allSessions.filter((s: any) => new Date(s.startedAt).getTime() > dayAgo).length;
+      if (used >= (sub.maxFocusSessionsPerDay ?? 1)) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert(
+          "Daily limit reached",
+          "The free plan includes one 5-minute focus session per day. Upgrade to Hadaf Pro for unlimited sessions.",
+          [
+            { text: "Maybe later", style: "cancel" },
+            { text: "See Pro", onPress: () => router.push("/subscription" as any) },
+          ],
+        );
+        return;
+      }
+    }
     const intentionOk = intention.trim().length > 0;
     const appsOk      = blockedApps.length > 0;
     const newErrors   = { intention: !intentionOk, blockedApps: !appsOk };
@@ -800,7 +830,8 @@ export default function FocusScreen() {
       showNativeNotification(
         "Focus Session Active ⏳",
         `You are in a focus session. Distracting apps are blocked!`,
-        true
+        true,
+        remaining || (duration * 60)
       );
     } catch (e) {}
   };
@@ -1049,7 +1080,7 @@ export default function FocusScreen() {
               >
                 <Text style={[styles.sectionLabel, { color: colors.outline }]}>DURATION</Text>
                 <View style={styles.durationRow}>
-                  {DURATION_OPTIONS.map((opt) => (
+                  {durationOptions.map((opt) => (
                     <DurationCard
                       key={opt.minutes}
                       option={opt}
@@ -1069,6 +1100,13 @@ export default function FocusScreen() {
                   style={[styles.customRow, { backgroundColor: colors.card }]}
                   onPress={() => {
                     Haptics.selectionAsync();
+                    if (sub.isLimited) {
+                      Alert.alert("Pro feature", "Custom durations are available with Hadaf Pro.", [
+                        { text: "Not now", style: "cancel" },
+                        { text: "See Pro", onPress: () => router.push("/subscription" as any) },
+                      ]);
+                      return;
+                    }
                     setShowCustom((v) => !v);
                     if (!showCustom) setTimeout(() => customRef.current?.focus(), 80);
                   }}

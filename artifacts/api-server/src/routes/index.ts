@@ -8,6 +8,10 @@ import blockedAppsRouter from "./blocked-apps.js";
 import userSettingsRouter from "./user-settings.js";
 import achievementsRouter from "./achievements.js";
 import moodLogsRouter from "./mood-logs.js";
+import authRouter from "./auth.js";
+import notificationsRouter from "./notifications.js";
+import subscriptionRouter from "./subscription.js";
+import adminRouter from "./admin.js";
 
 const router: IRouter = Router();
 
@@ -20,5 +24,9 @@ router.use(blockedAppsRouter);
 router.use(userSettingsRouter);
 router.use(achievementsRouter);
 router.use(moodLogsRouter);
+router.use(authRouter);
+router.use(notificationsRouter);
+router.use(subscriptionRouter);
+router.use(adminRouter);
 
 export default router;

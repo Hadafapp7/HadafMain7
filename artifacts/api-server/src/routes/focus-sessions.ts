@@ -1,6 +1,6 @@
 import { awardXpAndCheckBadges, updateStreak } from "../utils/gamification";
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { db, focusSessionsTable } from "@workspace/db";
 import {
   StartFocusSessionBody,
@@ -10,6 +10,7 @@ import {
   EndFocusSessionResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
+import { getUserPlan } from "../lib/plan";
 
 const router: IRouter = Router();
 
@@ -35,6 +36,34 @@ router.post(
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
       return;
+    }
+
+    const planInfo = await getUserPlan(req.userId!);
+    if (planInfo.plan === "limited") {
+      const maxMin = planInfo.limits.maxFocusMinutes ?? 5;
+      if (parsed.data.plannedDurationMinutes > maxMin) {
+        res.status(402).json({
+          error: `Free plan focus sessions are limited to ${maxMin} minutes. Upgrade to Hadaf Pro for longer sessions.`,
+          code: "SUBSCRIPTION_REQUIRED",
+        });
+        return;
+      }
+      const recent = await db
+        .select({ id: focusSessionsTable.id })
+        .from(focusSessionsTable)
+        .where(
+          and(
+            eq(focusSessionsTable.userId, req.userId!),
+            gte(focusSessionsTable.startedAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          ),
+        );
+      if (recent.length >= (planInfo.limits.maxFocusSessionsPerDay ?? 1)) {
+        res.status(402).json({
+          error: "You've used today's free focus session. Upgrade to Hadaf Pro for unlimited sessions.",
+          code: "SUBSCRIPTION_REQUIRED",
+        });
+        return;
+      }
     }
 
     const [session] = await db

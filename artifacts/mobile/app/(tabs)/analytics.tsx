@@ -38,6 +38,8 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect } from "expo-router";
+import LockedOverlay from "@/components/LockedOverlay";
+import { useSubscription } from "@/hooks/useSubscription";
 import { hasUsagePermission, getDeviceUsageStats } from "../../modules/hadaf-native/src";
 
 const isWeb    = Platform.OS === "web";
@@ -360,6 +362,7 @@ export default function AnalyticsScreen() {
   const colors      = useColors();
   const insets      = useSafeAreaInsets();
   const topPad      = isWeb ? 24 : insets.top;
+  const sub         = useSubscription();
   const [activeRange, setActiveRange] = useState("WEEK");
   const [showTopApps, setShowTopApps] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -402,7 +405,7 @@ export default function AnalyticsScreen() {
               }
             });
           } catch (e: any) {
-            console.error(`[Analytics] Failed to sync ${app.appName}:`, e.message || e);
+            console.warn(`[Analytics] Failed to sync ${app.appName}:`, e.message || e);
           }
         }
         console.log("[Analytics] Sync completed. Invalidate and refetching server summary...");
@@ -412,7 +415,7 @@ export default function AnalyticsScreen() {
         refetchSummary();
       }
     } catch (err: any) {
-      console.error("[Analytics] Error during stats sync:", err.message || err);
+      console.warn("[Analytics] Error during stats sync:", err.message || err);
     } finally {
       setSyncing(false);
       console.log("[Analytics] Sync complete.");
@@ -576,6 +579,10 @@ export default function AnalyticsScreen() {
           </>
         )}
       </ScrollView>
+
+      {sub.analyticsLocked && (
+        <LockedOverlay bottomOffset={isWeb ? 84 : 62 + insets.bottom} />
+      )}
     </View>
   );
 }

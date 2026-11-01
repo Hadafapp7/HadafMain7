@@ -57,7 +57,7 @@ router.post("/mood-logs", requireAuth, async (req, res): Promise<void> => {
       result = inserted;
 
       try {
-        await awardXpAndCheckBadges(userId, 15);
+        await awardXpAndCheckBadges(userId, 15, "mood_checkin");
         xpAwarded = 15;
       } catch (xpErr) {
         console.warn("[MoodLog] XP award error:", xpErr);

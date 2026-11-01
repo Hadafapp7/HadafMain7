@@ -10,7 +10,7 @@
  * production build (EAS Build / Android Studio / Xcode).
  */
 import { Platform } from "react-native";
-import { requireNativeModule } from "expo";
+import { requireNativeModule, EventEmitter } from "expo";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -243,12 +243,11 @@ export function getDevicePhoneNumber(): string {
   }
 }
 
-import { EventEmitter } from "expo-modules-core";
-
-const emitter = new EventEmitter(AppBlockerNative);
+const emitter = AppBlockerNative ? new EventEmitter(AppBlockerNative) : null;
 
 export function addPhoneNumberListener(listener: (event: { phoneNumber: string }) => void) {
-  return emitter.addListener("onPhoneNumberFetched", listener);
+  if (!emitter) return { remove: () => {} };
+  return (emitter as any).addListener("onPhoneNumberFetched", listener);
 }
 
 export function requestPhoneNumberHint(): void {

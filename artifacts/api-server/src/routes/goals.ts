@@ -11,6 +11,7 @@ import {
   UpdateGoalResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
+import { getUserPlan } from "../lib/plan";
 
 const router: IRouter = Router();
 
@@ -28,6 +29,15 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
   const parsed = CreateGoalBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const planInfo = await getUserPlan(req.userId!);
+  if (planInfo.plan === "limited") {
+    res.status(402).json({
+      error: "Your free trial has ended. Upgrade to Hadaf Pro to create goals.",
+      code: "SUBSCRIPTION_REQUIRED",
+    });
     return;
   }
 

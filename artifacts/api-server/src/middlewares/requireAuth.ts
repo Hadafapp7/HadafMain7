@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { clerkClient, getAuth } from "@clerk/express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { maybeSendWelcomeEmail } from "../lib/email";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -71,7 +72,7 @@ export async function requireAuth(
           clerkUser.emailAddresses[0]?.emailAddress ??
           "";
         
-        if (primaryEmail.startsWith("phone-") && (primaryEmail.includes("@emalupe.com") || primaryEmail.includes("@1secmail.com") || primaryEmail.includes("@hadaf.app"))) {
+        if (primaryEmail.startsWith("phone-")) {
           const extractedDigits = primaryEmail.replace("phone-", "").split("@")[0];
           phone = "+" + extractedDigits;
           email = null; // Leave blank for name and other details
@@ -97,10 +98,21 @@ export async function requireAuth(
           avatarUrl,
         })
         .onConflictDoNothing();
+
+      // New account created -> welcome email (only when we already know their email).
+      if (email) void maybeSendWelcomeEmail(userId);
     }
-  } catch (err) {
+  } catch (err: any) {
+    const isDbUnreachable = err?.message?.includes("tenant") || err?.message?.includes("ENOTFOUND") || err?.code === "XX000";
+    if (isDbUnreachable) {
+      console.error("[Database Error] Supabase database is unreachable. Project may be paused in Supabase Dashboard:", err.message || err);
+      res.status(503).json({
+        error: "Database is unreachable. Your Supabase project appears to be PAUSED. Please visit https://supabase.com/dashboard and click 'Restore project'."
+      });
+      return;
+    }
     req.log.error({ err }, "Failed to JIT-provision user");
-    res.status(500).json({ error: "Failed to provision user" });
+    res.status(500).json({ error: "Failed to provision user: " + (err?.message || "Internal error") });
     return;
   }
 

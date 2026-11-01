@@ -6,3 +6,5 @@ export * from "./blocked-apps";
 export * from "./user-settings";export * from "./achievements";
 
 export * from "./mood-logs";
+
+export * from "./notifications";

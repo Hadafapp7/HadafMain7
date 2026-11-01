@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth.js";
+import { requireAuth } from "../middlewares/requireAuth";
+import { maybeSendWelcomeEmail } from "../lib/email";
 import dns from "dns";
 import net from "net";
 
@@ -109,8 +110,7 @@ const getMeHandler = async (req: any, res: any): Promise<void> => {
     }
 
     // Self-healing logic for profiles provisioned with virtual emails
-    if (user && !user.phone && user.email && user.email.startsWith("phone-") &&
-       (user.email.includes("@emalupe.com") || user.email.includes("@1secmail.com") || user.email.includes("@hadaf.app"))) {
+    if (user && !user.phone && user.email && user.email.startsWith("phone-")) {
       const extractedDigits = user.email.replace("phone-", "").split("@")[0];
       const parsedPhone = "+" + extractedDigits;
       
@@ -174,6 +174,9 @@ const updateMeHandler = async (req: any, res: any): Promise<void> => {
       .returning();
 
     res.status(200).json(updated);
+
+    // First time the user saves an email address -> welcome email.
+    if (updated?.email) void maybeSendWelcomeEmail(userId);
   } catch (err: any) {
     console.error("[Users] Update me error:", err);
     res.status(500).json({ error: "Failed to update user profile" });

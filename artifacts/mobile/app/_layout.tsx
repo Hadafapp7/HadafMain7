@@ -9,7 +9,7 @@ import {
 } from "@expo-google-fonts/inter";
 import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import Constants from "expo-constants";
@@ -19,7 +19,8 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
+import { customFetch, setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
+import { SubscriptionProvider } from "@/hooks/useSubscription";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -51,6 +52,20 @@ const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 function RootLayoutNav() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
+  const appQueryClient = useQueryClient();
+
+  // A profile is complete once we know the user's name and email (phone sign-ups start without an email).
+  const { data: me, isLoading: meLoading, isError: meError } = useQuery({
+    queryKey: ["userMe"],
+    enabled: Boolean(isSignedIn),
+    retry: 1,
+    queryFn: () => customFetch<any>("/api/users/me"),
+  });
+  const profileComplete = meError || Boolean(me?.email && String(me?.name ?? "").trim());
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) appQueryClient.removeQueries({ queryKey: ["userMe"] });
+  }, [isLoaded, isSignedIn, appQueryClient]);
 
   useEffect(() => {
     setAuthTokenGetter(() => getToken());
@@ -71,11 +86,15 @@ function RootLayoutNav() {
 
 
   if (!isLoaded) return null;
+  if (isSignedIn && meLoading) return null;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={isSignedIn}>
+      <Stack.Protected guard={Boolean(isSignedIn) && profileComplete}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={Boolean(isSignedIn) && !profileComplete}>
+        <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={!isSignedIn}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -112,7 +131,9 @@ export default function RootLayout() {
             <QueryClientProvider client={queryClient}>
               <GestureHandlerRootView style={{ flex: 1 }}>
                 <KeyboardProvider>
-                  <RootLayoutNav />
+                  <SubscriptionProvider>
+                    <RootLayoutNav />
+                  </SubscriptionProvider>
                 </KeyboardProvider>
               </GestureHandlerRootView>
             </QueryClientProvider>
