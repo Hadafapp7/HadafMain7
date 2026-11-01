@@ -152,6 +152,46 @@ export default function SubscriptionScreen() {
             </TouchableOpacity>
           </Animated.View>
         )}
+        {/* Developer testing shortcuts (only shown in development) */}
+        {__DEV__ && (
+          <View style={{ marginTop: 24, padding: 18, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb", gap: 10 }}>
+            <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: "#6b7280", letterSpacing: 1.5 }}>
+              🧪 DEVELOPER TESTING SHORTCUTS
+            </Text>
+            <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#4b5563" }}>
+              Switch app state immediately without waiting for store:
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <TouchableOpacity
+                style={{ backgroundColor: "#10b981", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                onPress={async () => {
+                  await sub.testPlan("pro");
+                  Alert.alert("Switched to Pro", "Unlimited access activated.");
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Test Pro</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ backgroundColor: "#f59e0b", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                onPress={async () => {
+                  await sub.testPlan("limited");
+                  Alert.alert("Switched to Limited", "Free tier after 5-day trial expired (5 min focus, blur, no goals).");
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Test Limited</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ backgroundColor: "#6366f1", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                onPress={async () => {
+                  await sub.testPlan("trial");
+                  Alert.alert("Reset Trial", "5 days full access restored.");
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Reset Trial</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );

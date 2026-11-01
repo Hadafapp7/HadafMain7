@@ -2,9 +2,6 @@ import { Platform } from "react-native";
 
 /**
  * Thin, crash-proof wrapper around RevenueCat (react-native-purchases).
- * Every function degrades gracefully when the native module isn't in the installed
- * build (Expo Go / an old dev-client) or no API key is configured, and records a
- * human-readable reason (getPurchasesIssue) so the UI can tell you exactly what is wrong.
  */
 let Purchases: any = null;
 try {
@@ -18,7 +15,7 @@ const ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY;
 const IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
 /** Optional RevenueCat Test Store key (starts with "test_"). Only ever used in development builds. */
 const TEST_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY;
-export const ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID || "pro";
+export const ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID || "hadaf_pro";
 
 const apiKey = (): string | undefined => {
   if (__DEV__ && TEST_KEY) return TEST_KEY;
@@ -49,6 +46,40 @@ export function purchasesAvailable(): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * Checks whether customer info has an active Pro entitlement or active subscription.
+ * Handles both "hadaf_pro" and "pro", any case, and Test Store subscriptions.
+ */
+export function isCustomerInfoPro(customerInfo: any): boolean {
+  if (!customerInfo) return false;
+
+  const activeEntitlements = customerInfo.entitlements?.active ?? {};
+  
+  // 1. Exact match on configured entitlement ID ("hadaf_pro")
+  if (activeEntitlements[ENTITLEMENT_ID]?.isActive) return true;
+  if (activeEntitlements[ENTITLEMENT_ID]) return true;
+
+  // 2. Fallback check for "pro" or anything containing "pro"
+  if (activeEntitlements["pro"]?.isActive || activeEntitlements["pro"]) return true;
+  if (activeEntitlements["hadaf_pro"]?.isActive || activeEntitlements["hadaf_pro"]) return true;
+
+  const activeKeys = Object.keys(activeEntitlements);
+  const proKey = activeKeys.find((k) => k.toLowerCase().includes("pro"));
+  if (proKey && activeEntitlements[proKey]?.isActive !== false) {
+    return true;
+  }
+
+  // 3. Any active entitlement at all
+  if (activeKeys.length > 0) return true;
+
+  // 4. Any active subscription in Test Store / Google Play
+  if (Array.isArray(customerInfo.activeSubscriptions) && customerInfo.activeSubscriptions.length > 0) {
+    return true;
+  }
+
+  return false;
 }
 
 export async function initPurchases(appUserId: string): Promise<boolean> {
@@ -91,7 +122,7 @@ export async function hasProEntitlement(): Promise<boolean> {
   if (!configured) return false;
   try {
     const info = await Purchases.getCustomerInfo();
-    return Boolean(info?.entitlements?.active?.[ENTITLEMENT_ID]);
+    return isCustomerInfoPro(info);
   } catch (e) {
     console.log("[Purchases] getCustomerInfo failed:", e);
     return false;
@@ -118,12 +149,12 @@ export async function getProPackage(): Promise<any | null> {
 
     if (!pkg) {
       lastIssue =
-        "RevenueCat has no package to sell. In the RevenueCat dashboard: Product catalog → Offerings → make an offering 'Current' and add a Monthly package that uses your product (for Test Store, create the product under the Test Store app).";
+        "RevenueCat has no package to sell. In the RevenueCat dashboard: Product catalog -> Offerings -> make an offering 'Current' and add a Monthly package.";
       console.log("[Purchases]", lastIssue);
       return null;
     }
     lastIssue = null;
-    console.log("[Purchases] Using package", pkg.identifier, "→ product", pkg.product?.identifier, pkg.product?.priceString);
+    console.log("[Purchases] Using package", pkg.identifier, "-> product", pkg.product?.identifier, pkg.product?.priceString);
     return pkg;
   } catch (e: any) {
     lastIssue = "Couldn't load products from RevenueCat: " + (e?.message ?? String(e));
@@ -142,7 +173,18 @@ export async function purchasePackage(pkg: any): Promise<PurchaseResult> {
   if (!configured) return { success: false, error: lastIssue ?? "Purchases are not available in this build." };
   try {
     const { customerInfo } = await Purchases.purchasePackage(pkg);
-    return { success: Boolean(customerInfo?.entitlements?.active?.[ENTITLEMENT_ID]) };
+    const isPro = isCustomerInfoPro(customerInfo);
+    console.log("[Purchases] purchasePackage completed. isPro:", isPro, {
+      entitlements: Object.keys(customerInfo?.entitlements?.active ?? {}),
+      subscriptions: customerInfo?.activeSubscriptions,
+    });
+    if (!isPro) {
+      return {
+        success: false,
+        error: "Purchase registered, but 'hadaf_pro' entitlement was not found on your RevenueCat customer info.",
+      };
+    }
+    return { success: true };
   } catch (e: any) {
     if (e?.userCancelled) return { success: false, cancelled: true };
     console.log("[Purchases] purchase failed:", e);
@@ -154,7 +196,11 @@ export async function restorePurchases(): Promise<PurchaseResult> {
   if (!configured) return { success: false, error: lastIssue ?? "Purchases are not available in this build." };
   try {
     const info = await Purchases.restorePurchases();
-    return { success: Boolean(info?.entitlements?.active?.[ENTITLEMENT_ID]) };
+    const isPro = isCustomerInfoPro(info);
+    return {
+      success: isPro,
+      error: isPro ? undefined : "No active subscription found to restore.",
+    };
   } catch (e: any) {
     return { success: false, error: e?.message ?? "Restore failed" };
   }

@@ -56,10 +56,15 @@ router.post("/subscription/sync", requireAuth, async (req, res): Promise<void> =
       return;
     }
     const data = (await rc.json()) as any;
-    const ent = data?.subscriber?.entitlements?.[entitlementId()];
-    const expires = ent?.expires_date ? new Date(ent.expires_date) : null;
-    const active = Boolean(ent) && (!expires || expires.getTime() > Date.now());
-    await setSubscription(userId, active ? "pro" : "free", active ? expires : null);
+    const entitlements = data?.subscriber?.entitlements || {};
+    const ent = entitlements[entitlementId()] || entitlements["hadaf_pro"] || entitlements["pro"] || Object.values(entitlements)[0];
+    const expires = (ent as any)?.expires_date ? new Date((ent as any).expires_date) : null;
+    const hasActiveSub = Object.values(data?.subscriber?.subscriptions || {}).some(
+      (s: any) => !s.expires_date || new Date(s.expires_date).getTime() > Date.now()
+    );
+    const active = (Boolean(ent) && (!expires || expires.getTime() > Date.now())) || hasActiveSub;
+    const finalExpires = expires || (active ? new Date(Date.now() + 30 * 86_400_000) : null);
+    await setSubscription(userId, active ? "pro" : "free", finalExpires);
     res.json({ synced: true, ...(await getUserPlan(userId)) });
   } catch (err: any) {
     console.error("[Subscription] sync error:", err?.message ?? err);
