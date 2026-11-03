@@ -2,6 +2,9 @@ import { Platform } from "react-native";
 
 /**
  * Thin, crash-proof wrapper around RevenueCat (react-native-purchases).
+ * Every function degrades gracefully when the native module isn't in the installed
+ * build (Expo Go / an old dev-client) or no API key is configured, and records a
+ * human-readable reason (getPurchasesIssue) so the UI can tell you exactly what is wrong.
  */
 let Purchases: any = null;
 try {
@@ -49,32 +52,26 @@ export function purchasesAvailable(): boolean {
 }
 
 /**
- * Checks whether customer info has an active Pro entitlement or active subscription.
- * Handles both "hadaf_pro" and "pro", any case, and Test Store subscriptions.
+ * Checks whether customer info has an active Pro entitlement.
+ * Handles both "hadaf_pro" and "pro", any case.
  */
 export function isCustomerInfoPro(customerInfo: any): boolean {
   if (!customerInfo) return false;
 
   const activeEntitlements = customerInfo.entitlements?.active ?? {};
-  
+
   // 1. Exact match on configured entitlement ID ("hadaf_pro")
-  if (activeEntitlements[ENTITLEMENT_ID]?.isActive) return true;
   if (activeEntitlements[ENTITLEMENT_ID]) return true;
 
-  // 2. Fallback check for "pro" or anything containing "pro"
-  if (activeEntitlements["pro"]?.isActive || activeEntitlements["pro"]) return true;
-  if (activeEntitlements["hadaf_pro"]?.isActive || activeEntitlements["hadaf_pro"]) return true;
+  // 2. Fallback check for "pro" / "hadaf_pro" or anything containing "pro"
+  if (activeEntitlements["pro"] || activeEntitlements["hadaf_pro"]) return true;
 
   const activeKeys = Object.keys(activeEntitlements);
   const proKey = activeKeys.find((k) => k.toLowerCase().includes("pro"));
-  if (proKey && activeEntitlements[proKey]?.isActive !== false) {
-    return true;
-  }
+  if (proKey && activeEntitlements[proKey]?.isActive !== false) return true;
 
   // 3. Any active entitlement at all
-  if (activeKeys.length > 0) return true;
-
-  return false;
+  return activeKeys.length > 0;
 }
 
 export async function initPurchases(appUserId: string): Promise<boolean> {
@@ -124,9 +121,29 @@ export async function hasProEntitlement(): Promise<boolean> {
   }
 }
 
-/** The monthly Pro package of the current offering (falls back to the first package found). */
-export async function getProPackage(): Promise<any | null> {
-  if (!configured) return null;
+export interface ProPackages {
+  monthly: any | null;
+  annual: any | null;
+}
+
+function findPackage(offering: any, kind: "monthly" | "annual"): any | null {
+  if (!offering) return null;
+  const direct = kind === "monthly" ? offering.monthly : offering.annual;
+  if (direct) return direct;
+  const list: any[] = offering.availablePackages ?? [];
+  const type = kind === "monthly" ? "MONTHLY" : "ANNUAL";
+  const re = kind === "monthly" ? /month/i : /year|annual/i;
+  return (
+    list.find((p) => p?.packageType === type) ??
+    list.find((p) => re.test(String(p?.identifier ?? "")) || re.test(String(p?.product?.identifier ?? ""))) ??
+    null
+  );
+}
+
+/** The monthly and yearly Pro packages of the current offering (whichever exist). */
+export async function getProPackages(): Promise<ProPackages> {
+  const none: ProPackages = { monthly: null, annual: null };
+  if (!configured) return none;
   try {
     const offerings = await Purchases.getOfferings();
     const current = offerings?.current;
@@ -139,23 +156,45 @@ export async function getProPackage(): Promise<any | null> {
       Object.keys(offerings?.all ?? {}).join(", ") || "none",
     );
 
-    const pickFrom = (o: any) => o?.monthly ?? o?.availablePackages?.[0] ?? null;
-    const pkg = pickFrom(current) ?? allOfferings.map(pickFrom).find(Boolean) ?? null;
+    const candidates = [current, ...allOfferings].filter(Boolean);
+    let monthly: any = null;
+    let annual: any = null;
+    for (const o of candidates) {
+      monthly = monthly ?? findPackage(o, "monthly");
+      annual = annual ?? findPackage(o, "annual");
+      if (monthly && annual) break;
+    }
+    if (!monthly && !annual) {
+      // Last resort: sell whatever the first available package is.
+      const any = candidates.map((o: any) => o?.availablePackages?.[0]).find(Boolean) ?? null;
+      monthly = any;
+    }
 
-    if (!pkg) {
+    if (!monthly && !annual) {
       lastIssue =
         "RevenueCat has no package to sell. In the RevenueCat dashboard: Product catalog -> Offerings -> make an offering 'Current' and add a Monthly package.";
       console.log("[Purchases]", lastIssue);
-      return null;
+      return none;
     }
     lastIssue = null;
-    console.log("[Purchases] Using package", pkg.identifier, "-> product", pkg.product?.identifier, pkg.product?.priceString);
-    return pkg;
+    console.log(
+      "[Purchases] Packages ->",
+      monthly ? `monthly ${monthly.identifier} ${monthly.product?.priceString}` : "no monthly",
+      "|",
+      annual ? `annual ${annual.identifier} ${annual.product?.priceString}` : "no annual",
+    );
+    return { monthly, annual };
   } catch (e: any) {
     lastIssue = "Couldn't load products from RevenueCat: " + (e?.message ?? String(e));
     console.log("[Purchases] getOfferings failed:", e);
-    return null;
+    return none;
   }
+}
+
+/** The monthly Pro package of the current offering (falls back to the yearly one). */
+export async function getProPackage(): Promise<any | null> {
+  const { monthly, annual } = await getProPackages();
+  return monthly ?? annual ?? null;
 }
 
 export interface PurchaseResult {
@@ -176,7 +215,7 @@ export async function purchasePackage(pkg: any): Promise<PurchaseResult> {
     if (!isPro) {
       return {
         success: false,
-        error: "Purchase registered, but 'hadaf_pro' entitlement was not found on your RevenueCat customer info.",
+        error: "Purchase registered, but the 'hadaf_pro' entitlement was not found on your RevenueCat customer info.",
       };
     }
     return { success: true };

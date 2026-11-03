@@ -21,6 +21,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { customFetch, setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import { SubscriptionProvider } from "@/hooks/useSubscription";
+import { AppDialogProvider } from "@/components/AppDialog";
+import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -53,6 +55,7 @@ const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 function RootLayoutNav() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const appQueryClient = useQueryClient();
+  const { done: onboardingDone } = useOnboarding();
 
   // A profile is complete once we know the user's name and email (phone sign-ups start without an email).
   const { data: me, isLoading: meLoading, isError: meError } = useQuery({
@@ -86,6 +89,7 @@ function RootLayoutNav() {
 
 
   if (!isLoaded) return null;
+  if (onboardingDone === null) return null;
   if (isSignedIn && meLoading) return null;
 
   return (
@@ -96,7 +100,11 @@ function RootLayoutNav() {
       <Stack.Protected guard={Boolean(isSignedIn) && !profileComplete}>
         <Stack.Screen name="complete-profile" options={{ headerShown: false }} />
       </Stack.Protected>
-      <Stack.Protected guard={!isSignedIn}>
+      {/* First launch: show the intro before sign-in / sign-up. */}
+      <Stack.Protected guard={!isSignedIn && !onboardingDone}>
+        <Stack.Screen name="onboarding" options={{ headerShown: false, animation: "fade" }} />
+      </Stack.Protected>
+      <Stack.Protected guard={!isSignedIn && Boolean(onboardingDone)}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       </Stack.Protected>
     </Stack>
@@ -131,9 +139,13 @@ export default function RootLayout() {
             <QueryClientProvider client={queryClient}>
               <GestureHandlerRootView style={{ flex: 1 }}>
                 <KeyboardProvider>
+                  <OnboardingProvider>
+                  <AppDialogProvider>
                   <SubscriptionProvider>
                     <RootLayoutNav />
                   </SubscriptionProvider>
+                  </AppDialogProvider>
+                  </OnboardingProvider>
                 </KeyboardProvider>
               </GestureHandlerRootView>
             </QueryClientProvider>

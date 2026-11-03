@@ -11,7 +11,8 @@ import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React from "react";
-import { Alert, Linking } from "react-native";
+import { Linking } from "react-native";
+import { useDialog } from "@/components/AppDialog";
 import {
   ActivityIndicator,
   AppState,
@@ -66,6 +67,7 @@ function ToggleRow({
 
 export default function NotificationsSettingsScreen() {
   const insets = useSafeAreaInsets();
+  const dialog = useDialog();
   const topPad = isWeb ? 0 : insets.top;
 
   const { data: settings, isLoading } = useGetUserSettings();
@@ -95,7 +97,7 @@ export default function NotificationsSettingsScreen() {
     if (nextVal && Platform.OS !== "web") {
       await AsyncStorage.setItem("shouldRedirectToNotifications", "true");
       updateSettings.mutate({ data: { notificationsEnabled: true } });
-      Alert.alert(
+      dialog.alert(
         "Enable Notifications",
         "Please enable notifications in your system settings to receive focus alerts and daily reminders.",
         [

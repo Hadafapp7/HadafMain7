@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
+import BrandLogo from "@/components/BrandLogo";
 import { useColors } from "@/hooks/useColors";
 import { getDevicePhoneNumber, requestPhoneNumberHint, addPhoneNumberListener } from "../../modules/hadaf-native/src";
 
@@ -603,13 +604,7 @@ export default function SignInScreen() {
         </Modal>
 
         <View style={styles.hero}>
-          <View style={[styles.logoWrap, { backgroundColor: colors.primary }]}>
-            <MaterialCommunityIcons
-              name="target"
-              size={36}
-              color={colors.primaryForeground}
-            />
-          </View>
+          <BrandLogo size={76} style={styles.logoWrap} />
           <Text style={[styles.title, { color: colors.foreground }]}>Hadaf</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
             Set goals. Stay focused. Reach your Hadaf.
@@ -858,11 +853,6 @@ const styles = StyleSheet.create({
     marginTop: 48,
   },
   logoWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
     marginBottom: 20,
   },
   title: {

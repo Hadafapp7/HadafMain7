@@ -1,75 +1,215 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Linking,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useSubscription } from "@/hooks/useSubscription";
+import { useDialog } from "@/components/AppDialog";
+import { type BillingPeriod, useSubscription } from "@/hooks/useSubscription";
 
 const isWeb = Platform.OS === "web";
+const INK = "#0a0a0a";
+const TRIAL_DAYS = 5;
 
-const PRO_FEATURES = [
-  { icon: "all-inclusive", label: "Unlimited focus sessions, any duration" },
-  { icon: "flag",          label: "Unlimited goals & scheduling" },
-  { icon: "insights",      label: "Full usage analytics & insights" },
-  { icon: "block",         label: "Unlimited app blocking rules" },
+type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
+
+const COMPARE_ROWS: { label: string; free: string | false; pro: string | true }[] = [
+  { label: "Focus sessions", free: "1 per day", pro: "Unlimited" },
+  { label: "Session length", free: "Up to 5 min", pro: "Any duration" },
+  { label: "Goals & scheduling", free: false, pro: true },
+  { label: "Usage analytics", free: "Locked", pro: "Full insights" },
+];
+
+const PRO_EXTRAS: { icon: IconName; label: string }[] = [
+  { icon: "block", label: "Unlimited app blocking rules" },
   { icon: "support-agent", label: "Priority support" },
 ];
 
-const FREE_LIMITS = [
-  { icon: "timer",    label: "1 focus session per day, max 5 minutes" },
-  { icon: "flag",     label: "No goals" },
-  { icon: "lock",     label: "Analytics locked" },
+const STAGES: { icon: IconName; title: string; body: string; plan: "trial" | "limited" | "pro" }[] = [
+  { icon: "card-giftcard", title: "Free trial", body: `Days 1-${TRIAL_DAYS} · everything unlocked`, plan: "trial" },
+  { icon: "lock", title: "Free plan", body: "After the trial · limited features", plan: "limited" },
+  { icon: "bolt", title: "Hadaf Pro", body: "Anytime · everything, unlimited", plan: "pro" },
 ];
+
+function formatMoney(value: number, currency: string | null): string {
+  try {
+    if (currency) return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(value);
+  } catch {
+    /* fall through */
+  }
+  return `${currency ?? ""} ${value.toFixed(2)}`.trim();
+}
+
+// ───────────────────────────── Pieces ─────────────────────────────
+
+function PlanCard({
+  selected,
+  onPress,
+  title,
+  price,
+  period,
+  caption,
+  badge,
+}: {
+  selected: boolean;
+  onPress: () => void;
+  title: string;
+  price: string;
+  period: string;
+  caption: string;
+  badge?: string;
+}) {
+  const scale = useSharedValue(1);
+  const sel = useSharedValue(selected ? 1 : 0);
+  useEffect(() => {
+    sel.value = withTiming(selected ? 1 : 0, { duration: 220, easing: Easing.out(Easing.quad) });
+    if (selected) {
+      scale.value = withSpring(1.02, { damping: 10, stiffness: 220 }, () => {
+        scale.value = withSpring(1, { damping: 12 });
+      });
+    }
+  }, [selected]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    borderColor: sel.value > 0.5 ? INK : "#e4e4e7",
+    backgroundColor: sel.value > 0.5 ? "#fff" : "#fafafa",
+  }));
+  const dotStyle = useAnimatedStyle(() => ({ transform: [{ scale: sel.value }], opacity: sel.value }));
+
+  return (
+    <Pressable onPress={onPress} style={{ flex: 1 }}>
+      <Animated.View style={[styles.planCard, style]}>
+        {badge ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badge}</Text>
+          </View>
+        ) : null}
+        <View style={styles.radioOuter}>
+          <Animated.View style={[styles.radioInner, dotStyle]} />
+        </View>
+        <Text style={styles.planTitle}>{title}</Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+          <Text style={styles.planPrice}>{price}</Text>
+          <Text style={styles.planPer}>{period}</Text>
+        </View>
+        <Text style={styles.planCaption}>{caption}</Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+function TrialBar({ daysLeft }: { daysLeft: number }) {
+  const w = useSharedValue(0);
+  const used = Math.min(1, Math.max(0, (TRIAL_DAYS - daysLeft) / TRIAL_DAYS));
+  useEffect(() => {
+    w.value = withTiming(Math.max(used, 0.06), { duration: 900, easing: Easing.out(Easing.cubic) });
+  }, [used]);
+  const style = useAnimatedStyle(() => ({ width: `${w.value * 100}%` }));
+  return (
+    <View style={styles.trialTrack}>
+      <Animated.View style={[styles.trialFill, style]} />
+    </View>
+  );
+}
+
+function Cell({ value, pro }: { value: string | boolean; pro?: boolean }) {
+  if (value === true) return <MaterialIcons name="check-circle" size={20} color={INK} />;
+  if (value === false) return <MaterialIcons name="cancel" size={20} color="#c4c4c8" />;
+  return <Text style={[styles.cellText, pro && { color: INK, fontFamily: "Inter_700Bold" }]}>{value}</Text>;
+}
+
+// ───────────────────────────── Screen ─────────────────────────────
 
 export default function SubscriptionScreen() {
   const insets = useSafeAreaInsets();
   const topPad = isWeb ? 0 : insets.top;
   const sub = useSubscription();
+  const dialog = useDialog();
 
-  const planName =
-    sub.plan === "pro"
-      ? "Hadaf Pro"
-      : sub.plan === "limited"
-        ? "Free (Limited)"
-        : "Free Trial";
+  const monthly = sub.plans.monthly;
+  const annual = sub.plans.annual;
+  const [selected, setSelected] = useState<BillingPeriod>("monthly");
+  useEffect(() => {
+    // Default to the better-value plan once it is known.
+    if (annual) setSelected("annual");
+  }, [annual?.priceString]);
+
+  const activePeriod: BillingPeriod = selected === "annual" && annual ? "annual" : "monthly";
+
+  const savePct =
+    monthly?.amount && annual?.amount && monthly.currency === annual.currency
+      ? Math.round((1 - annual.amount / (monthly.amount * 12)) * 100)
+      : null;
+  const annualPerMonth = annual?.amount ? formatMoney(annual.amount / 12, annual.currency) : null;
+
+  const planName = sub.plan === "pro" ? "Hadaf Pro" : sub.plan === "limited" ? "Free plan" : "Free trial";
   const planBody =
     sub.plan === "pro"
-      ? `You have unlimited access to every feature.${sub.proExpiresAt ? ` Renews / ends ${new Date(sub.proExpiresAt).toLocaleDateString()}.` : ""}`
+      ? `Unlimited access to every feature.${sub.proExpiresAt ? ` Active until ${new Date(sub.proExpiresAt).toLocaleDateString()}.` : ""}`
       : sub.plan === "limited"
-        ? "Your 5-day trial has ended. You're on the limited plan - upgrade to unlock everything again."
-        : `${sub.trialDaysLeft || 5} days left of your free trial - every feature is unlocked. After that you'll move to the limited plan.`;
+        ? "Your 5-day trial has ended. Upgrade to unlock everything again."
+        : `${sub.trialDaysLeft || TRIAL_DAYS} day${(sub.trialDaysLeft || TRIAL_DAYS) === 1 ? "" : "s"} left. Every feature is unlocked until then.`;
+  const chip = sub.plan === "pro" ? "ACTIVE" : sub.plan === "limited" ? "LIMITED" : "TRIAL";
+
+  const ctaPrice =
+    activePeriod === "annual"
+      ? `${annual?.priceString ?? ""}/YR`
+      : `${monthly?.priceString ?? sub.priceLabel}/MO`;
 
   const onUpgrade = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const result = await sub.purchase();
+    const result = await sub.purchase(activePeriod);
     if (result.success) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("You're Pro!", "Thank you - every feature is now unlocked.", [{ text: "Let's go", onPress: () => router.back() }]);
+      dialog.show({
+        title: "You're Pro!",
+        message: "Thank you - every feature is now unlocked.",
+        tone: "success",
+        actions: [{ text: "Let's go", style: "primary", onPress: () => router.back() }],
+      });
     } else if (!result.cancelled) {
-      Alert.alert("Purchase not completed", result.error ?? "Something went wrong. You haven't been charged.");
+      dialog.show({
+        title: "Purchase not completed",
+        message: result.error ?? "Something went wrong. You haven't been charged.",
+        tone: "danger",
+        actions: [{ text: "OK", style: "primary" }],
+      });
     }
   };
 
   const onRestore = async () => {
     Haptics.selectionAsync();
     const result = await sub.restore();
-    Alert.alert(
-      result.success ? "Purchases restored" : "Nothing to restore",
-      result.success ? "Hadaf Pro is active on your account." : result.error ?? "We couldn't find an active subscription for this account.",
-    );
+    dialog.show({
+      title: result.success ? "Purchases restored" : "Nothing to restore",
+      message: result.success
+        ? "Hadaf Pro is active on your account."
+        : result.error ?? "We couldn't find an active subscription for this account.",
+      tone: result.success ? "success" : "warning",
+      actions: [{ text: "OK", style: "primary" }],
+    });
   };
+
+  const enter = (delay: number) => (isWeb ? undefined : FadeInDown.delay(delay).springify().damping(16));
 
   return (
     <View style={styles.root}>
@@ -85,51 +225,123 @@ export default function SubscriptionScreen() {
         contentContainerStyle={[styles.content, { paddingTop: topPad + 72, paddingBottom: 48 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()} style={styles.currentPlanCard}>
-          <Text style={styles.currentPlanLabel}>CURRENT PLAN</Text>
+        {/* Current plan */}
+        <Animated.View entering={enter(0)} style={styles.currentPlanCard}>
+          <View style={styles.currentTop}>
+            <Text style={styles.currentPlanLabel}>YOUR PLAN</Text>
+            <View style={styles.statusChip}>
+              <View style={[styles.statusDot, sub.plan === "limited" && { backgroundColor: "#f59e0b" }]} />
+              <Text style={styles.statusChipText}>{chip}</Text>
+            </View>
+          </View>
           <Text style={styles.currentPlanName}>{planName}</Text>
           <Text style={styles.currentPlanBody}>{planBody}</Text>
+          {sub.plan === "trial" ? <TrialBar daysLeft={sub.trialDaysLeft || TRIAL_DAYS} /> : null}
         </Animated.View>
 
+        {/* Plans */}
         {sub.plan !== "pro" && (
-          <Animated.View entering={isWeb ? undefined : FadeInDown.delay(60).springify()} style={styles.priceCard}>
-            <Text style={styles.priceLabel}>HADAF PRO</Text>
-            <View style={styles.priceRow}>
-              <Text style={styles.price}>{sub.priceLabel}</Text>
-              <Text style={styles.pricePer}> / month</Text>
+          <Animated.View entering={enter(60)} style={styles.section}>
+            <Text style={styles.sectionLabel}>CHOOSE YOUR PLAN</Text>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <PlanCard
+                selected={activePeriod === "monthly"}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSelected("monthly");
+                }}
+                title="Monthly"
+                price={monthly?.priceString ?? sub.priceLabel}
+                period=" / mo"
+                caption="Billed every month"
+              />
+              {annual ? (
+                <PlanCard
+                  selected={activePeriod === "annual"}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setSelected("annual");
+                  }}
+                  title="Yearly"
+                  price={annual.priceString}
+                  period=" / yr"
+                  caption={annualPerMonth ? `Just ${annualPerMonth} / month` : "Billed once a year"}
+                  badge={savePct && savePct > 0 ? `SAVE ${savePct}%` : "BEST VALUE"}
+                />
+              ) : null}
             </View>
-            <Text style={styles.priceNote}>Cancel anytime in Google Play.</Text>
+            <Text style={styles.finePrint}>Cancel anytime in Google Play. No hidden fees.</Text>
           </Animated.View>
         )}
 
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(100).springify()} style={styles.section}>
-          <Text style={styles.sectionLabel}>PRO INCLUDES</Text>
-          <View style={styles.cardList}>
-            {PRO_FEATURES.map((f, i) => (
-              <View key={f.label} style={[styles.featureRow, i < PRO_FEATURES.length - 1 && styles.featureDivider]}>
-                <MaterialIcons name={f.icon as any} size={20} color="#000" />
-                <Text style={styles.featureLabel}>{f.label}</Text>
-              </View>
-            ))}
+        {/* How it works */}
+        <Animated.View entering={enter(110)} style={styles.section}>
+          <Text style={styles.sectionLabel}>HOW IT WORKS</Text>
+          <View style={styles.card}>
+            {STAGES.map((s, i) => {
+              const current = sub.plan === s.plan;
+              return (
+                <View key={s.title} style={styles.stageRow}>
+                  <View style={styles.stageRail}>
+                    <View style={[styles.stageIcon, current && { backgroundColor: INK }]}>
+                      <MaterialIcons name={s.icon} size={18} color={current ? "#fff" : "#52525b"} />
+                    </View>
+                    {i < STAGES.length - 1 ? <View style={styles.stageLine} /> : null}
+                  </View>
+                  <View style={{ flex: 1, paddingBottom: i < STAGES.length - 1 ? 18 : 0 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Text style={styles.stageTitle}>{s.title}</Text>
+                      {current ? (
+                        <View style={styles.nowPill}>
+                          <Text style={styles.nowPillText}>YOU ARE HERE</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={styles.stageBody}>{s.body}</Text>
+                  </View>
+                </View>
+              );
+            })}
           </View>
         </Animated.View>
 
-        {sub.plan !== "pro" && (
-          <Animated.View entering={isWeb ? undefined : FadeInDown.delay(140).springify()} style={styles.section}>
-            <Text style={styles.sectionLabel}>FREE PLAN AFTER THE 5-DAY TRIAL</Text>
-            <View style={styles.cardList}>
-              {FREE_LIMITS.map((f, i) => (
-                <View key={f.label} style={[styles.featureRow, i < FREE_LIMITS.length - 1 && styles.featureDivider]}>
-                  <MaterialIcons name={f.icon as any} size={20} color="#888" />
-                  <Text style={[styles.featureLabel, { color: "#666" }]}>{f.label}</Text>
+        {/* Compare */}
+        <Animated.View entering={enter(160)} style={styles.section}>
+          <Text style={styles.sectionLabel}>COMPARE PLANS</Text>
+          <View style={styles.card}>
+            <View style={styles.tableHead}>
+              <View style={{ flex: 1.25 }} />
+              <Text style={[styles.colHead, { flex: 1 }]}>FREE</Text>
+              <View style={[styles.proHead, { flex: 1 }]}>
+                <Text style={[styles.colHead, { color: "#fff" }]}>PRO</Text>
+              </View>
+            </View>
+            {COMPARE_ROWS.map((r, i) => (
+              <View key={r.label} style={[styles.tableRow, i < COMPARE_ROWS.length - 1 && styles.rowDivider]}>
+                <Text style={[styles.rowLabel, { flex: 1.25 }]}>{r.label}</Text>
+                <View style={styles.cellWrap}>
+                  <Cell value={r.free} />
+                </View>
+                <View style={styles.cellWrap}>
+                  <Cell value={r.pro} pro />
+                </View>
+              </View>
+            ))}
+            <View style={styles.extrasBox}>
+              <Text style={styles.extrasTitle}>ALSO WITH PRO</Text>
+              {PRO_EXTRAS.map((e) => (
+                <View key={e.label} style={styles.extraRow}>
+                  <MaterialIcons name={e.icon} size={18} color={INK} />
+                  <Text style={styles.extraText}>{e.label}</Text>
                 </View>
               ))}
             </View>
-          </Animated.View>
-        )}
+          </View>
+        </Animated.View>
 
-        {sub.plan !== "pro" && (
-          <Animated.View entering={isWeb ? undefined : FadeInDown.delay(180).springify()} style={{ gap: 14 }}>
+        {/* Actions */}
+        {sub.plan !== "pro" ? (
+          <Animated.View entering={enter(210)} style={{ gap: 14 }}>
             <TouchableOpacity
               style={[styles.upgradeBtn, sub.purchasing && { opacity: 0.6 }]}
               activeOpacity={0.85}
@@ -139,58 +351,33 @@ export default function SubscriptionScreen() {
               {sub.purchasing ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.upgradeBtnText}>UPGRADE TO PRO · {sub.priceLabel}/MO</Text>
+                <>
+                  <MaterialIcons name="bolt" size={18} color="#fff" />
+                  <Text style={styles.upgradeBtnText}>UPGRADE TO PRO · {ctaPrice}</Text>
+                </>
               )}
             </TouchableOpacity>
             {!sub.purchasesReady && (
               <Text style={styles.hint}>
-                {sub.purchasesIssue ?? "Subscriptions are still loading. If this doesn't go away, make sure you're running a build that includes in-app purchases."}
+                {sub.purchasesIssue ??
+                  "Subscriptions are still loading. If this doesn't go away, make sure you're running a build that includes in-app purchases."}
               </Text>
             )}
             <TouchableOpacity onPress={onRestore} disabled={sub.purchasing} hitSlop={10}>
               <Text style={styles.restore}>Restore purchases</Text>
             </TouchableOpacity>
           </Animated.View>
-        )}
-        {/* Developer testing shortcuts (only shown in development) */}
-        {__DEV__ && (
-          <View style={{ marginTop: 24, padding: 18, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#e5e7eb", gap: 10 }}>
-            <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: "#6b7280", letterSpacing: 1.5 }}>
-              🧪 DEVELOPER TESTING SHORTCUTS
-            </Text>
-            <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#4b5563" }}>
-              Switch app state immediately without waiting for store:
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              <TouchableOpacity
-                style={{ backgroundColor: "#10b981", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
-                onPress={async () => {
-                  await sub.testPlan("pro");
-                  Alert.alert("Switched to Pro", "Unlimited access activated.");
-                }}
-              >
-                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Test Pro</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ backgroundColor: "#f59e0b", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
-                onPress={async () => {
-                  await sub.testPlan("limited");
-                  Alert.alert("Switched to Limited", "Free tier after 5-day trial expired (5 min focus, blur, no goals).");
-                }}
-              >
-                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Test Limited</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ backgroundColor: "#6366f1", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
-                onPress={async () => {
-                  await sub.testPlan("trial");
-                  Alert.alert("Reset Trial", "5 days full access restored.");
-                }}
-              >
-                <Text style={{ color: "#fff", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Reset Trial</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        ) : (
+          <Animated.View entering={enter(210)} style={{ gap: 14 }}>
+            <TouchableOpacity
+              style={styles.manageBtn}
+              activeOpacity={0.85}
+              onPress={() => Linking.openURL("https://play.google.com/store/account/subscriptions").catch(() => {})}
+            >
+              <Text style={styles.manageBtnText}>MANAGE SUBSCRIPTION</Text>
+              <MaterialIcons name="open-in-new" size={16} color={INK} />
+            </TouchableOpacity>
+          </Animated.View>
         )}
       </ScrollView>
     </View>
@@ -198,9 +385,9 @@ export default function SubscriptionScreen() {
 }
 
 const styles = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: "#f9f9f9" },
+  root: { flex: 1, backgroundColor: "#f9f9f9" },
   scroll: { flex: 1 },
-  content:{ paddingHorizontal: 20, gap: 24 },
+  content: { paddingHorizontal: 20, gap: 26 },
 
   topBar: {
     position: "absolute", top: 0, left: 0, right: 0, zIndex: 20,
@@ -208,35 +395,81 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingBottom: 14,
     backgroundColor: "#f3f3f3",
   },
-  backBtn:     { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  backBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   topBarTitle: { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.5, color: "#000" },
 
-  currentPlanCard: { backgroundColor: "#000", borderRadius: 22, padding: 24, gap: 8 },
-  currentPlanLabel:{ fontSize: 10, fontFamily: "Inter_700Bold", color: "rgba(255,255,255,0.6)", letterSpacing: 2 },
-  currentPlanName: { fontSize: 24, fontFamily: "Inter_700Bold", color: "#fff" },
-  currentPlanBody: { fontSize: 13, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.65)", lineHeight: 20 },
-
-  priceCard: {
-    backgroundColor: "#fff", borderRadius: 22, padding: 24, gap: 6, borderWidth: 2, borderColor: "#000",
+  currentPlanCard: { backgroundColor: INK, borderRadius: 24, padding: 24, gap: 8 },
+  currentTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  currentPlanLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "rgba(255,255,255,0.6)", letterSpacing: 2 },
+  statusChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(255,255,255,0.12)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12,
   },
-  priceLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2.5 },
-  priceRow: { flexDirection: "row", alignItems: "flex-end" },
-  price: { fontSize: 38, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: -1 },
-  pricePer: { fontSize: 15, fontFamily: "Inter_500Medium", color: "#666", marginBottom: 7 },
-  priceNote: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#888" },
+  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#22c55e" },
+  statusChipText: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 1.4 },
+  currentPlanName: { fontSize: 26, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: -0.5 },
+  currentPlanBody: { fontSize: 13, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.68)", lineHeight: 20 },
+  trialTrack: { height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.15)", marginTop: 10, overflow: "hidden" },
+  trialFill: { height: 6, borderRadius: 3, backgroundColor: "#fff" },
 
-  section:      { gap: 12 },
+  section: { gap: 12 },
   sectionLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2.5 },
-  cardList: {
-    backgroundColor: "#fff", borderRadius: 18,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 1,
+  card: {
+    backgroundColor: "#fff", borderRadius: 22, padding: 18,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
   },
-  featureRow: { flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 20, paddingVertical: 16 },
-  featureDivider: { borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
-  featureLabel: { fontSize: 14, fontFamily: "Inter_500Medium", color: "#000", flexShrink: 1 },
 
-  upgradeBtn: { backgroundColor: "#000", borderRadius: 999, paddingVertical: 16, alignItems: "center", minHeight: 52, justifyContent: "center" },
+  planCard: { borderRadius: 20, borderWidth: 2, padding: 16, gap: 6, minHeight: 152 },
+  badge: {
+    position: "absolute", top: -11, right: 12, backgroundColor: INK,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10,
+  },
+  badgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 1 },
+  radioOuter: {
+    width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: INK,
+    alignItems: "center", justifyContent: "center", marginBottom: 6,
+  },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: INK },
+  planTitle: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#52525b", letterSpacing: 0.4 },
+  planPrice: { fontSize: 28, fontFamily: "Inter_700Bold", color: INK, letterSpacing: -1 },
+  planPer: { fontSize: 13, fontFamily: "Inter_500Medium", color: "#71717a", marginBottom: 5 },
+  planCaption: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#71717a", lineHeight: 17 },
+  finePrint: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#888", textAlign: "center" },
+
+  stageRow: { flexDirection: "row", gap: 14 },
+  stageRail: { alignItems: "center" },
+  stageIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#f1f1f3", alignItems: "center", justifyContent: "center" },
+  stageLine: { flex: 1, width: 2, backgroundColor: "#e4e4e7", marginVertical: 4 },
+  stageTitle: { fontSize: 15, fontFamily: "Inter_700Bold", color: INK },
+  stageBody: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#71717a", marginTop: 2 },
+  nowPill: { backgroundColor: "#e8f7ee", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  nowPillText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#15803d", letterSpacing: 0.8 },
+
+  tableHead: { flexDirection: "row", alignItems: "center", paddingBottom: 12 },
+  colHead: { textAlign: "center", fontSize: 11, fontFamily: "Inter_700Bold", color: "#71717a", letterSpacing: 1.6 },
+  proHead: { backgroundColor: INK, borderRadius: 10, paddingVertical: 6 },
+  tableRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14 },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: "#f0f0f2" },
+  rowLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: INK, paddingRight: 8 },
+  cellWrap: { flex: 1, alignItems: "center" },
+  cellText: { fontSize: 12, fontFamily: "Inter_500Medium", color: "#71717a", textAlign: "center" },
+
+  extrasBox: { marginTop: 8, backgroundColor: "#f6f6f7", borderRadius: 14, padding: 14, gap: 10 },
+  extrasTitle: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#888", letterSpacing: 2 },
+  extraRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  extraText: { fontSize: 13, fontFamily: "Inter_500Medium", color: INK },
+
+  upgradeBtn: {
+    backgroundColor: INK, borderRadius: 999, paddingVertical: 16, minHeight: 56,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 6,
+  },
   upgradeBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 1.2 },
+  manageBtn: {
+    borderWidth: 2, borderColor: INK, borderRadius: 999, paddingVertical: 14,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+  },
+  manageBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: INK, letterSpacing: 1.2 },
   hint: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#888", textAlign: "center", lineHeight: 18 },
   restore: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#000", textAlign: "center", textDecorationLine: "underline" },
 });

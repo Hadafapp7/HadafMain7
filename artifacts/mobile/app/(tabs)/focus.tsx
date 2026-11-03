@@ -9,10 +9,11 @@ try {
 import { useQueryClient } from "@tanstack/react-query";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
+import { useDialog } from "@/components/AppDialog";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
+  /* Alert -> in-app dialog (components/AppDialog) */
   AppState,
   Dimensions,
   KeyboardAvoidingView,
@@ -494,6 +495,7 @@ export default function FocusScreen() {
   const startFocusSession = useStartFocusSession();
   const endFocusSession   = useEndFocusSession();
   const sub = useSubscription();
+  const dialog = useDialog();
   // Limited plan (after the 5-day trial): a single 5-minute session per day.
   const durationOptions = sub.isLimited
     ? [{ minutes: sub.maxFocusMinutes ?? 5, label: "Free" }]
@@ -771,7 +773,7 @@ export default function FocusScreen() {
       const used = allSessions.filter((s: any) => new Date(s.startedAt).getTime() > dayAgo).length;
       if (used >= (sub.maxFocusSessionsPerDay ?? 1)) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        Alert.alert(
+        dialog.alert(
           "Daily limit reached",
           "The free plan includes one 5-minute focus session per day. Upgrade to Hadaf Pro for unlimited sessions.",
           [
@@ -1101,7 +1103,7 @@ export default function FocusScreen() {
                   onPress={() => {
                     Haptics.selectionAsync();
                     if (sub.isLimited) {
-                      Alert.alert("Pro feature", "Custom durations are available with Hadaf Pro.", [
+                      dialog.alert("Pro feature", "Custom durations are available with Hadaf Pro.", [
                         { text: "Not now", style: "cancel" },
                         { text: "See Pro", onPress: () => router.push("/subscription" as any) },
                       ]);

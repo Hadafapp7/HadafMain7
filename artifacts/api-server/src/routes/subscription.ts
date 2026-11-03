@@ -153,6 +153,11 @@ router.post("/webhooks/revenuecat", async (req, res): Promise<void> => {
  */
 router.post("/subscription/test-plan", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
+  // Dev-only: the in-app test shortcuts are gone, and this must never let a production user grant themselves Pro.
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_TEST_PLAN !== "true") {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
   const { plan } = req.body as { plan: "pro" | "trial" | "limited" };
   const now = new Date();
   if (plan === "pro") {

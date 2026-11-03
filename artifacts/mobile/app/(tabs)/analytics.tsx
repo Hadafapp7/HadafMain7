@@ -28,8 +28,21 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
 import {
+  computeWeekInsights,
+  useTargetMinutes,
+  fmtMin,
+  fmtShort,
+  TARGET_STEP,
+  MIN_TARGET,
+  MAX_TARGET,
+  type DayStat,
+  type Insight,
+} from "@/lib/usageStats";
+import {
   type AppUsageEntry,
   type AppUsageSummaryItem,
+  type FocusSession,
+  useListFocusSessions,
   useGetAppUsageSummary,
   useListAppUsageEntries,
   useCreateAppUsageEntry,
@@ -356,6 +369,355 @@ function EmptyChart({ colors }: { colors: ReturnType<typeof useColors> }) {
   );
 }
 
+// ─── Target vs Actual Bar Chart ───────────────────────────────────────────────
+
+function TargetVersusActualChart({
+  days,
+  targetMin,
+  onTargetChange,
+}: {
+  days: DayStat[];
+  targetMin: number;
+  onTargetChange: (v: number) => void;
+}) {
+  const colors = useColors();
+  const maxVal = Math.max(targetMin * 1.35, ...days.map((d) => Math.max(d.minutes, d.focusMinutes)), 120);
+  const chartH = 150;
+  const targetY = Math.max(8, Math.min(chartH - 8, chartH - (targetMin / maxVal) * chartH));
+
+  return (
+    <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
+      <View style={styles.chartHeader}>
+        <View>
+          <Text style={[styles.chartSubLabel, { color: colors.outline }]}>GOAL TRACKER</Text>
+          <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Daily Screen vs Target</Text>
+        </View>
+
+        {/* Target Stepper */}
+        <View style={[styles.targetStepper, { backgroundColor: colors.surfaceContainerHigh }]}>
+          <TouchableOpacity
+            hitSlop={8}
+            onPress={() => onTargetChange(Math.max(MIN_TARGET, targetMin - TARGET_STEP))}
+            style={styles.stepperBtn}
+          >
+            <MaterialIcons name="remove" size={16} color={colors.onSurface} />
+          </TouchableOpacity>
+          <Text style={[styles.targetValueText, { color: colors.onSurface }]}>
+            {fmtMin(targetMin)}
+          </Text>
+          <TouchableOpacity
+            hitSlop={8}
+            onPress={() => onTargetChange(Math.min(MAX_TARGET, targetMin + TARGET_STEP))}
+            style={styles.stepperBtn}
+          >
+            <MaterialIcons name="add" size={16} color={colors.onSurface} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Bar Chart Container */}
+      <View style={{ height: chartH + 38, marginTop: 14, position: "relative" }}>
+        {/* Dashed Target Line */}
+        <View
+          style={[
+            styles.targetLine,
+            {
+              top: targetY,
+              borderColor: "#ef4444",
+            },
+          ]}
+        >
+          <View style={styles.targetLineBadge}>
+            <Text style={styles.targetLineText}>Target {fmtShort(targetMin)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.barsContainer}>
+          {days.map((d) => {
+            const screenH = Math.min(chartH, Math.max(6, (d.minutes / maxVal) * chartH));
+            const focusH = Math.min(chartH, Math.max(0, (d.focusMinutes / maxVal) * chartH));
+            const isOver = d.minutes > targetMin;
+            const overMins = d.minutes - targetMin;
+
+            return (
+              <View key={d.key} style={styles.barCol}>
+                {/* Over Budget Pill */}
+                <View style={styles.overPillWrap}>
+                  {isOver && d.minutes > 0 ? (
+                    <Text style={styles.overPillText}>+{fmtShort(overMins)}</Text>
+                  ) : null}
+                </View>
+
+                {/* Bars */}
+                <View style={[styles.barsSlot, { height: chartH }]}>
+                  {/* Screen Bar */}
+                  <View
+                    style={[
+                      styles.barItem,
+                      {
+                        height: screenH,
+                        backgroundColor: isOver ? "#ef4444" : "#27272a",
+                      },
+                    ]}
+                  />
+                  {/* Focus Bar */}
+                  {focusH > 0 && (
+                    <View
+                      style={[
+                        styles.barItem,
+                        {
+                          height: focusH,
+                          backgroundColor: "#3b82f6",
+                        },
+                      ]}
+                    />
+                  )}
+                </View>
+
+                {/* Day Label */}
+                <Text
+                  style={[
+                    styles.dayLabel,
+                    d.isToday && styles.todayLabel,
+                    { color: d.isToday ? colors.onSurface : colors.outline },
+                  ]}
+                >
+                  {d.label}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Legend */}
+      <View style={[styles.legendRow, { borderTopColor: colors.surfaceContainerHigh }]}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: "#27272a" }]} />
+          <Text style={[styles.legendText, { color: colors.outline }]}>Within Target</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: "#ef4444" }]} />
+          <Text style={[styles.legendText, { color: colors.outline }]}>Over (Lagging)</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: "#3b82f6" }]} />
+          <Text style={[styles.legendText, { color: colors.outline }]}>Focus Time</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Focus Score Card ─────────────────────────────────────────────────────────
+
+function FocusScoreCard({
+  score,
+  scoreLabel,
+  scoreParts,
+  weekDeltaPct,
+  daysOver,
+}: {
+  score: number;
+  scoreLabel: string;
+  scoreParts: { label: string; value: number; max: number }[];
+  weekDeltaPct: number | null;
+  daysOver: number;
+}) {
+  const colors = useColors();
+
+  const toneColor =
+    score >= 80 ? "#10b981" : score >= 65 ? "#3b82f6" : score >= 50 ? "#f59e0b" : "#ef4444";
+
+  return (
+    <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
+      <View style={styles.scoreTopRow}>
+        <View>
+          <Text style={[styles.chartSubLabel, { color: colors.outline }]}>HEALTH INDEX</Text>
+          <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Focus Score</Text>
+        </View>
+        <View style={[styles.scoreBadge, { backgroundColor: `${toneColor}18`, borderColor: `${toneColor}40` }]}>
+          <Text style={[styles.scoreBadgeText, { color: toneColor }]}>{scoreLabel}</Text>
+        </View>
+      </View>
+
+      <View style={styles.scoreBody}>
+        {/* Large Score Num */}
+        <View style={styles.scoreNumBox}>
+          <Text style={[styles.bigScoreText, { color: colors.onSurface }]}>{score}</Text>
+          <Text style={[styles.scoreOutOf, { color: colors.outline }]}>/100</Text>
+        </View>
+
+        {/* Breakdown Meters */}
+        <View style={styles.metersList}>
+          {scoreParts.map((part) => (
+            <View key={part.label} style={styles.meterItem}>
+              <View style={styles.meterLabels}>
+                <Text style={[styles.meterName, { color: colors.outline }]}>{part.label}</Text>
+                <Text style={[styles.meterVal, { color: colors.onSurface }]}>
+                  {part.value}/{part.max}
+                </Text>
+              </View>
+              <View style={[styles.meterTrack, { backgroundColor: colors.surfaceContainerHigh }]}>
+                <View
+                  style={[
+                    styles.meterFill,
+                    {
+                      width: `${Math.min(100, Math.max(4, (part.value / part.max) * 100))}%`,
+                      backgroundColor: toneColor,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Footer stats: week delta & days over */}
+      <View style={[styles.scoreFooter, { borderTopColor: colors.surfaceContainerHigh }]}>
+        <View style={styles.footerStat}>
+          <MaterialIcons
+            name={daysOver > 0 ? "warning-amber" : "check-circle"}
+            size={16}
+            color={daysOver > 0 ? "#ef4444" : "#10b981"}
+          />
+          <Text style={[styles.footerStatText, { color: colors.onSurface }]}>
+            {daysOver === 0
+              ? "Zero days over target"
+              : `${daysOver} of 7 days over target`}
+          </Text>
+        </View>
+
+        {weekDeltaPct !== null && (
+          <View style={styles.footerStat}>
+            <MaterialIcons
+              name={weekDeltaPct > 0 ? "trending-up" : "trending-down"}
+              size={16}
+              color={weekDeltaPct > 0 ? "#ef4444" : "#10b981"}
+            />
+            <Text style={[styles.footerStatText, { color: colors.onSurface }]}>
+              {weekDeltaPct > 0 ? `+${weekDeltaPct}%` : `${weekDeltaPct}%`} vs last week
+            </Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ─── Lagging Diagnostic Insights ──────────────────────────────────────────────
+
+function LaggingInsightsSection({ insights }: { insights: Insight[] }) {
+  const colors = useColors();
+
+  return (
+    <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
+      <View style={styles.chartHeader}>
+        <View>
+          <Text style={[styles.chartSubLabel, { color: colors.outline }]}>DIAGNOSTIC</Text>
+          <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Where You're Lagging</Text>
+        </View>
+      </View>
+
+      {insights.length === 0 ? (
+        <View style={styles.emptyInsights}>
+          <MaterialIcons name="verified" size={28} color="#10b981" />
+          <Text style={[styles.emptyInsightsText, { color: colors.outline }]}>
+            You're fully on target! No lagging screen habits detected this week.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.insightsList}>
+          {insights.map((item) => {
+            const isDanger = item.severity === "high";
+            const isWarning = item.severity === "medium";
+            const iconBg = isDanger ? "#fdeceb" : isWarning ? "#fff4e5" : "#e8f7ee";
+            const iconFg = isDanger ? "#ef4444" : isWarning ? "#c2610c" : "#15803d";
+
+            return (
+              <View
+                key={item.id}
+                style={[
+                  styles.insightRow,
+                  {
+                    borderLeftColor: iconFg,
+                    backgroundColor: colors.surfaceContainerHigh || "#fafafa",
+                  },
+                ]}
+              >
+                <View style={[styles.insightIconBox, { backgroundColor: iconBg }]}>
+                  <MaterialIcons name={item.icon as any} size={18} color={iconFg} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.insightTitle, { color: colors.onSurface }]}>{item.title}</Text>
+                  <Text style={[styles.insightDetail, { color: colors.outline }]}>{item.detail}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Screen vs Focus Ratio Card ───────────────────────────────────────────────
+
+function ProductivityRatioCard({
+  screenPerFocus,
+  focusMinutes,
+  totalMinutes,
+  focusCompleted,
+  focusStopped,
+}: {
+  screenPerFocus: number | null;
+  focusMinutes: number;
+  totalMinutes?: number;
+  focusCompleted: number;
+  focusStopped: number;
+}) {
+  const colors = useColors();
+
+  return (
+    <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
+      <View style={styles.chartHeader}>
+        <View>
+          <Text style={[styles.chartSubLabel, { color: colors.outline }]}>BALANCE</Text>
+          <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Screen vs Focus</Text>
+        </View>
+      </View>
+
+      <View style={styles.ratioRow}>
+        <View style={styles.ratioStatBox}>
+          <Text style={[styles.ratioMainNum, { color: colors.onSurface }]}>
+            {screenPerFocus !== null ? `${screenPerFocus.toFixed(1)}x` : "—"}
+          </Text>
+          <Text style={[styles.ratioSubLabel, { color: colors.outline }]}>
+            Screen time per focus min
+          </Text>
+        </View>
+
+        <View style={styles.ratioStatBox}>
+          <Text style={[styles.ratioMainNum, { color: colors.onSurface }]}>
+            {fmtMin(focusMinutes)}
+          </Text>
+          <Text style={[styles.ratioSubLabel, { color: colors.outline }]}>
+            Focus time this week
+          </Text>
+        </View>
+      </View>
+
+      <View style={[styles.sessionBreakdown, { borderTopColor: colors.surfaceContainerHigh }]}>
+        <Text style={[styles.sessionBreakdownText, { color: colors.outline }]}>
+          Sessions: {focusCompleted} completed
+          {focusStopped > 0 ? ` · ${focusStopped} stopped early` : ""}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── Analytics Screen ─────────────────────────────────────────────────────────
 
 export default function AnalyticsScreen() {
@@ -374,6 +736,15 @@ export default function AnalyticsScreen() {
   const entries = Array.isArray(rawEntries) ? rawEntries : [];
   const { data: rawSummary, isLoading: loadingSummary, refetch: refetchSummary } = useGetAppUsageSummary();
   const summary = Array.isArray(rawSummary) ? rawSummary : [];
+
+  const [targetMin, setTargetMin] = useTargetMinutes();
+  const { data: rawSessions } = useListFocusSessions();
+  const sessions = Array.isArray(rawSessions) ? rawSessions : [];
+
+  const weekInsights = useMemo(
+    () => computeWeekInsights(entries, sessions, targetMin),
+    [entries, sessions, targetMin],
+  );
 
   const syncStats = React.useCallback(async () => {
     if (Platform.OS === "web") return;
@@ -495,6 +866,42 @@ export default function AnalyticsScreen() {
                   </Text>
                 </TouchableOpacity>
               ))}
+            </Animated.View>
+
+            {/* Health / Focus Score */}
+            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(100).springify()}>
+              <FocusScoreCard
+                score={weekInsights.score}
+                scoreLabel={weekInsights.scoreLabel}
+                scoreParts={weekInsights.scoreParts}
+                weekDeltaPct={weekInsights.weekDeltaPct}
+                daysOver={weekInsights.daysOver}
+              />
+            </Animated.View>
+
+            {/* Target vs Actual Bar Chart */}
+            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(130).springify()}>
+              <TargetVersusActualChart
+                days={weekInsights.days}
+                targetMin={targetMin}
+                onTargetChange={setTargetMin}
+              />
+            </Animated.View>
+
+            {/* Where you're lagging diagnostic list */}
+            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()}>
+              <LaggingInsightsSection insights={weekInsights.insights} />
+            </Animated.View>
+
+            {/* Productivity balance (Screen vs Focus) */}
+            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(190).springify()}>
+              <ProductivityRatioCard
+                screenPerFocus={weekInsights.screenPerFocus}
+                focusMinutes={weekInsights.focusMinutes}
+                totalMinutes={weekInsights.totalMinutes}
+                focusCompleted={weekInsights.focusCompleted}
+                focusStopped={weekInsights.focusStopped}
+              />
             </Animated.View>
 
             {/* 2-column KPIs */}
@@ -640,7 +1047,260 @@ const styles = StyleSheet.create({
 
   // Top Apps Modal
 
-  // Comparison Chart Styles
+  // Target vs Actual Chart Styles
+  targetStepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+  },
+  stepperBtn: {
+    padding: 2,
+  },
+  targetValueText: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+  },
+  targetLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    borderTopWidth: 1.5,
+    borderStyle: "dashed",
+    zIndex: 2,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  targetLineBadge: {
+    backgroundColor: "#ef4444",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    marginTop: -9,
+    marginRight: 4,
+  },
+  targetLineText: {
+    color: "#fff",
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+  },
+  barsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    height: "100%",
+  },
+  barCol: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 3,
+  },
+  barsSlot: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    gap: 3,
+    width: "100%",
+  },
+  barItem: {
+    width: 14,
+    borderRadius: 7,
+  },
+  overPillWrap: {
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  overPillText: {
+    color: "#ef4444",
+    fontSize: 8,
+    fontFamily: "Inter_700Bold",
+  },
+  dayLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+    marginTop: 4,
+  },
+  todayLabel: {
+    fontFamily: "Inter_700Bold",
+    textDecorationLine: "underline",
+  },
+  legendRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+
+  // Focus Score Card Styles
+  scoreTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  scoreBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  scoreBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.5,
+  },
+  scoreBody: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+    marginTop: 4,
+  },
+  scoreNumBox: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 2,
+  },
+  bigScoreText: {
+    fontSize: 44,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -1,
+  },
+  scoreOutOf: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  metersList: {
+    flex: 1,
+    gap: 8,
+  },
+  meterItem: {
+    gap: 3,
+  },
+  meterLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  meterName: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+  },
+  meterVal: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+  },
+  meterTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  meterFill: {
+    height: "100%",
+    borderRadius: 3,
+  },
+  scoreFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 12,
+    borderTopWidth: 1,
+    marginTop: 4,
+  },
+  footerStat: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  footerStatText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+
+  // Lagging Diagnostic Insights Styles
+  emptyInsights: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+  },
+  emptyInsightsText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    flex: 1,
+  },
+  insightsList: {
+    gap: 10,
+  },
+  insightRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderLeftWidth: 3,
+  },
+  insightIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  insightTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  insightDetail: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+    lineHeight: 16,
+  },
+
+  // Productivity Ratio Styles
+  ratioRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  ratioStatBox: {
+    flex: 1,
+    gap: 2,
+  },
+  ratioMainNum: {
+    fontSize: 24,
+    fontFamily: "Inter_700Bold",
+  },
+  ratioSubLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  sessionBreakdown: {
+    paddingTop: 10,
+    borderTopWidth: 1,
+    marginTop: 4,
+  },
+  sessionBreakdownText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
   compRowItem: {
     padding: 12,
     backgroundColor: "#fafafa",
