@@ -1,8 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { AppUsageEntry, FocusSession } from "@workspace/api-client-react";
+import type { AppUsageEntry, FocusSession, Goal } from "@workspace/api-client-react";
 import { useCallback, useEffect, useState } from "react";
-
-/** Pure analytics helpers behind the "where am I lagging" section of the Analytics tab. */
 
 export const DEFAULT_TARGET_MIN = 180;
 const TARGET_KEY = "hadaf_daily_target_min";
@@ -10,7 +8,7 @@ export const MIN_TARGET = 30;
 export const MAX_TARGET = 600;
 export const TARGET_STEP = 30;
 
-export const CATEGORY_COLORS = ["#0a0a0a", "#3b82f6", "#f97316", "#10b981", "#a855f7", "#a1a1aa"];
+export type PeriodRange = "WEEK" | "MONTH" | "YEAR";
 
 export function localDayKey(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -27,293 +25,282 @@ export function fmtMin(m: number): string {
   return `${v}m`;
 }
 
-/** Compact label for chart bars: "45m", "2.5h". */
 export function fmtShort(m: number): string {
-  if (m <= 0) return "";
+  if (m <= 0) return "0m";
   if (m < 60) return `${Math.round(m)}m`;
   const h = m / 60;
   return `${h >= 10 ? Math.round(h) : Math.round(h * 10) / 10}h`;
 }
 
-export interface DayStat {
+export interface ChartIntervalStat {
   key: string;
-  /** "Mon" */
   label: string;
-  /** "M" */
-  initial: string;
   minutes: number;
-  focusMinutes: number;
-  isToday: boolean;
+  targetMinutes: number;
+  isOver: boolean;
+  overMinutes: number;
+  isCurrent: boolean;
 }
 
-export interface CategoryStat {
-  name: string;
-  minutes: number;
-  share: number;
-  color: string;
-}
-
-export type Severity = "high" | "medium" | "good";
-
-export interface Insight {
-  id: string;
-  severity: Severity;
-  icon: string;
-  title: string;
-  detail: string;
-}
-
-export interface WeekInsights {
-  hasData: boolean;
-  days: DayStat[];
-  targetMin: number;
-  totalMinutes: number;
-  prevTotalMinutes: number;
-  /** % change of screen time vs the previous 7 days (null when there is nothing to compare). */
-  weekDeltaPct: number | null;
-  avgDaily: number;
-  activeDays: number;
-  daysOver: number;
-  categories: CategoryStat[];
-  focusMinutes: number;
-  focusCompleted: number;
-  focusStopped: number;
-  completionRate: number | null;
-  /** Screen minutes spent for every focused minute (null when no focus yet). */
-  screenPerFocus: number | null;
+export interface HealthStats {
   score: number;
-  scoreLabel: string;
-  scoreParts: { label: string; value: number; max: number }[];
-  insights: Insight[];
+  scoreLabel: "EXCELLENT" | "HEALTHY" | "NEEDS WORK" | "SLIPPING";
+  focusCompleted: number;
+  focusForfeited: number;
+  focusTotalMinutes: number;
+  focusCompletionRate: number; // 0-100
+  goalsCompleted: number;
+  goalsMissed: number;
+  goalsForfeited: number;
+  goalSuccessRate: number; // 0-100
 }
 
-const SEVERITY_ORDER: Record<Severity, number> = { high: 0, medium: 1, good: 2 };
-
-function titleCase(s: string): string {
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+export interface PeriodGoalTracker {
+  intervals: ChartIntervalStat[];
+  totalUsedMinutes: number;
+  totalTargetMinutes: number;
+  isOverallOver: boolean;
+  diffMinutes: number;
+  daysExceeded: number;
+  targetPerDay: number;
 }
 
-export function computeWeekInsights(
+export interface BedrockDiagnosticResult {
+  headline: string;
+  summary: string;
+  laggingPoints: string[];
+  actionStep: string;
+}
+
+export interface PeriodInsights {
+  range: PeriodRange;
+  health: HealthStats;
+  tracker: PeriodGoalTracker;
+  topApps: { appName: string; minutes: number }[];
+}
+
+export function computePeriodInsights(
   entries: AppUsageEntry[],
   sessions: FocusSession[],
-  targetMin: number,
-): WeekInsights {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  goals: Goal[],
+  dailyTargetMin: number,
+  range: PeriodRange = "WEEK"
+): PeriodInsights {
+  const now = new Date();
+  const nowMs = now.getTime();
 
-  const days: DayStat[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const label = d.toLocaleDateString("en", { weekday: "short" });
-    days.push({ key: localDayKey(d), label, initial: label.charAt(0), minutes: 0, focusMinutes: 0, isToday: i === 0 });
-  }
-  const dayIndex = new Map(days.map((d, i) => [d.key, i]));
+  let daysCount = 7;
+  if (range === "MONTH") daysCount = 30;
+  if (range === "YEAR") daysCount = 365;
 
-  const prevKeys = new Set<string>();
-  for (let i = 7; i <= 13; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    prevKeys.add(localDayKey(d));
-  }
+  const rangeStartMs = nowMs - daysCount * 86_400_000;
 
-  // ── Screen time ──
-  const catMap = new Map<string, number>();
-  const appMap = new Map<string, number>();
-  let prevTotal = 0;
-  for (const e of entries) {
-    const key = localDayKey(new Date(e.loggedAt));
-    const mins = Number(e.durationMinutes) || 0;
-    const i = dayIndex.get(key);
-    if (i !== undefined) {
-      days[i].minutes += mins;
-      const cat = titleCase((e.category ?? "").trim().toLowerCase()) || "Other";
-      catMap.set(cat, (catMap.get(cat) ?? 0) + mins);
-      appMap.set(e.appName, (appMap.get(e.appName) ?? 0) + mins);
-    } else if (prevKeys.has(key)) {
-      prevTotal += mins;
-    }
-  }
-
-  // ── Focus sessions ──
+  // ── 1. Focus Sessions in Range ──
   let focusCompleted = 0;
-  let focusStopped = 0;
+  let focusForfeited = 0;
+  let focusTotalMinutes = 0;
+
   for (const s of sessions) {
-    if (s.status === "running" || s.status === "paused") continue;
-    const start = new Date(s.startedAt);
-    const i = dayIndex.get(localDayKey(start));
-    if (i === undefined) continue;
-    const planned = Number(s.plannedDurationMinutes) || 0;
-    let mins = 0;
-    if (s.status === "completed") {
-      mins = planned;
-      focusCompleted++;
-    } else {
-      focusStopped++;
-      if (s.endedAt) mins = Math.min(planned, Math.max(0, Math.round((new Date(s.endedAt).getTime() - start.getTime()) / 60000)));
+    const started = new Date(s.startedAt).getTime();
+    if (started >= rangeStartMs) {
+      if (s.status === "completed") {
+        focusCompleted++;
+        focusTotalMinutes += s.plannedDurationMinutes;
+      } else if (s.status === "stopped") {
+        focusForfeited++;
+        if (s.endedAt) {
+          const ran = (new Date(s.endedAt).getTime() - started) / 60_000;
+          focusTotalMinutes += Math.max(0, Math.round(ran));
+        }
+      }
     }
-    days[i].focusMinutes += mins;
   }
 
-  const totalMinutes = days.reduce((s, d) => s + d.minutes, 0);
-  const focusMinutes = days.reduce((s, d) => s + d.focusMinutes, 0);
-  const activeDays = days.filter((d) => d.minutes > 0).length;
-  const daysOver = days.filter((d) => d.minutes > targetMin).length;
-  const avgDaily = activeDays > 0 ? totalMinutes / activeDays : 0;
-  const weekDeltaPct = prevTotal > 0 ? Math.round(((totalMinutes - prevTotal) / prevTotal) * 100) : null;
-  const ended = focusCompleted + focusStopped;
-  const completionRate = ended > 0 ? focusCompleted / ended : null;
-  const screenPerFocus = focusMinutes > 0 ? totalMinutes / focusMinutes : null;
+  const totalFocusSessions = focusCompleted + focusForfeited;
+  const focusCompletionRate =
+    totalFocusSessions > 0 ? Math.round((focusCompleted / totalFocusSessions) * 100) : 100;
 
-  const categories: CategoryStat[] = [...catMap.entries()]
+  // ── 2. Goals in Range ──
+  let goalsCompleted = 0;
+  let goalsMissed = 0;
+  let goalsForfeited = 0;
+
+  for (const g of goals) {
+    const created = new Date(g.createdAt).getTime();
+    if (created >= rangeStartMs) {
+      if (g.status === "done") {
+        goalsCompleted++;
+      } else {
+        const [hh, mm] = (g.startTime || "00:00").split(":").map(Number);
+        const dateStr = g.scheduledDate || now.toISOString().slice(0, 10);
+        const [y, m, d] = dateStr.split("-").map(Number);
+        const endMs =
+          new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime() +
+          (g.durationMinutes || 30) * 60_000;
+
+        if (endMs < nowMs) {
+          goalsMissed++;
+        } else {
+          goalsForfeited++;
+        }
+      }
+    }
+  }
+
+  const totalGoals = goalsCompleted + goalsMissed + goalsForfeited;
+  const goalSuccessRate =
+    totalGoals > 0 ? Math.round((goalsCompleted / totalGoals) * 100) : 100;
+
+  // ── 3. Screen Time & Intervals ──
+  const entriesInRange = entries.filter(
+    (e) => new Date(e.loggedAt).getTime() >= rangeStartMs
+  );
+
+  let intervals: ChartIntervalStat[] = [];
+  let totalTargetMinutes = 0;
+
+  if (range === "WEEK") {
+    // 7 days
+    totalTargetMinutes = dailyTargetMin * 7;
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = localDayKey(d);
+      const label = d.toLocaleDateString("en", { weekday: "short" });
+
+      const dayMinutes = entriesInRange
+        .filter((e) => localDayKey(new Date(e.loggedAt)) === key)
+        .reduce((sum, e) => sum + e.durationMinutes, 0);
+
+      const isOver = dayMinutes > dailyTargetMin;
+      intervals.push({
+        key,
+        label,
+        minutes: dayMinutes,
+        targetMinutes: dailyTargetMin,
+        isOver,
+        overMinutes: isOver ? dayMinutes - dailyTargetMin : 0,
+        isCurrent: i === 0,
+      });
+    }
+  } else if (range === "MONTH") {
+    // 4 Weeks
+    totalTargetMinutes = dailyTargetMin * 30;
+    const weekTarget = dailyTargetMin * 7;
+    for (let w = 3; w >= 0; w--) {
+      const endOffset = w * 7;
+      const startOffset = endOffset + 7;
+      const wStartMs = nowMs - startOffset * 86_400_000;
+      const wEndMs = nowMs - endOffset * 86_400_000;
+
+      const wMinutes = entriesInRange
+        .filter((e) => {
+          const t = new Date(e.loggedAt).getTime();
+          return t >= wStartMs && t < wEndMs;
+        })
+        .reduce((sum, e) => sum + e.durationMinutes, 0);
+
+      const isOver = wMinutes > weekTarget;
+      intervals.push({
+        key: `week-${4 - w}`,
+        label: `Wk ${4 - w}`,
+        minutes: wMinutes,
+        targetMinutes: weekTarget,
+        isOver,
+        overMinutes: isOver ? wMinutes - weekTarget : 0,
+        isCurrent: w === 0,
+      });
+    }
+  } else {
+    // YEAR: 12 months
+    totalTargetMinutes = dailyTargetMin * 365;
+    const monthTarget = dailyTargetMin * 30;
+    const curMonth = now.getMonth();
+    const curYear = now.getFullYear();
+
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(curYear, curMonth - i, 1);
+      const mIdx = d.getMonth();
+      const yVal = d.getFullYear();
+      const label = d.toLocaleDateString("en", { month: "short" });
+
+      const mMinutes = entriesInRange
+        .filter((e) => {
+          const ed = new Date(e.loggedAt);
+          return ed.getFullYear() === yVal && ed.getMonth() === mIdx;
+        })
+        .reduce((sum, e) => sum + e.durationMinutes, 0);
+
+      const isOver = mMinutes > monthTarget;
+      intervals.push({
+        key: `${yVal}-${mIdx}`,
+        label,
+        minutes: mMinutes,
+        targetMinutes: monthTarget,
+        isOver,
+        overMinutes: isOver ? mMinutes - monthTarget : 0,
+        isCurrent: i === 0,
+      });
+    }
+  }
+
+  const totalUsedMinutes = intervals.reduce((s, it) => s + it.minutes, 0);
+  const daysExceeded = intervals.filter((it) => it.isOver).length;
+  const isOverallOver = totalUsedMinutes > totalTargetMinutes;
+  const diffMinutes = Math.abs(totalUsedMinutes - totalTargetMinutes);
+
+  // ── 4. Focus Score (0-100) ──
+  const sessionWeight = (focusCompletionRate / 100) * 45;
+  const goalWeight = (goalSuccessRate / 100) * 35;
+  const targetAdherenceWeight = isOverallOver
+    ? Math.max(0, 20 - (diffMinutes / Math.max(1, totalTargetMinutes)) * 20)
+    : 20;
+
+  const score = Math.min(
+    100,
+    Math.max(15, Math.round(sessionWeight + goalWeight + targetAdherenceWeight))
+  );
+
+  const scoreLabel: HealthStats["scoreLabel"] =
+    score >= 80 ? "EXCELLENT" : score >= 65 ? "HEALTHY" : score >= 50 ? "NEEDS WORK" : "SLIPPING";
+
+  // ── 5. Top Apps ──
+  const appMap = new Map<string, number>();
+  for (const e of entriesInRange) {
+    appMap.set(e.appName, (appMap.get(e.appName) ?? 0) + e.durationMinutes);
+  }
+  const topApps = [...appMap.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([name, minutes], i) => ({
-      name,
-      minutes,
-      share: totalMinutes > 0 ? minutes / totalMinutes : 0,
-      color: CATEGORY_COLORS[Math.min(i, CATEGORY_COLORS.length - 1)],
-    }));
-  const topApps = [...appMap.entries()].sort((a, b) => b[1] - a[1]);
-
-  const hasData = totalMinutes > 0 || ended > 0;
-
-  // ── Focus score (0-100) ──
-  let screenPts = 0;
-  if (activeDays > 0) {
-    const ratio = avgDaily / Math.max(1, targetMin);
-    screenPts = ratio <= 1 ? 50 : Math.max(0, 50 * (2 - ratio));
-  }
-  const focusPts = Math.min(1, focusMinutes / 140) * 30;
-  const consistencyPts = activeDays > 0 ? ((activeDays - daysOver) / activeDays) * 20 : 0;
-  const score = hasData ? Math.round(screenPts + focusPts + consistencyPts) : 0;
-  const scoreLabel = !hasData ? "NO DATA YET" : score >= 75 ? "STRONG" : score >= 50 ? "ON TRACK" : score >= 30 ? "NEEDS WORK" : "SLIPPING";
-
-  // ── Insights ──
-  const insights: Insight[] = [];
-  if (activeDays > 0 && avgDaily > targetMin) {
-    insights.push({
-      id: "over-target",
-      severity: avgDaily > targetMin * 1.3 ? "high" : "medium",
-      icon: "schedule",
-      title: "Over your daily target",
-      detail: `You average ${fmtMin(avgDaily)} a day, ${fmtMin(avgDaily - targetMin)} above your ${fmtMin(targetMin)} target.`,
-    });
-  }
-  if (weekDeltaPct !== null && weekDeltaPct >= 15) {
-    insights.push({
-      id: "week-up",
-      severity: weekDeltaPct >= 35 ? "high" : "medium",
-      icon: "trending-up",
-      title: `Screen time is up ${weekDeltaPct}%`,
-      detail: `${fmtMin(totalMinutes)} this week vs ${fmtMin(prevTotal)} the week before.`,
-    });
-  } else if (weekDeltaPct !== null && weekDeltaPct <= -10) {
-    insights.push({
-      id: "week-down",
-      severity: "good",
-      icon: "trending-down",
-      title: `Screen time is down ${Math.abs(weekDeltaPct)}%`,
-      detail: `${fmtMin(totalMinutes)} this week vs ${fmtMin(prevTotal)} the week before. Keep it up!`,
-    });
-  }
-  const topCat = categories[0];
-  if (topCat && topCat.name !== "Other" && topCat.share >= 0.45 && categories.length > 1) {
-    insights.push({
-      id: "category",
-      severity: "medium",
-      icon: "pie-chart",
-      title: `${topCat.name} apps dominate`,
-      detail: `${Math.round(topCat.share * 100)}% of your week (${fmtMin(topCat.minutes)}) goes to ${topCat.name.toLowerCase()} apps.`,
-    });
-  }
-  if (topApps[0] && totalMinutes > 0 && topApps[0][1] / totalMinutes >= 0.3) {
-    insights.push({
-      id: "top-app",
-      severity: "medium",
-      icon: "smartphone",
-      title: `${topApps[0][0]} is your biggest time sink`,
-      detail: `${Math.round((topApps[0][1] / totalMinutes) * 100)}% of your screen time, ${fmtMin(topApps[0][1])} this week.`,
-    });
-  }
-  if (hasData && focusMinutes < 60) {
-    insights.push({
-      id: "low-focus",
-      severity: focusMinutes === 0 ? "high" : "medium",
-      icon: "center-focus-strong",
-      title: "Not enough focus time",
-      detail:
-        focusMinutes === 0
-          ? "No focus sessions this week. Even one 25-minute session a day builds the habit."
-          : `Only ${fmtMin(focusMinutes)} focused this week. Aim for about 20 minutes a day.`,
-    });
-  }
-  if (completionRate !== null && ended >= 2 && completionRate < 0.6) {
-    insights.push({
-      id: "early-stop",
-      severity: "medium",
-      icon: "pause-circle-filled",
-      title: "You end sessions early",
-      detail: `${focusStopped} of ${ended} focus sessions were stopped before the timer finished.`,
-    });
-  }
-  const heaviest = days.reduce((best, d) => (d.minutes > best.minutes ? d : best), days[0]);
-  if (activeDays >= 3 && heaviest.minutes > targetMin * 1.2) {
-    insights.push({
-      id: "heavy-day",
-      severity: "medium",
-      icon: "event",
-      title: `${heaviest.label} was your heaviest day`,
-      detail: `${fmtMin(heaviest.minutes)} on screen, ${fmtMin(heaviest.minutes - targetMin)} over target.`,
-    });
-  }
-  if (activeDays >= 3 && daysOver === 0) {
-    insights.push({
-      id: "on-target",
-      severity: "good",
-      icon: "check-circle",
-      title: "On target all week",
-      detail: `Every tracked day stayed under ${fmtMin(targetMin)}. Nice discipline.`,
-    });
-  }
-  if (focusMinutes >= 140) {
-    insights.push({
-      id: "good-focus",
-      severity: "good",
-      icon: "emoji-events",
-      title: "Strong focus habit",
-      detail: `${fmtMin(focusMinutes)} of focused time this week.`,
-    });
-  }
-  insights.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+    .slice(0, 5)
+    .map(([appName, minutes]) => ({ appName, minutes }));
 
   return {
-    hasData,
-    days,
-    targetMin,
-    totalMinutes,
-    prevTotalMinutes: prevTotal,
-    weekDeltaPct,
-    avgDaily,
-    activeDays,
-    daysOver,
-    categories,
-    focusMinutes,
-    focusCompleted,
-    focusStopped,
-    completionRate,
-    screenPerFocus,
-    score,
-    scoreLabel,
-    scoreParts: [
-      { label: "Screen time", value: Math.round(screenPts), max: 50 },
-      { label: "Focus habit", value: Math.round(focusPts), max: 30 },
-      { label: "Consistency", value: Math.round(consistencyPts), max: 20 },
-    ],
-    insights: insights.slice(0, 5),
+    range,
+    health: {
+      score,
+      scoreLabel,
+      focusCompleted,
+      focusForfeited,
+      focusTotalMinutes,
+      focusCompletionRate,
+      goalsCompleted,
+      goalsMissed,
+      goalsForfeited,
+      goalSuccessRate,
+    },
+    tracker: {
+      intervals,
+      totalUsedMinutes,
+      totalTargetMinutes,
+      isOverallOver,
+      diffMinutes,
+      daysExceeded,
+      targetPerDay: dailyTargetMin,
+    },
+    topApps,
   };
 }
 
-/** The user's daily screen-time goal, saved on the device. */
 export function useTargetMinutes(): [number, (v: number) => void] {
   const [target, setTarget] = useState(DEFAULT_TARGET_MIN);
 
@@ -334,4 +321,3 @@ export function useTargetMinutes(): [number, (v: number) => void] {
 
   return [target, update];
 }
-

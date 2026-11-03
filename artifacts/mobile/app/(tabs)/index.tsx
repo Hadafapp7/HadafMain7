@@ -1,3 +1,5 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import AiCoachWidget from "@/components/AiCoachWidget";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -706,6 +708,16 @@ function OvalCard({ bg, iconColor, icon, label1, label2, badgeText, badgeBg, onP
 }
 
 // ── Home screen ───────────────────────────────────────────────────────────────
+interface MergedAppUsage {
+  appName: string;
+  packageName: string;
+  category?: string | null;
+  dailyMinutes: number;
+  totalMinutes: number;
+}
+let memoryMostUsedCache: MergedAppUsage[] = [];
+const MOST_USED_CACHE_KEY = "hadaf_most_used_apps_v3";
+
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -723,7 +735,21 @@ export default function HomeScreen() {
     dailyMinutes: number;
     totalMinutes: number;
   }
-  const [deviceUsage,    setDeviceUsage]    = useState<MergedAppUsage[]>([]);
+  const [deviceUsage, setDeviceUsage] = useState<MergedAppUsage[]>(memoryMostUsedCache);
+
+  useEffect(() => {
+    AsyncStorage.getItem(MOST_USED_CACHE_KEY).then((raw) => {
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            memoryMostUsedCache = parsed;
+            setDeviceUsage(parsed);
+          }
+        } catch {}
+      }
+    });
+  }, []);
   const [nativePermGranted, setNativePermGranted] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
 
@@ -782,7 +808,9 @@ export default function HomeScreen() {
     setNativePermGranted(perm);
 
     if (perm) {
-      setLoadingStats(true);
+      if (memoryMostUsedCache.length === 0) {
+        setLoadingStats(true);
+      }
       console.log("[Home] checkAndLoadStats: Loading native usage stats (daily & weekly)...");
       try {
         const daily = await getDeviceUsageStats(1);
@@ -801,6 +829,8 @@ export default function HomeScreen() {
         });
 
         setDeviceUsage(combined);
+        memoryMostUsedCache = combined;
+        AsyncStorage.setItem(MOST_USED_CACHE_KEY, JSON.stringify(combined)).catch(() => {});
 
         // Auto-sync stats with backend database
         if (combined.length > 0) {
@@ -1028,13 +1058,16 @@ export default function HomeScreen() {
           style={styles.headerRow}
         >
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Good {timeOfDay}, {firstName} 👋</Text>
+            <Text style={styles.greetingSmall}>Good {timeOfDay}, {firstName} 👋</Text>
             <Text style={styles.focusStatus}>FOCUS MODE: OFF</Text>
           </View>
           <TouchableOpacity style={styles.avatar} activeOpacity={0.8}>
             <MaterialIcons name="person" size={28} color="#fff" />
           </TouchableOpacity>
         </Animated.View>
+
+        {/* ── AI Coach Reality Check & Motivation Widget ── */}
+        <AiCoachWidget firstName={firstName} />
 
         {/* ── Two stat cards ── */}
         <Animated.View
@@ -1297,6 +1330,7 @@ const styles = StyleSheet.create({
   headerRow:   { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   headerLeft:  { flex: 1, gap: 4 },
   greeting:    { fontSize: 26, fontFamily: "Inter_700Bold", color: "#111", letterSpacing: -0.3 },
+  greetingSmall: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#555", letterSpacing: -0.2 },
   focusStatus: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#888", letterSpacing: 1.5 },
   avatar:      { width: 50, height: 50, borderRadius: 25, backgroundColor: "#333", alignItems: "center", justifyContent: "center" },
 

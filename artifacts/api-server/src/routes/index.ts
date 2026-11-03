@@ -12,6 +12,8 @@ import authRouter from "./auth.js";
 import notificationsRouter from "./notifications.js";
 import subscriptionRouter from "./subscription.js";
 import adminRouter from "./admin.js";
+import analyticsRouter from "./analytics.js";
+import coachRouter from "./coach.js";
 
 const router: IRouter = Router();
 
@@ -28,5 +30,7 @@ router.use(authRouter);
 router.use(notificationsRouter);
 router.use(subscriptionRouter);
 router.use(adminRouter);
+router.use(analyticsRouter);
+router.use(coachRouter);
 
 export default router;
