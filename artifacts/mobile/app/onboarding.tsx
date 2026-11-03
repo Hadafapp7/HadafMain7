@@ -33,7 +33,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
 
 import BrandLogo from "@/components/BrandLogo";
-import ServerConfigModal from "@/components/ServerConfigModal";
 import { useOnboarding } from "@/lib/onboarding";
 
 const INK = "#0a0a0a";
@@ -382,7 +381,6 @@ export default function OnboardingScreen() {
   const scrollX = useSharedValue(0);
   const [index, setIndex] = useState(0);
   const last = index === SLIDES.length - 1;
-  const [showServerModal, setShowServerModal] = useState(false);
 
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
@@ -425,26 +423,15 @@ export default function OnboardingScreen() {
           <BrandLogo size={34} />
           <Text style={styles.brandText}>Hadaf</Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <TouchableOpacity
-            onPress={() => setShowServerModal(true)}
-            hitSlop={8}
-            activeOpacity={0.7}
-            style={styles.serverPill}
-          >
-            <MaterialIcons name="dns" size={13} color={MUTED} />
-            <Text style={styles.serverPillText}>Server</Text>
-          </TouchableOpacity>
-          {!last ? (
-            <Animated.View entering={FadeIn.duration(250)} exiting={FadeOut.duration(150)}>
-              <TouchableOpacity onPress={() => complete()} hitSlop={12} activeOpacity={0.7}>
-                <Text style={styles.skip}>Skip</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          ) : (
-            <View style={{ height: 20 }} />
-          )}
-        </View>
+        {!last ? (
+          <Animated.View entering={FadeIn.duration(250)} exiting={FadeOut.duration(150)}>
+            <TouchableOpacity onPress={() => complete()} hitSlop={12} activeOpacity={0.7}>
+              <Text style={styles.skip}>Skip</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        ) : (
+          <View style={{ height: 20 }} />
+        )}
       </View>
 
       <Animated.ScrollView
@@ -483,7 +470,6 @@ export default function OnboardingScreen() {
           </TouchableOpacity>
         </Animated.View>
       </View>
-      <ServerConfigModal visible={showServerModal} onClose={() => setShowServerModal(false)} />
     </View>
   );
 }

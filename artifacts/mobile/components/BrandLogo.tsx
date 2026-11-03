@@ -30,7 +30,7 @@ export default function BrandLogo({
 const styles = StyleSheet.create({
   wrap: {
     overflow: "hidden",
-    backgroundColor: "#000",
+    backgroundColor: "#ffffff",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,

@@ -209,7 +209,7 @@ function AppPickerModal({
           </TouchableOpacity>
         </View>
         <Text style={[styles.modalSub, { color: colors.outline }]}>Block distracting apps during your session</Text>
-        <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true} style={{ marginTop: 12 }} showsVerticalScrollIndicator={false}>
+        <ScrollView scrollEventThrottle={16} decelerationRate="normal"  style={{ marginTop: 12 }} showsVerticalScrollIndicator={false}>
           {ALL_APPS.map((app, i) => {
             const isBlocked = blockedApps.includes(app.name);
             return (
@@ -1356,33 +1356,9 @@ export default function FocusScreen() {
         <BlockedInterstitial appName={blockedAttempt} onDismiss={() => setBlockedAttempt(null)} />
       )}
 
-      {showFocusReturn && (
-        <Animated.View
-          entering={FadeIn.duration(300)}
-          exiting={FadeOut.duration(250)}
-          style={[styles.focusReturnOverlay, { backgroundColor: colors.background }]}
-        >
-          <View style={[styles.focusReturnIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-            <MaterialIcons name="lock" size={38} color={colors.primary} />
-          </View>
-          <Text style={[styles.focusReturnTitle, { color: colors.onSurface }]}>Session still running</Text>
-          <Text style={[styles.focusReturnTime, { color: colors.primary }]}>{formatTime(remaining)}</Text>
-          <Text style={[styles.focusReturnSub, { color: colors.outline }]}>
-            Stay focused — {blockedApps.length} app{blockedApps.length !== 1 ? "s are" : " is"} blocked until your session ends.
-          </Text>
-          <TouchableOpacity
-            style={[styles.focusReturnBtn, { backgroundColor: colors.primary }]}
-            onPress={() => setShowFocusReturn(false)}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.focusReturnBtnText}>Back to Focus</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
-
-      {/* Floating Start / active buttons */}
-      <View style={[styles.stickyBottom, { bottom: tabBarH + 16, left: 20, right: 20 }]}>
-        {sessionState === "idle" && (
+      {/* Floating Start button (when idle) */}
+      {sessionState === "idle" && (
+        <View style={[styles.stickyBottom, { bottom: tabBarH + 16, left: 20, right: 20 }]}>
           <View style={[styles.startBtn, { backgroundColor: colors.primary, height: 58, borderRadius: 29 }]}>
             <TouchableOpacity
               style={styles.startBtnInner}
@@ -1393,48 +1369,76 @@ export default function FocusScreen() {
               <Text style={styles.startBtnText}>Start {duration} Min Session</Text>
             </TouchableOpacity>
           </View>
-        )}
-        {sessionState === "running" && (
-          <View style={styles.activeActions}>
+        </View>
+      )}
+
+      {/* ── Zen Black Focus Screen (Active Session) ── */}
+      {(sessionState === "running" || sessionState === "paused") && (
+        <Animated.View
+          entering={FadeIn.duration(450)}
+          exiting={FadeOut.duration(300)}
+          style={[styles.zenBlackScreen, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 36 }]}
+        >
+          {/* Top subtle bar */}
+          <View style={styles.zenTopRow}>
+            <View style={styles.zenBadge}>
+              <View style={[styles.zenDot, { backgroundColor: sessionState === "running" ? "#22c55e" : "#f59e0b" }]} />
+              <Text style={styles.zenBadgeText}>
+                {sessionState === "running" ? "FOCUS ACTIVE" : "PAUSED"}
+              </Text>
+            </View>
+            {blockedApps.length > 0 && (
+              <View style={styles.zenLockBadge}>
+                <MaterialIcons name="lock" size={13} color="#737373" />
+                <Text style={styles.zenLockText}>{blockedApps.length} locked</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Center countdown timer and intention */}
+          <View style={styles.zenCenter}>
+            <Text style={styles.zenTimerDigits}>{formatTime(remaining)}</Text>
+            <Text style={styles.zenIntention}>
+              {intention ? intention.toUpperCase() : "DEEP WORK"}
+            </Text>
+          </View>
+
+          {/* Bottom subtle controls */}
+          <View style={styles.zenBottomActions}>
             <TouchableOpacity
-              style={[styles.actionBtnSecondary, { backgroundColor: colors.surfaceContainerHigh }]}
+              style={styles.zenEndBtn}
               onPress={handleStop}
-              activeOpacity={0.8}
+              activeOpacity={0.75}
             >
-              <MaterialIcons name="stop" size={20} color={colors.onSurface} />
-              <Text style={[styles.actionBtnSecondaryText, { color: colors.onSurface }]}>End</Text>
+              <MaterialIcons name="stop" size={20} color="#ef4444" />
+              <Text style={styles.zenEndBtnText}>End</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
-              style={[styles.actionBtnPrimary, { backgroundColor: colors.primary }]}
-              onPress={handlePause}
+              style={[
+                styles.zenToggleBtn,
+                sessionState === "running" ? styles.zenPauseBtn : styles.zenResumeBtn,
+              ]}
+              onPress={sessionState === "running" ? handlePause : handleResume}
               activeOpacity={0.85}
             >
-              <MaterialIcons name="pause" size={24} color="#fff" />
-              <Text style={styles.actionBtnPrimaryText}>Pause</Text>
+              <MaterialIcons
+                name={sessionState === "running" ? "pause" : "play-arrow"}
+                size={24}
+                color={sessionState === "running" ? "#000000" : "#ffffff"}
+              />
+              <Text
+                style={[
+                  styles.zenToggleText,
+                  sessionState === "running" ? { color: "#000000" } : { color: "#ffffff" },
+                ]}
+              >
+                {sessionState === "running" ? "Pause" : "Resume"}
+              </Text>
             </TouchableOpacity>
           </View>
-        )}
-        {sessionState === "paused" && (
-          <View style={styles.activeActions}>
-            <TouchableOpacity
-              style={[styles.actionBtnSecondary, { backgroundColor: colors.surfaceContainerHigh }]}
-              onPress={handleStop}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="stop" size={20} color={colors.onSurface} />
-              <Text style={[styles.actionBtnSecondaryText, { color: colors.onSurface }]}>End</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtnPrimary, { backgroundColor: colors.primary }]}
-              onPress={handleResume}
-              activeOpacity={0.85}
-            >
-              <MaterialIcons name="play-arrow" size={24} color="#fff" />
-              <Text style={styles.actionBtnPrimaryText}>Resume</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+        </Animated.View>
+      )}
 
       <AppPickerModal
         visible={showPicker}
@@ -1653,6 +1657,126 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  zenBlackScreen: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#000000",
+    zIndex: 9999,
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 28,
+  },
+  zenTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  zenBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: "#171717",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#262626",
+  },
+  zenDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  zenBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: "#a3a3a3",
+    letterSpacing: 1.2,
+  },
+  zenLockBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#171717",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#262626",
+  },
+  zenLockText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    color: "#737373",
+  },
+  zenCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  zenTimerDigits: {
+    fontSize: 84,
+    fontFamily: "Inter_700Bold",
+    color: "#ffffff",
+    letterSpacing: -3,
+    textAlign: "center",
+    includeFontPadding: false,
+  },
+  zenIntention: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: "#737373",
+    letterSpacing: 3,
+    marginTop: 12,
+    textAlign: "center",
+  },
+  zenBottomActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+    width: "100%",
+    maxWidth: 360,
+  },
+  zenEndBtn: {
+    flex: 0.38,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#171717",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.4)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  zenEndBtnText: {
+    color: "#ef4444",
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+  },
+  zenToggleBtn: {
+    flex: 0.62,
+    height: 56,
+    borderRadius: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  zenPauseBtn: {
+    backgroundColor: "#ffffff",
+  },
+  zenResumeBtn: {
+    backgroundColor: "#262626",
+    borderWidth: 1,
+    borderColor: "#404040",
+  },
+  zenToggleText: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
   },
   permissionBtnTextSmall: {
     color: "#fff",

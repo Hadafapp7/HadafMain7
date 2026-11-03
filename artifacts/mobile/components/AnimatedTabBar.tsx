@@ -43,9 +43,7 @@ function TabItem({
   const rippleScale   = useSharedValue(0.5);
 
   const handlePress = () => {
-    iconScale.value     = withSequence(withSpring(1.25, { damping: 8 }), withSpring(1, { damping: 10 }));
-    rippleOpacity.value = withSequence(withTiming(0.12, { duration: 0 }), withTiming(0, { duration: 450 }));
-    rippleScale.value   = withSequence(withTiming(0.5, { duration: 0 }), withSpring(2.2, { damping: 12 }));
+    iconScale.value = withSequence(withTiming(1.15, { duration: 90 }), withTiming(1, { duration: 90 }));
     onPress();
   };
 

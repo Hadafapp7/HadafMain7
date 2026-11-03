@@ -1158,7 +1158,7 @@ export default function AnalyticsScreen() {
         apps={summary}
       />
 
-      <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true}
+      <ScrollView scrollEventThrottle={16} decelerationRate="normal" 
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,

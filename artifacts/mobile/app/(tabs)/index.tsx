@@ -428,7 +428,7 @@ function SelectAppsModal({ visible, onClose, onSubmit, submitting }: {
             </View>
           </View>
 
-          <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true} style={styles.selectAppsList} showsVerticalScrollIndicator={false}>
+          <ScrollView scrollEventThrottle={16} decelerationRate="normal"  style={styles.selectAppsList} showsVerticalScrollIndicator={false}>
             {POPULAR_APPS.map((app, i) => {
               const isSel = selected.includes(app.name);
               return (
@@ -1043,7 +1043,7 @@ export default function HomeScreen() {
         enabling={updateSettings.isPending}
       />
 
-      <ScrollView scrollEventThrottle={16} decelerationRate="normal" removeClippedSubviews={true}
+      <ScrollView scrollEventThrottle={16} decelerationRate="normal" 
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,

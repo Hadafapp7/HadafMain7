@@ -164,8 +164,10 @@ class AppBlockerModule : Module() {
           PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val appIcon = ctx.applicationInfo.icon
+        val smallIcon = if (appIcon != 0) appIcon else android.R.drawable.ic_dialog_info
         val builder = NotificationCompat.Builder(ctx, channelId)
-          .setSmallIcon(android.R.drawable.ic_dialog_info)
+          .setSmallIcon(smallIcon)
           .setContentTitle(title)
           .setContentText(body)
           .setPriority(NotificationCompat.PRIORITY_LOW)
