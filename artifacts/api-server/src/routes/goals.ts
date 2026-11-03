@@ -34,7 +34,7 @@ router.get("/goals", requireAuth, async (req, res): Promise<void> => {
     .where(eq(goalsTable.userId, req.userId!))
     .orderBy(goalsTable.createdAt);
 
-  res.json(ListGoalsResponse.parse(goals));
+  res.json(goals);
 });
 
 router.post("/goals", requireAuth, async (req, res): Promise<void> => {
@@ -95,7 +95,7 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     await updateStreak(req.userId!);
   }
 
-  res.json(UpdateGoalResponse.parse(goal));
+  res.json(goal);
 });
 
 router.delete("/goals/:id", requireAuth, async (req, res): Promise<void> => {
