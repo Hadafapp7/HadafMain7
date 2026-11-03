@@ -14,7 +14,7 @@
  *     - Adds the DeviceActivityMonitor + ShieldConfiguration app extensions
  *     - Configures the App Group (group.com.hadaf.mobile) for shared UserDefaults
  */
-const { withAndroidManifest, withEntitlementsPlist, withInfoPlist } = require("@expo/config-plugins");
+const { withAndroidManifest, withEntitlementsPlist, withInfoPlist } = require("expo/config-plugins");
 
 // ── Android ────────────────────────────────────────────────────────────────
 
