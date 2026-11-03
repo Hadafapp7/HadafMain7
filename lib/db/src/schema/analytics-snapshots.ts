@@ -26,3 +26,4 @@ export const insertAnalyticsSnapshotSchema = createInsertSchema(analyticsSnapsho
 export const selectAnalyticsSnapshotSchema = createSelectSchema(analyticsSnapshotsTable);
 export type AnalyticsSnapshot = typeof analyticsSnapshotsTable.$inferSelect;
 export type NewAnalyticsSnapshot = typeof analyticsSnapshotsTable.$inferInsert;
+

@@ -165,18 +165,33 @@ router.post("/analytics/diagnostic", requireAuth, async (req, res): Promise<void
     // ── 4. Health / Focus Score Calculation ──
     // Score out of 100 based on session completion, goal completion, and screen target adherence
     const totalSessions = focusCompleted + focusForfeited;
-    const sessionRate = totalSessions > 0 ? focusCompleted / totalSessions : 0.6;
     const totalGoals = goalsCompleted + goalsMissed + goalsForfeited;
-    const goalRate = totalGoals > 0 ? goalsCompleted / totalGoals : 0.6;
-    const targetAdherenceRate = Math.max(0, 1 - daysOverTarget / Math.max(1, days));
 
-    const focusScore = Math.min(
-      100,
-      Math.max(
-        15,
-        Math.round(sessionRate * 40 + goalRate * 35 + targetAdherenceRate * 25)
-      )
-    );
+    let focusScore = 50;
+    if (totalSessions === 0 && totalGoals === 0) {
+      focusScore = 50; // Neutral baseline for new accounts
+    } else {
+      const sessionRate = totalSessions > 0 ? focusCompleted / totalSessions : 0.5;
+      const goalRate = totalGoals > 0 ? goalsCompleted / totalGoals : 0.5;
+      const targetAdherenceRate = Math.max(0, 1 - daysOverTarget / Math.max(1, days));
+
+      if (totalSessions > 0 && totalGoals > 0) {
+        focusScore = Math.min(
+          100,
+          Math.max(15, Math.round(sessionRate * 45 + goalRate * 35 + targetAdherenceRate * 20))
+        );
+      } else if (totalSessions > 0) {
+        focusScore = Math.min(
+          100,
+          Math.max(15, Math.round(sessionRate * 75 + targetAdherenceRate * 25))
+        );
+      } else {
+        focusScore = Math.min(
+          100,
+          Math.max(15, Math.round(goalRate * 75 + targetAdherenceRate * 25))
+        );
+      }
+    }
 
     // ── 5. LLM Prompt Formulation for Bedrock ──
     const facts = [
@@ -344,3 +359,4 @@ router.get("/analytics/snapshots", requireAuth, async (req, res): Promise<void> 
 });
 
 export default router;
+

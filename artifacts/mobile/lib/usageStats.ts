@@ -44,7 +44,7 @@ export interface ChartIntervalStat {
 
 export interface HealthStats {
   score: number;
-  scoreLabel: "EXCELLENT" | "HEALTHY" | "NEEDS WORK" | "SLIPPING";
+  scoreLabel: "EXCELLENT" | "HEALTHY" | "NEEDS WORK" | "SLIPPING" | "NEUTRAL";
   focusCompleted: number;
   focusForfeited: number;
   focusTotalMinutes: number;
@@ -118,7 +118,7 @@ export function computePeriodInsights(
 
   const totalFocusSessions = focusCompleted + focusForfeited;
   const focusCompletionRate =
-    totalFocusSessions > 0 ? Math.round((focusCompleted / totalFocusSessions) * 100) : 100;
+    totalFocusSessions > 0 ? Math.round((focusCompleted / totalFocusSessions) * 100) : 0;
 
   // ── 2. Goals in Range ──
   let goalsCompleted = 0;
@@ -149,7 +149,7 @@ export function computePeriodInsights(
 
   const totalGoals = goalsCompleted + goalsMissed + goalsForfeited;
   const goalSuccessRate =
-    totalGoals > 0 ? Math.round((goalsCompleted / totalGoals) * 100) : 100;
+    totalGoals > 0 ? Math.round((goalsCompleted / totalGoals) * 100) : 0;
 
   // ── 3. Screen Time & Intervals ──
   const entriesInRange = entries.filter(
@@ -250,19 +250,42 @@ export function computePeriodInsights(
   const diffMinutes = Math.abs(totalUsedMinutes - totalTargetMinutes);
 
   // ── 4. Focus Score (0-100) ──
-  const sessionWeight = (focusCompletionRate / 100) * 45;
-  const goalWeight = (goalSuccessRate / 100) * 35;
-  const targetAdherenceWeight = isOverallOver
-    ? Math.max(0, 20 - (diffMinutes / Math.max(1, totalTargetMinutes)) * 20)
-    : 20;
+  const isNewUser = totalFocusSessions === 0 && totalGoals === 0;
 
-  const score = Math.min(
-    100,
-    Math.max(15, Math.round(sessionWeight + goalWeight + targetAdherenceWeight))
-  );
+  let score: number;
+  let scoreLabel: HealthStats["scoreLabel"];
 
-  const scoreLabel: HealthStats["scoreLabel"] =
-    score >= 80 ? "EXCELLENT" : score >= 65 ? "HEALTHY" : score >= 50 ? "NEEDS WORK" : "SLIPPING";
+  if (isNewUser) {
+    // New user with no sessions and no goals: default to neutral
+    score = 50;
+    scoreLabel = "NEUTRAL";
+  } else {
+    let sessionWeight = 0;
+    let goalWeight = 0;
+    let adherenceWeight = 0;
+
+    if (totalFocusSessions > 0 && totalGoals > 0) {
+      sessionWeight = (focusCompletionRate / 100) * 45;
+      goalWeight = (goalSuccessRate / 100) * 35;
+      adherenceWeight = isOverallOver
+        ? Math.max(0, 20 - (diffMinutes / Math.max(1, totalTargetMinutes)) * 20)
+        : 20;
+    } else if (totalFocusSessions > 0) {
+      sessionWeight = (focusCompletionRate / 100) * 75;
+      adherenceWeight = isOverallOver
+        ? Math.max(0, 25 - (diffMinutes / Math.max(1, totalTargetMinutes)) * 25)
+        : 25;
+    } else {
+      goalWeight = (goalSuccessRate / 100) * 75;
+      adherenceWeight = isOverallOver
+        ? Math.max(0, 25 - (diffMinutes / Math.max(1, totalTargetMinutes)) * 25)
+        : 25;
+    }
+
+    score = Math.min(100, Math.max(10, Math.round(sessionWeight + goalWeight + adherenceWeight)));
+    scoreLabel =
+      score >= 80 ? "EXCELLENT" : score >= 65 ? "HEALTHY" : score >= 50 ? "NEEDS WORK" : "SLIPPING";
+  }
 
   // ── 5. Top Apps ──
   const appMap = new Map<string, number>();

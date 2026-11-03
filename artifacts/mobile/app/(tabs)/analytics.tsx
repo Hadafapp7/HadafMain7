@@ -385,7 +385,15 @@ function HealthIndexBlock({
   const colors = useColors();
 
   const toneColor =
-    health.score >= 80 ? "#10b981" : health.score >= 65 ? "#3b82f6" : health.score >= 50 ? "#f59e0b" : "#ef4444";
+    health.scoreLabel === "NEUTRAL"
+      ? "#64748b"
+      : health.score >= 80
+      ? "#10b981"
+      : health.score >= 65
+      ? "#3b82f6"
+      : health.score >= 50
+      ? "#f59e0b"
+      : "#ef4444";
 
   return (
     <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
@@ -413,7 +421,9 @@ function HealthIndexBlock({
             <Text style={[styles.healthMetricTitle, { color: colors.onSurface }]}>FOCUS SESSIONS</Text>
           </View>
           <Text style={[styles.healthMetricRate, { color: toneColor }]}>
-            {health.focusCompletionRate}% completed
+            {health.focusCompleted + health.focusForfeited > 0
+              ? `${health.focusCompletionRate}% completed`
+              : "No sessions yet"}
           </Text>
         </View>
 
@@ -464,7 +474,9 @@ function HealthIndexBlock({
             <Text style={[styles.healthMetricTitle, { color: colors.onSurface }]}>GOALS PROGRESS</Text>
           </View>
           <Text style={[styles.healthMetricRate, { color: toneColor }]}>
-            {health.goalSuccessRate}% achieved
+            {health.goalsCompleted + health.goalsMissed + health.goalsForfeited > 0
+              ? `${health.goalSuccessRate}% achieved`
+              : "No goals yet"}
           </Text>
         </View>
 
