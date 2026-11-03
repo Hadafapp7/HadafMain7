@@ -45,9 +45,9 @@ const PRO_EXTRAS: { icon: IconName; label: string }[] = [
 ];
 
 const STAGES: { icon: IconName; title: string; body: string; plan: "trial" | "limited" | "pro" }[] = [
-  { icon: "card-giftcard", title: "Free trial", body: `Days 1-${TRIAL_DAYS} · everything unlocked`, plan: "trial" },
-  { icon: "lock", title: "Free plan", body: "After the trial · limited features", plan: "limited" },
-  { icon: "bolt", title: "Hadaf Pro", body: "Anytime · everything, unlimited", plan: "pro" },
+  { icon: "card-giftcard", title: "Free Trial", body: `Days 1-${TRIAL_DAYS} · everything unlocked`, plan: "trial" },
+  { icon: "lock", title: "Free Plan", body: "After 5-day trial · limited features", plan: "limited" },
+  { icon: "bolt", title: "Hadaf Pro", body: "Anytime · unlimited focus, goals & insights", plan: "pro" },
 ];
 
 function formatMoney(value: number, currency: string | null): string {
@@ -161,6 +161,17 @@ export default function SubscriptionScreen() {
       ? Math.round((1 - annual.amount / (monthly.amount * 12)) * 100)
       : null;
   const annualPerMonth = annual?.amount ? formatMoney(annual.amount / 12, annual.currency) : null;
+
+  // Determine highlighted plan in "HOW IT WORKS":
+  // New user / just logged in / trial period -> "trial"
+  // After 5 days (limited) -> "limited"
+  // Pro subscriber -> "pro"
+  const highlightedPlan: "trial" | "limited" | "pro" =
+    sub.isPro || sub.plan === "pro"
+      ? "pro"
+      : sub.isLimited || sub.plan === "limited"
+        ? "limited"
+        : "trial";
 
   const planName = sub.plan === "pro" ? "Hadaf Pro" : sub.plan === "limited" ? "Free plan" : "Free trial";
   const planBody =
@@ -279,25 +290,41 @@ export default function SubscriptionScreen() {
           <Text style={styles.sectionLabel}>HOW IT WORKS</Text>
           <View style={styles.card}>
             {STAGES.map((s, i) => {
-              const current = sub.plan === s.plan;
+              const current = highlightedPlan === s.plan;
               return (
-                <View key={s.title} style={styles.stageRow}>
+                <View
+                  key={s.title}
+                  style={[
+                    styles.stageRow,
+                    current && styles.stageRowActive,
+                  ]}
+                >
                   <View style={styles.stageRail}>
-                    <View style={[styles.stageIcon, current && { backgroundColor: INK }]}>
-                      <MaterialIcons name={s.icon} size={18} color={current ? "#fff" : "#52525b"} />
+                    <View style={[styles.stageIcon, current && styles.stageIconActive]}>
+                      <MaterialIcons name={s.icon} size={18} color={current ? "#fff" : "#71717a"} />
                     </View>
-                    {i < STAGES.length - 1 ? <View style={styles.stageLine} /> : null}
+                    {i < STAGES.length - 1 ? (
+                      <View style={[styles.stageLine, current && styles.stageLineActive]} />
+                    ) : null}
                   </View>
-                  <View style={{ flex: 1, paddingBottom: i < STAGES.length - 1 ? 18 : 0 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <Text style={styles.stageTitle}>{s.title}</Text>
-                      {current ? (
-                        <View style={styles.nowPill}>
-                          <Text style={styles.nowPillText}>YOU ARE HERE</Text>
+                  <View style={{ flex: 1, paddingBottom: i < STAGES.length - 1 ? 14 : 0 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <Text style={[styles.stageTitle, current && styles.stageTitleActive]}>{s.title}</Text>
+                      {current && (
+                        <View style={[styles.nowPill, s.plan === "limited" && styles.nowPillLimited]}>
+                          <View
+                            style={[
+                              styles.nowDot,
+                              s.plan === "limited" ? { backgroundColor: "#f59e0b" } : { backgroundColor: "#22c55e" },
+                            ]}
+                          />
+                          <Text style={styles.nowPillText}>
+                            {s.plan === "trial" ? "CURRENT · FREE TRIAL" : s.plan === "limited" ? "CURRENT · FREE PLAN" : "CURRENT · PRO"}
+                          </Text>
                         </View>
-                      ) : null}
+                      )}
                     </View>
-                    <Text style={styles.stageBody}>{s.body}</Text>
+                    <Text style={[styles.stageBody, current && styles.stageBodyActive]}>{s.body}</Text>
                   </View>
                 </View>
               );
@@ -436,14 +463,57 @@ const styles = StyleSheet.create({
   planCaption: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#71717a", lineHeight: 17 },
   finePrint: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#888", textAlign: "center" },
 
-  stageRow: { flexDirection: "row", gap: 14 },
+  stageRow: {
+    flexDirection: "row",
+    gap: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    opacity: 0.55,
+  },
+  stageRowActive: {
+    backgroundColor: "#f4f4f5",
+    borderColor: INK,
+    opacity: 1,
+  },
   stageRail: { alignItems: "center" },
-  stageIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#f1f1f3", alignItems: "center", justifyContent: "center" },
+  stageIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#e4e4e7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stageIconActive: {
+    backgroundColor: INK,
+  },
   stageLine: { flex: 1, width: 2, backgroundColor: "#e4e4e7", marginVertical: 4 },
-  stageTitle: { fontSize: 15, fontFamily: "Inter_700Bold", color: INK },
-  stageBody: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#71717a", marginTop: 2 },
-  nowPill: { backgroundColor: "#e8f7ee", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  nowPillText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#15803d", letterSpacing: 0.8 },
+  stageLineActive: { backgroundColor: INK },
+  stageTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#71717a" },
+  stageTitleActive: { fontSize: 15, fontFamily: "Inter_700Bold", color: INK },
+  stageBody: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#a1a1aa", marginTop: 2, lineHeight: 18 },
+  stageBodyActive: { fontSize: 13, fontFamily: "Inter_500Medium", color: "#3f3f46", marginTop: 2, lineHeight: 18 },
+  nowPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: INK,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  nowPillLimited: {
+    backgroundColor: "#27272a",
+  },
+  nowDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  nowPillText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#ffffff", letterSpacing: 0.7 },
 
   tableHead: { flexDirection: "row", alignItems: "center", paddingBottom: 12 },
   colHead: { textAlign: "center", fontSize: 11, fontFamily: "Inter_700Bold", color: "#71717a", letterSpacing: 1.6 },

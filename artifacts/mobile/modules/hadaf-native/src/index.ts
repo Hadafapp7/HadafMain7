@@ -216,12 +216,23 @@ export const KNOWN_APPS: Record<string, { name: string; category: string }> = {
   "com.spotify.client":             { name: "Spotify",    category: "Entertainment"  },
 };
 
-export function showNativeNotification(title: string, body: string, sticky: boolean, durationMinutes: number): void {
+export function showNativeNotification(title: string, body: string, sticky: boolean, secondsRemaining: number): void {
   if (!isNative || !AppBlockerNative) return;
   try {
-    AppBlockerNative.showNotification(title, body, sticky, durationMinutes);
+    AppBlockerNative.showNotification(title, body, sticky, secondsRemaining);
   } catch (e) {
     console.warn("[HadafNative] showNotification failed:", e);
+  }
+}
+
+export function requestNotificationPermission(): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    if (typeof AppBlockerNative.requestNotificationPermission === "function") {
+      AppBlockerNative.requestNotificationPermission();
+    }
+  } catch (e) {
+    console.warn("[HadafNative] requestNotificationPermission failed:", e);
   }
 }
 

@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   /* Alert -> in-app dialog (components/AppDialog) */
   AppState,
+  BackHandler,
   Dimensions,
   KeyboardAvoidingView,
   Vibration,
@@ -45,6 +46,7 @@ import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
+import { focusSessionState } from "@/lib/focusSessionState";
 import ForfeitModal from "@/components/ForfeitModal";
 import { useColors } from "@/hooks/useColors";
 import {
@@ -68,6 +70,7 @@ import {
   isNativeAppBlockerSupported,
   showNativeNotification,
   dismissNativeNotification,
+  requestNotificationPermission,
 } from "../../modules/hadaf-native/src";
 
 const isWeb    = Platform.OS === "web";
@@ -525,6 +528,50 @@ export default function FocusScreen() {
 
   const [showForfeitModal, setShowForfeitModal] = useState(false);
   const [sessionState, setSessionState] = useState<SessionState>("idle");
+  const MAX_PAUSE_SECONDS = 20;
+  const [pauseRemaining, setPauseRemaining] = useState<number>(MAX_PAUSE_SECONDS);
+  const pauseTimerRef = useRef<any>(null);
+  const pauseEndTimestampRef = useRef<number | null>(null);
+
+  // Sync with global focusSessionState so tab bar can hide completely during sessions
+  useEffect(() => {
+    const active = sessionState === "running" || sessionState === "paused";
+    focusSessionState.setActive(active);
+    return () => {
+      focusSessionState.setActive(false);
+    };
+  }, [sessionState]);
+
+  // Request notifications permission on mount for Android 13+
+  useEffect(() => {
+    try {
+      requestNotificationPermission();
+    } catch (e) {}
+    if (Notifications && typeof Notifications.requestPermissionsAsync === "function") {
+      Notifications.requestPermissionsAsync().catch(() => {});
+    }
+  }, []);
+
+  // Intercept hardware back button on Android during active focus session
+  useEffect(() => {
+    const backAction = () => {
+      if (sessionState === "running" || sessionState === "paused") {
+        handleStop();
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener("hardwareBackPress", backAction);
+    return () => sub.remove();
+  }, [sessionState]);
+
+  const clearPauseTimer = useCallback(() => {
+    if (pauseTimerRef.current) {
+      clearInterval(pauseTimerRef.current);
+      pauseTimerRef.current = null;
+    }
+    pauseEndTimestampRef.current = null;
+  }, []);
   const [remaining,    setRemaining]    = useState(duration * 60);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
@@ -660,6 +707,18 @@ export default function FocusScreen() {
       const rem = Math.max(0, limit - totalElapsed);
       setRemaining(rem);
 
+      // Periodically update native notification so drawer always shows live status
+      if (rem > 0 && rem % 10 === 0) {
+        try {
+          showNativeNotification(
+            "Focus Session Active ⏳",
+            intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
+            true,
+            rem
+          );
+        } catch (e) {}
+      }
+
       if (rem <= 0) {
         clearTimer();
         setSessionState("done");
@@ -739,16 +798,14 @@ export default function FocusScreen() {
       }
     }
 
-    // Schedule active focus session notifications
+    clearPauseTimer();
+    // Schedule active focus session notifications with total seconds
     try {
-      console.log("[FocusTimer] Initializing active session miniplayer notification...");
-
-      
       showNativeNotification(
         "Focus Session Active ⏳",
-        `Intention: "${intention}"`,
+        intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
         true,
-        duration
+        duration * 60
       );
     } catch (e) {
       console.warn("Failed to schedule notifications on start:", e);
@@ -810,11 +867,25 @@ export default function FocusScreen() {
     if (intentionOk && appsOk) setShowConfirm(true);
   };
 
-  const handlePause  = () => {
+  const handleAutoResume = () => {
+    clearPauseTimer();
+    setStartTime(Date.now());
+    setSessionState("running");
+
+    try {
+      showNativeNotification(
+        "Focus Session Active ⏳",
+        intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
+        true,
+        remaining || (duration * 60)
+      );
+    } catch (e) {}
+  };
+
+  const handlePause = () => {
     try {
       dismissNativeNotification();
     } catch (e) {}
-
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (startTime !== null) {
@@ -823,9 +894,28 @@ export default function FocusScreen() {
     }
     setStartTime(null);
     setSessionState("paused");
+
+    // Start strict 20-second pause timer
+    clearPauseTimer();
+    setPauseRemaining(MAX_PAUSE_SECONDS);
+    const endPauseTime = Date.now() + MAX_PAUSE_SECONDS * 1000;
+    pauseEndTimestampRef.current = endPauseTime;
+
+    pauseTimerRef.current = setInterval(() => {
+      const left = Math.max(0, Math.ceil((endPauseTime - Date.now()) / 1000));
+      setPauseRemaining(left);
+
+      if (left <= 0) {
+        clearPauseTimer();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Vibration.vibrate([0, 300, 150, 300]);
+        handleAutoResume();
+      }
+    }, 500);
   };
 
   const handleResume = () => {
+    clearPauseTimer();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setStartTime(Date.now());
     setSessionState("running");
@@ -833,7 +923,7 @@ export default function FocusScreen() {
     try {
       showNativeNotification(
         "Focus Session Active ⏳",
-        `You are in a focus session. Distracting apps are blocked!`,
+        intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
         true,
         remaining || (duration * 60)
       );
@@ -857,6 +947,7 @@ export default function FocusScreen() {
     } catch (e) {}
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    clearPauseTimer();
     clearTimer();
     setStartTime(null);
     setAccumulatedTime(0);
@@ -896,7 +987,15 @@ export default function FocusScreen() {
       if (nextAppState === "background" && sessionState === "running") {
         try {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        } catch (e) {}
+          showNativeNotification(
+            "Focus Session Active ⏳",
+            intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
+            true,
+            remaining
+          );
+        } catch (e) {
+          console.warn("[Focus] Failed to show background notification:", e);
+        }
       }
     });
     return () => subscription.remove();
@@ -1381,10 +1480,10 @@ export default function FocusScreen() {
         >
           {/* Top subtle bar */}
           <View style={styles.zenTopRow}>
-            <View style={styles.zenBadge}>
+            <View style={[styles.zenBadge, sessionState === "paused" && styles.zenBadgePaused]}>
               <View style={[styles.zenDot, { backgroundColor: sessionState === "running" ? "#22c55e" : "#f59e0b" }]} />
-              <Text style={styles.zenBadgeText}>
-                {sessionState === "running" ? "FOCUS ACTIVE" : "PAUSED"}
+              <Text style={[styles.zenBadgeText, sessionState === "paused" && { color: "#f59e0b" }]}>
+                {sessionState === "running" ? "FOCUS ACTIVE" : `PAUSED (${pauseRemaining}s MAX)`}
               </Text>
             </View>
             {blockedApps.length > 0 && (
@@ -1397,10 +1496,21 @@ export default function FocusScreen() {
 
           {/* Center countdown timer and intention */}
           <View style={styles.zenCenter}>
-            <Text style={styles.zenTimerDigits}>{formatTime(remaining)}</Text>
-            <Text style={styles.zenIntention}>
-              {intention ? intention.toUpperCase() : "DEEP WORK"}
+            <Text style={[styles.zenTimerDigits, sessionState === "paused" && { opacity: 0.55 }]}>
+              {formatTime(remaining)}
             </Text>
+            {sessionState === "paused" ? (
+              <View style={styles.zenPauseBanner}>
+                <MaterialIcons name="timer" size={16} color="#f59e0b" />
+                <Text style={styles.zenPauseBannerText}>
+                  Max pause: 20s · Resumes in ${pauseRemaining}s
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.zenIntention}>
+                {intention ? intention.toUpperCase() : "DEEP WORK"}
+              </Text>
+            )}
           </View>
 
           {/* Bottom subtle controls */}
@@ -1659,10 +1769,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  zenBadgePaused: {
+    borderColor: "rgba(245, 158, 11, 0.4)",
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+  },
+  zenPauseBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 14,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.35)",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+  zenPauseBannerText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    color: "#f59e0b",
+    letterSpacing: 0.5,
+  },
   zenBlackScreen: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "#000000",
-    zIndex: 9999,
+    zIndex: 99999,
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 28,

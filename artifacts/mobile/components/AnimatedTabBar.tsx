@@ -14,6 +14,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
+import { useIsFocusSessionActive } from "@/lib/focusSessionState";
 
 type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
 
@@ -138,6 +139,13 @@ function FocusFAB({ onPress, isFocused }: { onPress: () => void; isFocused: bool
 
 // ── Tab bar ────────────────────────────────────────────────────────────────────
 export default function AnimatedTabBar({ state, navigation }: BottomTabBarProps) {
+  const isFocusActive = useIsFocusSessionActive();
+
+  // If a focus session is actively running or paused, hide the bottom menu bar entirely!
+  if (isFocusActive) {
+    return null;
+  }
+
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const isIOS  = Platform.OS === "ios";

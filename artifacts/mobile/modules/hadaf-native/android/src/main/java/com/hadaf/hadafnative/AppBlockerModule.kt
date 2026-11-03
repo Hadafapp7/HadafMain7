@@ -13,6 +13,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 
 import android.net.Uri
 import android.os.Build
@@ -141,22 +144,41 @@ class AppBlockerModule : Module() {
       }
     }
 
-    Function("showNotification") { title: String, body: String, sticky: Boolean, durationMinutes: Int ->
+    Function("requestNotificationPermission") {
+      if (Build.VERSION.SDK_INT >= 33) {
+        val activity = appContext.currentActivity
+        if (activity != null) {
+          val perm = "android.permission.POST_NOTIFICATIONS"
+          if (ContextCompat.checkSelfPermission(activity, perm) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(activity, arrayOf(perm), 101)
+          }
+        }
+      }
+      Unit
+    }
+
+    Function("showNotification") { title: String, body: String, sticky: Boolean, secondsRemaining: Int ->
       val ctx = appContext.reactContext
       if (ctx != null) {
         val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "hadaf_focus_channel"
+        val channelId = "hadaf_focus_channel_v2"
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
           val channel = NotificationChannel(
             channelId,
             "Hadaf Focus Session",
-            NotificationManager.IMPORTANCE_LOW
-          )
+            NotificationManager.IMPORTANCE_DEFAULT
+          ).apply {
+            description = "Shows remaining focus countdown and blocked apps status"
+            setShowBadge(true)
+            lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+          }
           manager.createNotificationChannel(channel)
         }
         
-        val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
+        val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.apply {
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val pendingIntent = PendingIntent.getActivity(
           ctx,
           0,
@@ -166,17 +188,31 @@ class AppBlockerModule : Module() {
 
         val appIcon = ctx.applicationInfo.icon
         val smallIcon = if (appIcon != 0) appIcon else android.R.drawable.ic_dialog_info
+
+        val safeSeconds = if (secondsRemaining > 0) secondsRemaining else 0
+        val endMs = System.currentTimeMillis() + (safeSeconds * 1000L)
+        val mins = safeSeconds / 60
+        val secs = safeSeconds % 60
+        val timeStr = String.format("%02d:%02d", mins, secs)
+
+        val notifTitle = if (title.isNotEmpty()) title else "Focus Session Active ⏳"
+        val notifText = "⏳ $timeStr remaining · $body"
+
         val builder = NotificationCompat.Builder(ctx, channelId)
           .setSmallIcon(smallIcon)
-          .setContentTitle(title)
-          .setContentText(body)
-          .setPriority(NotificationCompat.PRIORITY_LOW)
+          .setContentTitle(notifTitle)
+          .setContentText(notifText)
+          .setSubText("Hadaf Focus")
+          .setPriority(NotificationCompat.PRIORITY_HIGH)
+          .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
+          .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
           .setOngoing(sticky)
           .setContentIntent(pendingIntent)
           .setAutoCancel(!sticky)
+          .setOnlyAlertOnce(true)
 
-        if (sticky && durationMinutes > 0) {
-          val endMs = System.currentTimeMillis() + durationMinutes * 60_000L
+        if (sticky && safeSeconds > 0) {
+          builder.setShowWhen(true)
           builder.setWhen(endMs)
           builder.setUsesChronometer(true)
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
