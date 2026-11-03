@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
 
 import BrandLogo from "@/components/BrandLogo";
+import ServerConfigModal from "@/components/ServerConfigModal";
 import { useOnboarding } from "@/lib/onboarding";
 
 const INK = "#0a0a0a";
@@ -381,6 +382,7 @@ export default function OnboardingScreen() {
   const scrollX = useSharedValue(0);
   const [index, setIndex] = useState(0);
   const last = index === SLIDES.length - 1;
+  const [showServerModal, setShowServerModal] = useState(false);
 
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
@@ -423,15 +425,26 @@ export default function OnboardingScreen() {
           <BrandLogo size={34} />
           <Text style={styles.brandText}>Hadaf</Text>
         </View>
-        {!last ? (
-          <Animated.View entering={FadeIn.duration(250)} exiting={FadeOut.duration(150)}>
-            <TouchableOpacity onPress={() => complete()} hitSlop={12} activeOpacity={0.7}>
-              <Text style={styles.skip}>Skip</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        ) : (
-          <View style={{ height: 20 }} />
-        )}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => setShowServerModal(true)}
+            hitSlop={8}
+            activeOpacity={0.7}
+            style={styles.serverPill}
+          >
+            <MaterialIcons name="dns" size={13} color={MUTED} />
+            <Text style={styles.serverPillText}>Server</Text>
+          </TouchableOpacity>
+          {!last ? (
+            <Animated.View entering={FadeIn.duration(250)} exiting={FadeOut.duration(150)}>
+              <TouchableOpacity onPress={() => complete()} hitSlop={12} activeOpacity={0.7}>
+                <Text style={styles.skip}>Skip</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          ) : (
+            <View style={{ height: 20 }} />
+          )}
+        </View>
       </View>
 
       <Animated.ScrollView
@@ -470,6 +483,7 @@ export default function OnboardingScreen() {
           </TouchableOpacity>
         </Animated.View>
       </View>
+      <ServerConfigModal visible={showServerModal} onClose={() => setShowServerModal(false)} />
     </View>
   );
 }
@@ -492,6 +506,20 @@ const styles = StyleSheet.create({
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   brandText: { fontSize: 19, fontFamily: "Inter_700Bold", color: INK, letterSpacing: -0.4 },
   skip: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: MUTED },
+  serverPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "#ececec",
+  },
+  serverPillText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    color: MUTED,
+  },
 
   artWrap: { flex: 1.15, alignItems: "center", justifyContent: "center" },
   textWrap: { flex: 0.85, alignItems: "center", paddingTop: 8 },

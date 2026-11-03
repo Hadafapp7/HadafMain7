@@ -5,7 +5,7 @@ import { Image, StyleProp, StyleSheet, View, ViewStyle } from "react-native";
  * The Hadaf app logo. Every screen uses this one component, so swapping the artwork
  * only means replacing the file below (or changing the require path).
  */
-const LOGO = require("../assets/images/logo.jpeg");
+const LOGO = require("../assets/images/icon.png");
 
 export default function BrandLogo({
   size = 72,

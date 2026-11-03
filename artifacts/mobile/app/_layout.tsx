@@ -28,7 +28,7 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
-let baseUrl: string | null = null;
+let baseUrl: string = "http://192.168.1.101:5000";
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
 if (domain) {
   baseUrl = domain.startsWith("http://") || domain.startsWith("https://")
@@ -45,9 +45,17 @@ if (domain) {
   }
 }
 
-if (baseUrl) {
-  setBaseUrl(baseUrl);
-}
+// Apply base URL immediately
+setBaseUrl(baseUrl);
+
+// Sync user-saved custom URL from storage
+AsyncStorage.getItem("@hadaf_server_url").then((custom) => {
+  if (custom) {
+    baseUrl = custom;
+    setBaseUrl(custom);
+    console.log(`[BaseURL] Using custom server URL: ${custom}`);
+  }
+});
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
@@ -86,7 +94,6 @@ function RootLayoutNav() {
       });
     }
   }, [isSignedIn]);
-
 
   if (!isLoaded) return null;
   if (onboardingDone === null) return null;
@@ -139,13 +146,13 @@ export default function RootLayout() {
             <QueryClientProvider client={queryClient}>
               <GestureHandlerRootView style={{ flex: 1 }}>
                 <KeyboardProvider>
-                  <OnboardingProvider>
                   <AppDialogProvider>
-                  <SubscriptionProvider>
-                    <RootLayoutNav />
-                  </SubscriptionProvider>
+                    <SubscriptionProvider>
+                      <OnboardingProvider>
+                        <RootLayoutNav />
+                      </OnboardingProvider>
+                    </SubscriptionProvider>
                   </AppDialogProvider>
-                  </OnboardingProvider>
                 </KeyboardProvider>
               </GestureHandlerRootView>
             </QueryClientProvider>

@@ -1,10 +1,11 @@
 import UserAvatar from '@/components/UserAvatar';
+import ServerConfigModal from '@/components/ServerConfigModal';
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@clerk/expo";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useFocusEffect } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
   Platform,
   ScrollView,
@@ -37,15 +38,16 @@ function formatHours(totalMinutes: number): string {
 
 // ── Preference rows ────────────────────────────────────────────────────────────
 type PrefRow =
-  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; badge?: string; badgeType?: "pro" | "trial" | "limited"; danger?: false; right?: "chevron" | "light"; route?: string; onPress?: never }
+  | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; badge?: string; badgeType?: "pro" | "trial" | "limited"; danger?: false; right?: "chevron" | "light"; route?: string; onPress?: () => void }
   | { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; danger: true;  right?: never; route?: never; onPress: () => void };
 
-function usePrefs(onSignOut: () => void, planBadge?: { badge: string; type: "pro" | "trial" | "limited" }): PrefRow[] {
+function usePrefs(onSignOut: () => void, onOpenServer: () => void, planBadge?: { badge: string; type: "pro" | "trial" | "limited" }): PrefRow[] {
   return [
     { icon: "account-circle",   label: "Account",           right: "chevron", route: "/account-settings" },
     { icon: "credit-card",      label: "Subscription",      badge: planBadge?.badge, badgeType: planBadge?.type, right: "chevron", route: "/subscription" },
     { icon: "emoji-events",     label: "Achievements",      right: "chevron", route: "/achievements" },
     { icon: "notifications",    label: "Notifications",     right: "chevron", route: "/notifications-settings" },
+    { icon: "dns",              label: "Server Connection", right: "chevron", onPress: onOpenServer },
     { icon: "lock",             label: "Privacy & Security",right: "chevron", route: "/privacy-security" },
     { icon: "help",             label: "Help",              right: "chevron", route: "/help" },
 
@@ -84,7 +86,7 @@ function PrefItem({ item }: { item: PrefRow }) {
     chevX.value = withSpring(0, { damping: 14 });
   };
   const handlePress = () => {
-    if (item.danger) {
+    if (item.onPress) {
       item.onPress();
     } else if (item.route) {
       router.push(item.route as any);
@@ -156,7 +158,8 @@ export default function ProfileScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     signOut();
   };
-  const prefs = usePrefs(handleSignOut);
+  const [showServerModal, setShowServerModal] = useState(false);
+  const prefs = usePrefs(handleSignOut, () => setShowServerModal(true));
 
   const completedSessions = focusSessions.filter((s) => s.status === "completed");
   const totalFocusMinutes = completedSessions.reduce((sum, s) => sum + s.plannedDurationMinutes, 0);
@@ -265,6 +268,7 @@ export default function ProfileScreen() {
         </Animated.View>
 
       </ScrollView>
+      <ServerConfigModal visible={showServerModal} onClose={() => setShowServerModal(false)} />
     </View>
   );
 }

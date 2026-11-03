@@ -9,9 +9,9 @@ module.exports = ({ config }) => ({
   userInterfaceStyle: "light",
   newArchEnabled: true,
   splash: {
-    image: "./assets/images/icon.png",
+    image: "./assets/images/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#f9f9f9",
+    backgroundColor: "#ffffff",
   },
   ios: {
     supportsTablet: false,
@@ -28,8 +28,10 @@ module.exports = ({ config }) => ({
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: "./assets/images/icon.png",
-      backgroundColor: "#f9f9f9",
+      foregroundImage: "./assets/images/android-icon-foreground.png",
+      backgroundImage: "./assets/images/android-icon-background.png",
+      monochromeImage: "./assets/images/android-icon-monochrome.png",
+      backgroundColor: "#ffffff",
     },
     package: "com.hadaf.mobile",
     permissions: [
@@ -43,7 +45,7 @@ module.exports = ({ config }) => ({
     ],
   },
   web: {
-    favicon: "./assets/images/icon.png",
+    favicon: "./assets/images/favicon.png",
   },
   plugins: [
     "expo-dev-client",
