@@ -1052,20 +1052,6 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── Header ── */}
-        <Animated.View
-          entering={isWeb ? undefined : FadeInDown.delay(0).springify()}
-          style={styles.headerRow}
-        >
-          <View style={styles.headerLeft}>
-            <Text style={styles.greetingSmall}>Good {timeOfDay}, {firstName} 👋</Text>
-            <Text style={styles.focusStatus}>FOCUS MODE: OFF</Text>
-          </View>
-          <TouchableOpacity style={styles.avatar} activeOpacity={0.8}>
-            <MaterialIcons name="person" size={28} color="#fff" />
-          </TouchableOpacity>
-        </Animated.View>
-
         {/* ── AI Coach Reality Check & Motivation Widget ── */}
         <AiCoachWidget firstName={firstName} />
 

@@ -40,6 +40,11 @@ export interface ChartIntervalStat {
   isOver: boolean;
   overMinutes: number;
   isCurrent: boolean;
+  focusCompleted: number;
+  focusForfeited: number;
+  focusMinutes: number;
+  goalsCompleted: number;
+  goalsMissed: number;
 }
 
 export interface HealthStats {
@@ -65,9 +70,15 @@ export interface PeriodGoalTracker {
   targetPerDay: number;
 }
 
+export interface DiagnosticCardItem {
+  title: string;
+  text: string;
+}
+
 export interface BedrockDiagnosticResult {
   headline: string;
   summary: string;
+  cards?: DiagnosticCardItem[];
   laggingPoints: string[];
   actionStep: string;
 }
@@ -168,9 +179,36 @@ export function computePeriodInsights(
       const key = localDayKey(d);
       const label = d.toLocaleDateString("en", { weekday: "short" });
 
+      const dayStart = new Date(d);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayStartMs = dayStart.getTime();
+      const dayEndMs = dayStartMs + 86_400_000;
+
       const dayMinutes = entriesInRange
         .filter((e) => localDayKey(new Date(e.loggedAt)) === key)
         .reduce((sum, e) => sum + e.durationMinutes, 0);
+
+      const dayFocus = sessions.filter((s) => {
+        const t = new Date(s.startedAt).getTime();
+        return t >= dayStartMs && t < dayEndMs;
+      });
+      const intervalFocusCompleted = dayFocus.filter((s) => s.status === "completed").length;
+      const intervalFocusForfeited = dayFocus.filter((s) => s.status === "stopped").length;
+      const intervalFocusMinutes = dayFocus.reduce((sum, s) => {
+        if (s.status === "completed") return sum + s.plannedDurationMinutes;
+        if (s.endedAt) {
+          const dur = (new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 60_000;
+          return sum + Math.max(0, Math.round(dur));
+        }
+        return sum;
+      }, 0);
+
+      const dayGoals = goals.filter((g) => {
+        const t = new Date(g.createdAt).getTime();
+        return t >= dayStartMs && t < dayEndMs;
+      });
+      const intervalGoalsCompleted = dayGoals.filter((g) => g.status === "done").length;
+      const intervalGoalsMissed = dayGoals.length - intervalGoalsCompleted;
 
       const isOver = dayMinutes > dailyTargetMin;
       intervals.push({
@@ -181,6 +219,11 @@ export function computePeriodInsights(
         isOver,
         overMinutes: isOver ? dayMinutes - dailyTargetMin : 0,
         isCurrent: i === 0,
+        focusCompleted: intervalFocusCompleted,
+        focusForfeited: intervalFocusForfeited,
+        focusMinutes: intervalFocusMinutes,
+        goalsCompleted: intervalGoalsCompleted,
+        goalsMissed: intervalGoalsMissed,
       });
     }
   } else if (range === "MONTH") {
@@ -200,6 +243,28 @@ export function computePeriodInsights(
         })
         .reduce((sum, e) => sum + e.durationMinutes, 0);
 
+      const wFocus = sessions.filter((s) => {
+        const t = new Date(s.startedAt).getTime();
+        return t >= wStartMs && t < wEndMs;
+      });
+      const intervalFocusCompleted = wFocus.filter((s) => s.status === "completed").length;
+      const intervalFocusForfeited = wFocus.filter((s) => s.status === "stopped").length;
+      const intervalFocusMinutes = wFocus.reduce((sum, s) => {
+        if (s.status === "completed") return sum + s.plannedDurationMinutes;
+        if (s.endedAt) {
+          const dur = (new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 60_000;
+          return sum + Math.max(0, Math.round(dur));
+        }
+        return sum;
+      }, 0);
+
+      const wGoals = goals.filter((g) => {
+        const t = new Date(g.createdAt).getTime();
+        return t >= wStartMs && t < wEndMs;
+      });
+      const intervalGoalsCompleted = wGoals.filter((g) => g.status === "done").length;
+      const intervalGoalsMissed = wGoals.length - intervalGoalsCompleted;
+
       const isOver = wMinutes > weekTarget;
       intervals.push({
         key: `week-${4 - w}`,
@@ -209,6 +274,11 @@ export function computePeriodInsights(
         isOver,
         overMinutes: isOver ? wMinutes - weekTarget : 0,
         isCurrent: w === 0,
+        focusCompleted: intervalFocusCompleted,
+        focusForfeited: intervalFocusForfeited,
+        focusMinutes: intervalFocusMinutes,
+        goalsCompleted: intervalGoalsCompleted,
+        goalsMissed: intervalGoalsMissed,
       });
     }
   } else {
@@ -224,12 +294,37 @@ export function computePeriodInsights(
       const yVal = d.getFullYear();
       const label = d.toLocaleDateString("en", { month: "short" });
 
+      const mStart = new Date(yVal, mIdx, 1).getTime();
+      const mEnd = new Date(yVal, mIdx + 1, 1).getTime();
+
       const mMinutes = entriesInRange
         .filter((e) => {
           const ed = new Date(e.loggedAt);
           return ed.getFullYear() === yVal && ed.getMonth() === mIdx;
         })
         .reduce((sum, e) => sum + e.durationMinutes, 0);
+
+      const mFocus = sessions.filter((s) => {
+        const t = new Date(s.startedAt).getTime();
+        return t >= mStart && t < mEnd;
+      });
+      const intervalFocusCompleted = mFocus.filter((s) => s.status === "completed").length;
+      const intervalFocusForfeited = mFocus.filter((s) => s.status === "stopped").length;
+      const intervalFocusMinutes = mFocus.reduce((sum, s) => {
+        if (s.status === "completed") return sum + s.plannedDurationMinutes;
+        if (s.endedAt) {
+          const dur = (new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 60_000;
+          return sum + Math.max(0, Math.round(dur));
+        }
+        return sum;
+      }, 0);
+
+      const mGoals = goals.filter((g) => {
+        const t = new Date(g.createdAt).getTime();
+        return t >= mStart && t < mEnd;
+      });
+      const intervalGoalsCompleted = mGoals.filter((g) => g.status === "done").length;
+      const intervalGoalsMissed = mGoals.length - intervalGoalsCompleted;
 
       const isOver = mMinutes > monthTarget;
       intervals.push({
@@ -240,6 +335,11 @@ export function computePeriodInsights(
         isOver,
         overMinutes: isOver ? mMinutes - monthTarget : 0,
         isCurrent: i === 0,
+        focusCompleted: intervalFocusCompleted,
+        focusForfeited: intervalFocusForfeited,
+        focusMinutes: intervalFocusMinutes,
+        goalsCompleted: intervalGoalsCompleted,
+        goalsMissed: intervalGoalsMissed,
       });
     }
   }

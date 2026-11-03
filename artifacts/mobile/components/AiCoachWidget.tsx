@@ -85,7 +85,7 @@ export default function AiCoachWidget({ firstName }: { firstName: string }) {
       <View style={styles.topRow}>
         <View style={styles.tagWrap}>
           <MaterialIcons name="bolt" size={13} color="#f59e0b" />
-          <Text style={styles.tagText}>REALITY CHECK · AI COACH</Text>
+          <Text style={styles.tagText}>REALITY CHECK</Text>
         </View>
 
         <TouchableOpacity

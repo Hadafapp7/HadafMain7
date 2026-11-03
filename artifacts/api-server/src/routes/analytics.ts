@@ -212,26 +212,26 @@ router.post("/analytics/diagnostic", requireAuth, async (req, res): Promise<void
       .filter(Boolean)
       .join("\n");
 
-    const prompt = `You are Hadaf's AI Productivity Diagnostician.
-Analyze this user's digital wellness and attention data for the last ${days} days.
-Write a clear, honest, simple-words diagnosis explaining where they are lagging and how to fix it.
+    const prompt = `You are Hadaf's Unfiltered Performance Diagnostician.
+Analyze this user's digital wellness, attention, focus sessions, and goal data for the last ${days} days.
+Deliver an UNFILTERED, honest, no-sugarcoating diagnostic with ALWAYS exactly 5 punchy improvement cards that push the user into action.
 
 Rules:
-1. Use simple, everyday words. No corporate buzzwords or medical jargon.
-2. Speak directly to "you".
-3. Point out specific numbers and app names (e.g. mention if an app took hours, or if sessions were quit early, or if goals were missed).
-4. Highlight the primary lagging leak (where their attention slipped).
-5. Give 1 straightforward action step to take today.
-6. Reply ONLY with a valid JSON object in this exact shape:
+1. Deliver ALWAYS exactly 5 distinct improvement cards.
+2. Unfiltered motivation: Speak directly to "you" with fierce honesty, zero corporate fluff, and uncompromising motivation.
+3. Call out specific numbers, apps, session counts, and goal slips from the user data.
+4. Reply ONLY with a valid JSON object in this exact format:
 {
-  "headline": "Short punchy 3-6 word diagnosis",
-  "summary": "1-2 short sentences giving the honest diagnosis in plain words.",
-  "laggingPoints": [
-    "Specific leak with app name or session count",
-    "Second key lagging habit or goal slip",
-    "Third actionable observation"
+  "headline": "3-6 word blunt diagnostic headline",
+  "summary": "1-2 sentences delivering the unfiltered truth about their current performance.",
+  "cards": [
+    { "title": "Focus Session Execution", "text": "Unfiltered point about completed vs forfeited sessions." },
+    { "title": "Distraction Bleed", "text": "Unfiltered callout on their biggest app time-sink and wasted hours." },
+    { "title": "Goal Follow-Through", "text": "Unfiltered reality on goals completed vs missed." },
+    { "title": "Screen Time Boundary", "text": "Unfiltered truth regarding daily screen time target adherence." },
+    { "title": "Unfiltered Mindset Kick", "text": "Ruthless, fierce kick telling them to stop making excuses and lock in." }
   ],
-  "actionStep": "One clear action step to do today."
+  "actionStep": "One immediate, zero-excuse action to do right now."
 }
 
 USER DATA:
@@ -239,18 +239,25 @@ ${facts}`;
 
     let diagnosticSummary = "";
     let diagnosticDetails: string[] = [];
-    let diagnosticHeadline = "Attention Diagnostic";
+    let diagnosticCards: Array<{ title: string; text: string }> = [];
+    let diagnosticHeadline = "Hadaf Diagnostic";
     let actionStep = "Start one 25-minute focus session without distractions.";
 
     if (isBedrockConfigured()) {
       try {
-        const raw = await generateWithBedrock(prompt, { maxTokens: 260, temperature: 0.7 });
+        const raw = await generateWithBedrock(prompt, { maxTokens: 420, temperature: 0.7 });
         const match = raw.match(/\{[\s\S]*?\}/);
         if (match) {
           const parsed = JSON.parse(match[0]);
           if (parsed.summary) diagnosticSummary = String(parsed.summary).trim();
           if (parsed.headline) diagnosticHeadline = String(parsed.headline).trim();
-          if (Array.isArray(parsed.laggingPoints)) {
+          if (Array.isArray(parsed.cards) && parsed.cards.length >= 5) {
+            diagnosticCards = parsed.cards.slice(0, 5).map((c: any) => ({
+              title: String(c.title || "Improvement Point").trim(),
+              text: String(c.text || "").trim(),
+            }));
+            diagnosticDetails = diagnosticCards.map((c) => `${c.title}: ${c.text}`);
+          } else if (Array.isArray(parsed.laggingPoints) && parsed.laggingPoints.length > 0) {
             diagnosticDetails = parsed.laggingPoints.map(String);
           }
           if (parsed.actionStep) actionStep = String(parsed.actionStep).trim();
@@ -260,34 +267,62 @@ ${facts}`;
       }
     }
 
-    // Contextual intelligent fallback if Bedrock was unconfigured or failed
-    if (!diagnosticSummary) {
+    // Contextual intelligent fallback: ALWAYS 5 distinct improvement cards with unfiltered motivation
+    if (!diagnosticCards || diagnosticCards.length < 5) {
       if (daysOverTarget > 0) {
-        diagnosticHeadline = "Screen time exceeding target";
-        diagnosticSummary = `You went over your ${fmtMin(targetMin)} daily goal on ${daysOverTarget} days this ${range.toLowerCase()}. ${topApps[0]?.appName ? `${topApps[0].appName} was your largest distraction.` : "Cut screen time back down."}`;
+        diagnosticHeadline = "Screen limit breached";
+        diagnosticSummary = `You broke your ${fmtMin(targetMin)} daily ceiling on ${daysOverTarget} day(s) this ${range.toLowerCase()}. Distractions won't build your future—discipline will.`;
       } else if (focusForfeited > focusCompleted) {
-        diagnosticHeadline = "Focus sessions quit early";
-        diagnosticSummary = `You stopped ${focusForfeited} focus sessions before the timer ended. Finishing sessions builds the discipline you need.`;
+        diagnosticHeadline = "Giving up mid-session";
+        diagnosticSummary = `You forfeited ${focusForfeited} focus sessions before the clock ran out. Real builders push through discomfort instead of tapping out early.`;
       } else if (focusMinutes < 60) {
-        diagnosticHeadline = "Low focus time logged";
-        diagnosticSummary = `You only logged ${fmtMin(focusMinutes)} of focus in this ${range.toLowerCase()}. Even 20 minutes a day changes your habit trajectory.`;
+        diagnosticHeadline = "Low focus logged";
+        diagnosticSummary = `Only ${fmtMin(focusMinutes)} of total focus logged this ${range.toLowerCase()}. Without dedicated blocks of focus, you're running on autopilot.`;
       } else {
-        diagnosticHeadline = "Strong focus discipline";
-        diagnosticSummary = `Great work completing ${focusCompleted} focus sessions and staying near your daily targets this ${range.toLowerCase()}. Keep the momentum going.`;
+        diagnosticHeadline = "Solid momentum, stay ruthless";
+        diagnosticSummary = `${focusCompleted} focus sessions locked in. Don't get comfortable—standards must rise every week.`;
       }
 
-      diagnosticDetails = [
-        topApps[0]
-          ? `${topApps[0].appName} consumed ${fmtMin(topApps[0].minutes)}, making it your top time sink.`
-          : "Keep an eye on social and entertainment apps.",
-        focusForfeited > 0
-          ? `${focusForfeited} sessions were abandoned before the planned timer finished.`
-          : `${focusCompleted} focus sessions completed successfully.`,
-        goalsMissed > 0
-          ? `${goalsMissed} scheduled goals passed without being checked off.`
-          : `${goalsCompleted} goals marked complete.`,
+      diagnosticCards = [
+        {
+          title: "Focus Session Execution",
+          text:
+            focusForfeited > 0
+              ? `You stopped ${focusForfeited} sessions early. Giving up when mental friction hits destroys your concentration. Finish every timer you start.`
+              : focusCompleted === 0
+              ? `You logged 0 completed focus sessions this ${range.toLowerCase()}. You cannot expect extraordinary results with casual effort. Start a 25-minute block now.`
+              : `${focusCompleted} sessions completed. Now double down and eliminate all remaining micro-distractions.`,
+        },
+        {
+          title: "Distraction Bleed",
+          text: topApps[0]
+            ? `${topApps[0].appName} consumed ${fmtMin(topApps[0].minutes)}. That is valuable prime time handed over to someone else's platform. Set a hard limit.`
+            : "Passive app consumption creeps up silently. Identify your #1 digital leak before it robs your productive hours.",
+        },
+        {
+          title: "Goal Follow-Through",
+          text:
+            goalsMissed > 0
+              ? `${goalsMissed} scheduled goals expired or were missed. Intentions without execution are meaningless. Stop postponing what you planned.`
+              : goalsCompleted === 0
+              ? `No goals completed this ${range.toLowerCase()}. Pick one high-leverage objective and finish it before you sleep.`
+              : `${goalsCompleted} goals conquered. Hold yourself accountable to this exact standard every single day.`,
+        },
+        {
+          title: "Screen Time Boundary",
+          text:
+            daysOverTarget > 0
+              ? `You exceeded your daily target on ${daysOverTarget} days (${fmtMin(totalScreenMin)} total screen time). Stop negotiating with your limits.`
+              : `Screen time is within bounds (${fmtMin(totalScreenMin)}). Guard against late-night binges where discipline usually fails.`,
+        },
+        {
+          title: "Unfiltered Mindset Kick",
+          text: "Excuses produce zero results. Put your phone in another room, silence all notifications, and execute the hard task you've been putting off.",
+        },
       ];
-      actionStep = "Set your daily target and complete 1 unbroken focus session today.";
+
+      diagnosticDetails = diagnosticCards.map((c) => `${c.title}: ${c.text}`);
+      actionStep = "Silence notifications, open Focus, and complete 1 unbroken 25-minute session right now.";
     }
 
     // ── 6. Save Snapshot to Database ──
@@ -329,6 +364,7 @@ ${facts}`;
       diagnostic: {
         headline: diagnosticHeadline,
         summary: diagnosticSummary,
+        cards: diagnosticCards,
         laggingPoints: diagnosticDetails,
         actionStep,
       },

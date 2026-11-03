@@ -15,13 +15,16 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  Easing,
   FadeInDown,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import Svg, { Circle, Defs, LinearGradient, Path, Stop, Text as SvgText } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -38,6 +41,7 @@ import {
   type PeriodRange,
   type HealthStats,
   type PeriodGoalTracker,
+  type ChartIntervalStat,
   type BedrockDiagnosticResult,
 } from "@/lib/usageStats";
 import {
@@ -377,12 +381,44 @@ function EmptyChart({ colors }: { colors: ReturnType<typeof useColors> }) {
 
 function HealthIndexBlock({
   health,
+  intervals,
   range,
 }: {
   health: HealthStats;
+  intervals: ChartIntervalStat[];
   range: PeriodRange;
 }) {
   const colors = useColors();
+  const [activeTab, setActiveTab] = useState<"focus" | "goals">("focus");
+  const flipVal = useSharedValue(0); // 0 = focus, 1 = goals
+
+  const handleSwitch = (tab: "focus" | "goals") => {
+    if (tab === activeTab) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActiveTab(tab);
+    flipVal.value = withTiming(tab === "focus" ? 0 : 1, {
+      duration: 480,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+    });
+  };
+
+  const frontAnimatedStyle = useAnimatedStyle(() => {
+    const rotateY = interpolate(flipVal.value, [0, 1], [0, 180]);
+    return {
+      transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }],
+      opacity: flipVal.value < 0.5 ? 1 : 0,
+      zIndex: flipVal.value < 0.5 ? 2 : 1,
+    };
+  });
+
+  const backAnimatedStyle = useAnimatedStyle(() => {
+    const rotateY = interpolate(flipVal.value, [0, 1], [180, 360]);
+    return {
+      transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }],
+      opacity: flipVal.value >= 0.5 ? 1 : 0,
+      zIndex: flipVal.value >= 0.5 ? 2 : 1,
+    };
+  });
 
   const toneColor =
     health.scoreLabel === "NEUTRAL"
@@ -395,144 +431,291 @@ function HealthIndexBlock({
       ? "#f59e0b"
       : "#ef4444";
 
+  // Calculations for Focus Bar Chart
+  const maxFocus = Math.max(
+    1,
+    ...intervals.map((it) => (it.focusCompleted || 0) + (it.focusForfeited || 0))
+  );
+
+  // Calculations for Goals Bar Chart
+  const maxGoals = Math.max(
+    1,
+    ...intervals.map((it) => (it.goalsCompleted || 0) + (it.goalsMissed || 0))
+  );
+
   return (
     <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
+      {/* Top Header Row with Switcher on Top Right Corner */}
       <View style={styles.scoreTopRow}>
-        <View>
+        <View style={{ flex: 1, paddingRight: 8 }}>
           <Text style={[styles.chartSubLabel, { color: colors.outline }]}>HEALTH INDEX · {range}</Text>
           <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Focus Score</Text>
+        </View>
+
+        {/* Focus / Goals Switcher Toggle */}
+        <View style={styles.tabSwitchWrap}>
+          <TouchableOpacity
+            style={[styles.tabSwitchBtn, activeTab === "focus" && styles.tabSwitchBtnActive]}
+            onPress={() => handleSwitch("focus")}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons
+              name="timer"
+              size={13}
+              color={activeTab === "focus" ? "#fff" : colors.outline}
+            />
+            <Text
+              style={[
+                styles.tabSwitchText,
+                activeTab === "focus" && styles.tabSwitchTextActive,
+              ]}
+            >
+              Focus
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabSwitchBtn, activeTab === "goals" && styles.tabSwitchBtnActive]}
+            onPress={() => handleSwitch("goals")}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons
+              name="flag"
+              size={13}
+              color={activeTab === "goals" ? "#fff" : colors.outline}
+            />
+            <Text
+              style={[
+                styles.tabSwitchText,
+                activeTab === "goals" && styles.tabSwitchTextActive,
+              ]}
+            >
+              Goals
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Main Score & Tone Badge */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View style={styles.scoreNumBox}>
+          <Text style={[styles.bigScoreText, { color: colors.onSurface }]}>{health.score}</Text>
+          <Text style={[styles.scoreOutOf, { color: colors.outline }]}>/100</Text>
         </View>
         <View style={[styles.scoreBadge, { backgroundColor: `${toneColor}18`, borderColor: `${toneColor}40` }]}>
           <Text style={[styles.scoreBadgeText, { color: toneColor }]}>{health.scoreLabel}</Text>
         </View>
       </View>
 
-      {/* Main Score Num */}
-      <View style={styles.scoreNumBox}>
-        <Text style={[styles.bigScoreText, { color: colors.onSurface }]}>{health.score}</Text>
-        <Text style={[styles.scoreOutOf, { color: colors.outline }]}>/100</Text>
-      </View>
-
-      {/* Focus Sessions Completed vs Forfeited */}
-      <View style={[styles.healthMetricBox, { backgroundColor: colors.surfaceContainerHigh || "#fafafa" }]}>
-        <View style={styles.healthMetricHeader}>
-          <View style={styles.metricTitleWrap}>
-            <MaterialIcons name="timer" size={15} color={colors.onSurface} />
-            <Text style={[styles.healthMetricTitle, { color: colors.onSurface }]}>FOCUS SESSIONS</Text>
-          </View>
-          <Text style={[styles.healthMetricRate, { color: toneColor }]}>
-            {health.focusCompleted + health.focusForfeited > 0
-              ? `${health.focusCompletionRate}% completed`
-              : "No sessions yet"}
-          </Text>
-        </View>
-
-        <View style={styles.healthPillsRow}>
-          <View style={[styles.healthPill, { backgroundColor: "#e8f7ee" }]}>
-            <MaterialIcons name="check-circle" size={14} color="#15803d" />
-            <Text style={[styles.healthPillText, { color: "#15803d" }]}>
-              {health.focusCompleted} Completed
+      {/* Flip Area */}
+      <View style={styles.flipContainer}>
+        {/* FACE A: FOCUS SESSIONS */}
+        <Animated.View
+          style={[
+            styles.flipFace,
+            frontAnimatedStyle,
+            { backgroundColor: colors.surfaceContainerHigh || "#fafafa" },
+          ]}
+        >
+          <View style={styles.healthMetricHeader}>
+            <View style={styles.metricTitleWrap}>
+              <MaterialIcons name="timer" size={15} color={colors.onSurface} />
+              <Text style={[styles.healthMetricTitle, { color: colors.onSurface }]}>FOCUS SESSIONS</Text>
+            </View>
+            <Text style={[styles.healthMetricRate, { color: toneColor }]}>
+              {health.focusCompleted + health.focusForfeited > 0
+                ? `${health.focusCompletionRate}% completed`
+                : "No sessions yet"}
             </Text>
           </View>
 
-          <View style={[styles.healthPill, { backgroundColor: health.focusForfeited > 0 ? "#fdeceb" : "#f4f4f5" }]}>
-            <MaterialIcons
-              name="cancel"
-              size={14}
-              color={health.focusForfeited > 0 ? "#ef4444" : "#71717a"}
-            />
-            <Text
+          <View style={styles.healthPillsRow}>
+            <View style={[styles.healthPill, { backgroundColor: "#e8f7ee" }]}>
+              <MaterialIcons name="check-circle" size={13} color="#15803d" />
+              <Text style={[styles.healthPillText, { color: "#15803d" }]}>
+                {health.focusCompleted} Completed
+              </Text>
+            </View>
+            <View
               style={[
-                styles.healthPillText,
-                { color: health.focusForfeited > 0 ? "#ef4444" : "#71717a" },
+                styles.healthPill,
+                { backgroundColor: health.focusForfeited > 0 ? "#fdeceb" : "#f4f4f5" },
               ]}
             >
-              {health.focusForfeited} Forfeited
+              <MaterialIcons
+                name="cancel"
+                size={13}
+                color={health.focusForfeited > 0 ? "#ef4444" : "#71717a"}
+              />
+              <Text
+                style={[
+                  styles.healthPillText,
+                  { color: health.focusForfeited > 0 ? "#ef4444" : "#71717a" },
+                ]}
+              >
+                {health.focusForfeited} Forfeited
+              </Text>
+            </View>
+          </View>
+
+          {/* Focus Reactive Bar Chart */}
+          <View style={styles.healthBarChartWrap}>
+            <View style={styles.healthBarsRow}>
+              {intervals.map((it) => {
+                const completed = it.focusCompleted || 0;
+                const forfeited = it.focusForfeited || 0;
+                const total = completed + forfeited;
+                const chartH = 76;
+                const barH = total > 0 ? Math.max(12, Math.round((total / maxFocus) * chartH)) : 4;
+                const compRatio = total > 0 ? completed / total : 1;
+                const compH = Math.round(barH * compRatio);
+                const forfH = barH - compH;
+
+                return (
+                  <View key={it.key} style={styles.healthBarCol}>
+                    <Text style={styles.barCountText}>{total > 0 ? total : ""}</Text>
+                    <View style={[styles.barTrackSlot, { height: chartH }]}>
+                      {total === 0 ? (
+                        <View style={styles.zeroBarDot} />
+                      ) : (
+                        <View style={[styles.stackedBarWrap, { height: barH }]}>
+                          {forfeited > 0 && (
+                            <View style={[styles.stackedForfeited, { height: forfH }]} />
+                          )}
+                          {completed > 0 && (
+                            <View style={[styles.stackedCompleted, { height: compH }]} />
+                          )}
+                        </View>
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.barLabelText,
+                        it.isCurrent && styles.currentBarLabel,
+                      ]}
+                    >
+                      {it.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* FACE B: GOALS PROGRESS */}
+        <Animated.View
+          style={[
+            styles.flipFace,
+            backAnimatedStyle,
+            { backgroundColor: colors.surfaceContainerHigh || "#fafafa" },
+          ]}
+        >
+          <View style={styles.healthMetricHeader}>
+            <View style={styles.metricTitleWrap}>
+              <MaterialIcons name="flag" size={15} color={colors.onSurface} />
+              <Text style={[styles.healthMetricTitle, { color: colors.onSurface }]}>GOALS PROGRESS</Text>
+            </View>
+            <Text style={[styles.healthMetricRate, { color: toneColor }]}>
+              {health.goalsCompleted + health.goalsMissed + health.goalsForfeited > 0
+                ? `${health.goalSuccessRate}% achieved`
+                : "No goals yet"}
             </Text>
           </View>
-        </View>
 
-        {/* Progress Bar */}
-        <View style={[styles.healthProgressBar, { backgroundColor: "#e4e4e7" }]}>
-          <View
-            style={[
-              styles.healthProgressFill,
-              {
-                width: `${health.focusCompletionRate}%`,
-                backgroundColor: health.focusCompletionRate >= 70 ? "#10b981" : "#f59e0b",
-              },
-            ]}
-          />
-        </View>
-      </View>
-
-      {/* Goals Completed vs Missed vs Forfeited */}
-      <View style={[styles.healthMetricBox, { backgroundColor: colors.surfaceContainerHigh || "#fafafa" }]}>
-        <View style={styles.healthMetricHeader}>
-          <View style={styles.metricTitleWrap}>
-            <MaterialIcons name="flag" size={15} color={colors.onSurface} />
-            <Text style={[styles.healthMetricTitle, { color: colors.onSurface }]}>GOALS PROGRESS</Text>
-          </View>
-          <Text style={[styles.healthMetricRate, { color: toneColor }]}>
-            {health.goalsCompleted + health.goalsMissed + health.goalsForfeited > 0
-              ? `${health.goalSuccessRate}% achieved`
-              : "No goals yet"}
-          </Text>
-        </View>
-
-        <View style={styles.healthPillsRow}>
-          <View style={[styles.healthPill, { backgroundColor: "#e8f7ee" }]}>
-            <MaterialIcons name="check-circle" size={14} color="#15803d" />
-            <Text style={[styles.healthPillText, { color: "#15803d" }]}>
-              {health.goalsCompleted} Done
-            </Text>
-          </View>
-
-          <View style={[styles.healthPill, { backgroundColor: health.goalsMissed > 0 ? "#fff4e5" : "#f4f4f5" }]}>
-            <MaterialIcons
-              name="warning-amber"
-              size={14}
-              color={health.goalsMissed > 0 ? "#c2610c" : "#71717a"}
-            />
-            <Text
+          <View style={styles.healthPillsRow}>
+            <View style={[styles.healthPill, { backgroundColor: "#e8f7ee" }]}>
+              <MaterialIcons name="check-circle" size={13} color="#15803d" />
+              <Text style={[styles.healthPillText, { color: "#15803d" }]}>
+                {health.goalsCompleted} Done
+              </Text>
+            </View>
+            <View
               style={[
-                styles.healthPillText,
-                { color: health.goalsMissed > 0 ? "#c2610c" : "#71717a" },
+                styles.healthPill,
+                { backgroundColor: health.goalsMissed > 0 ? "#fff4e5" : "#f4f4f5" },
               ]}
             >
-              {health.goalsMissed} Missed
-            </Text>
-          </View>
-
-          <View style={[styles.healthPill, { backgroundColor: health.goalsForfeited > 0 ? "#fdeceb" : "#f4f4f5" }]}>
-            <MaterialIcons
-              name="close"
-              size={14}
-              color={health.goalsForfeited > 0 ? "#ef4444" : "#71717a"}
-            />
-            <Text
+              <MaterialIcons
+                name="warning-amber"
+                size={13}
+                color={health.goalsMissed > 0 ? "#c2610c" : "#71717a"}
+              />
+              <Text
+                style={[
+                  styles.healthPillText,
+                  { color: health.goalsMissed > 0 ? "#c2610c" : "#71717a" },
+                ]}
+              >
+                {health.goalsMissed} Missed
+              </Text>
+            </View>
+            <View
               style={[
-                styles.healthPillText,
-                { color: health.goalsForfeited > 0 ? "#ef4444" : "#71717a" },
+                styles.healthPill,
+                { backgroundColor: health.goalsForfeited > 0 ? "#fdeceb" : "#f4f4f5" },
               ]}
             >
-              {health.goalsForfeited} Forfeited
-            </Text>
+              <MaterialIcons
+                name="close"
+                size={13}
+                color={health.goalsForfeited > 0 ? "#ef4444" : "#71717a"}
+              />
+              <Text
+                style={[
+                  styles.healthPillText,
+                  { color: health.goalsForfeited > 0 ? "#ef4444" : "#71717a" },
+                ]}
+              >
+                {health.goalsForfeited} Forfeited
+              </Text>
+            </View>
           </View>
-        </View>
 
-        {/* Progress Bar */}
-        <View style={[styles.healthProgressBar, { backgroundColor: "#e4e4e7" }]}>
-          <View
-            style={[
-              styles.healthProgressFill,
-              {
-                width: `${health.goalSuccessRate}%`,
-                backgroundColor: health.goalSuccessRate >= 70 ? "#10b981" : "#f59e0b",
-              },
-            ]}
-          />
-        </View>
+          {/* Goals Reactive Bar Chart */}
+          <View style={styles.healthBarChartWrap}>
+            <View style={styles.healthBarsRow}>
+              {intervals.map((it) => {
+                const completed = it.goalsCompleted || 0;
+                const missed = it.goalsMissed || 0;
+                const total = completed + missed;
+                const chartH = 76;
+                const barH = total > 0 ? Math.max(12, Math.round((total / maxGoals) * chartH)) : 4;
+                const compRatio = total > 0 ? completed / total : 1;
+                const compH = Math.round(barH * compRatio);
+                const missH = barH - compH;
+
+                return (
+                  <View key={it.key} style={styles.healthBarCol}>
+                    <Text style={styles.barCountText}>{total > 0 ? total : ""}</Text>
+                    <View style={[styles.barTrackSlot, { height: chartH }]}>
+                      {total === 0 ? (
+                        <View style={styles.zeroBarDot} />
+                      ) : (
+                        <View style={[styles.stackedBarWrap, { height: barH }]}>
+                          {missed > 0 && (
+                            <View style={[styles.stackedMissed, { height: missH }]} />
+                          )}
+                          {completed > 0 && (
+                            <View style={[styles.stackedCompleted, { height: compH }]} />
+                          )}
+                        </View>
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.barLabelText,
+                        it.isCurrent && styles.currentBarLabel,
+                      ]}
+                    >
+                      {it.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        </Animated.View>
       </View>
     </View>
   );
@@ -681,7 +864,7 @@ function GoalTrackerBlock({
   );
 }
 
-// ─── 3. Bedrock Diagnostic Block (LLM Powered) ────────────────────────────────
+// ─── 3. Hadaf Diagnostic Block (5 UI Cards) ──────────────────────────────────
 
 function BedrockDiagnosticBlock({
   diagnostic,
@@ -696,16 +879,62 @@ function BedrockDiagnosticBlock({
 }) {
   const colors = useColors();
 
+  // Always extract or map exactly 5 diagnostic cards for unfiltered motivation
+  const cards: Array<{ title: string; text: string }> = useMemo(() => {
+    if (!diagnostic) return [];
+    if (Array.isArray(diagnostic.cards) && diagnostic.cards.length >= 5) {
+      return diagnostic.cards.slice(0, 5);
+    }
+    const defaultTitles = [
+      "Focus Session Execution",
+      "Distraction Bleed",
+      "Goal Follow-Through",
+      "Screen Time Boundary",
+      "Unfiltered Mindset Kick",
+    ];
+    const points = Array.isArray(diagnostic.laggingPoints) ? diagnostic.laggingPoints : [];
+    const result: Array<{ title: string; text: string }> = [];
+
+    for (let i = 0; i < 5; i++) {
+      const raw = points[i];
+      if (raw) {
+        const parts = raw.split(":");
+        if (parts.length > 1) {
+          result.push({ title: parts[0].trim(), text: parts.slice(1).join(":").trim() });
+        } else {
+          result.push({ title: defaultTitles[i] || `Diagnostic 0${i + 1}`, text: raw });
+        }
+      } else {
+        result.push({
+          title: defaultTitles[i],
+          text:
+            i === 4
+              ? "Excuses produce zero results. Put your phone in another room, silence notifications, and lock in right now."
+              : "Keep pushing your boundaries and track your progress daily.",
+        });
+      }
+    }
+    return result;
+  }, [diagnostic]);
+
+  const cardIcons: Array<React.ComponentProps<typeof MaterialIcons>["name"]> = [
+    "timer",
+    "block",
+    "flag",
+    "speed",
+    "bolt",
+  ];
+
   return (
     <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
       <View style={styles.chartHeader}>
         <View style={{ flex: 1, paddingRight: 8 }}>
           <View style={styles.aiTagWrap}>
-            <MaterialIcons name="auto-awesome" size={13} color="#3b82f6" />
-            <Text style={styles.aiTagText}>AI DIAGNOSTIC · BEDROCK LLM</Text>
+            <MaterialIcons name="bolt" size={13} color="#f59e0b" />
+            <Text style={styles.aiTagText}>Hadaf Diagnostic</Text>
           </View>
           <Text style={[styles.chartTitle, { color: colors.onSurface, marginTop: 4 }]}>
-            Where You're Lagging
+            Diagnostic Board
           </Text>
         </View>
 
@@ -727,14 +956,14 @@ function BedrockDiagnosticBlock({
         <View style={styles.loadingDiagWrap}>
           <ActivityIndicator color={colors.primary} size="large" />
           <Text style={[styles.loadingDiagText, { color: colors.outline }]}>
-            Analyzing screen time, goals & focus habits with AWS Bedrock...
+            Analyzing screen time, goals & focus habits...
           </Text>
         </View>
       ) : diagnostic ? (
         <View style={styles.diagBody}>
           {/* Headline Banner */}
           <View style={styles.diagHeadlineBox}>
-            <MaterialIcons name="insights" size={18} color="#ef4444" />
+            <MaterialIcons name="warning" size={16} color="#ef4444" />
             <Text style={styles.diagHeadlineText}>{diagnostic.headline}</Text>
           </View>
 
@@ -743,21 +972,31 @@ function BedrockDiagnosticBlock({
             {diagnostic.summary}
           </Text>
 
-          {/* Lagging Leaks / Points */}
-          {diagnostic.laggingPoints.length > 0 && (
-            <View style={styles.diagPointsList}>
-              {diagnostic.laggingPoints.map((point, i) => (
-                <View key={i} style={styles.diagPointRow}>
-                  <View style={styles.diagPointDot}>
-                    <MaterialIcons name="arrow-right" size={16} color="#ef4444" />
+          {/* 5 UI Cards for Unfiltered Motivation & Improvement */}
+          <View style={styles.diagCardsList}>
+            {cards.map((card, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.diagCardItem,
+                  { backgroundColor: colors.surfaceContainerHigh || "#fafafa" },
+                ]}
+              >
+                <View style={styles.diagCardTop}>
+                  <View style={styles.diagCardBadge}>
+                    <Text style={styles.diagCardBadgeText}>{String(i + 1).padStart(2, "0")}</Text>
                   </View>
-                  <Text style={[styles.diagPointText, { color: colors.outline }]}>
-                    {point}
+                  <MaterialIcons name={cardIcons[i % cardIcons.length]} size={14} color="#000" />
+                  <Text style={[styles.diagCardTitle, { color: colors.onSurface }]}>
+                    {card.title}
                   </Text>
                 </View>
-              ))}
-            </View>
-          )}
+                <Text style={[styles.diagCardText, { color: colors.outline }]}>
+                  {card.text}
+                </Text>
+              </View>
+            ))}
+          </View>
 
           {/* Action Step Banner */}
           {diagnostic.actionStep ? (
@@ -772,7 +1011,7 @@ function BedrockDiagnosticBlock({
         </View>
       ) : (
         <Text style={[styles.emptyText, { color: colors.outline }]}>
-          Tap refresh to generate an AI diagnosis with Bedrock.
+          Tap refresh to generate your Hadaf diagnostic.
         </Text>
       )}
     </View>
@@ -962,7 +1201,11 @@ export default function AnalyticsScreen() {
 
             {/* 1. Health Index Block (Completed vs Forfeited Focus & Goals) */}
             <Animated.View entering={isWeb ? undefined : FadeInDown.delay(100).springify()}>
-              <HealthIndexBlock health={insights.health} range={activeRange} />
+              <HealthIndexBlock
+                health={insights.health}
+                intervals={insights.tracker.intervals}
+                range={activeRange}
+              />
             </Animated.View>
 
             {/* 2. Goal Tracker Block (Simple, Clean Screen vs Target Graph) */}
@@ -1402,6 +1645,152 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     color: "#15803d",
     flex: 1,
+  },
+
+  // Switcher Tab Styles
+  tabSwitchWrap: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.06)",
+    padding: 3,
+    borderRadius: 20,
+    gap: 3,
+  },
+  tabSwitchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+  },
+  tabSwitchBtnActive: {
+    backgroundColor: "#000",
+  },
+  tabSwitchText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    color: "#666",
+  },
+  tabSwitchTextActive: {
+    color: "#fff",
+  },
+
+  // Flip Container & Faces
+  flipContainer: {
+    minHeight: 220,
+    position: "relative",
+    marginTop: 6,
+  },
+  flipFace: {
+    borderRadius: 18,
+    padding: 14,
+    gap: 12,
+    backfaceVisibility: "hidden",
+    width: "100%",
+  },
+
+  // Health Bar Charts
+  healthBarChartWrap: {
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.05)",
+  },
+  healthBarsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    height: 106,
+  },
+  healthBarCol: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  barCountText: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    color: "#444",
+    height: 12,
+    marginBottom: 2,
+  },
+  barTrackSlot: {
+    width: "100%",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
+  zeroBarDot: {
+    width: 10,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  stackedBarWrap: {
+    width: 14,
+    borderRadius: 7,
+    overflow: "hidden",
+    justifyContent: "flex-end",
+  },
+  stackedCompleted: {
+    width: "100%",
+    backgroundColor: "#10b981",
+  },
+  stackedForfeited: {
+    width: "100%",
+    backgroundColor: "#ef4444",
+  },
+  stackedMissed: {
+    width: "100%",
+    backgroundColor: "#f59e0b",
+  },
+  barLabelText: {
+    fontSize: 9,
+    fontFamily: "Inter_500Medium",
+    color: "#888",
+    marginTop: 4,
+  },
+  currentBarLabel: {
+    fontFamily: "Inter_700Bold",
+    color: "#000",
+  },
+
+  // 5 Diagnostic UI Cards
+  diagCardsList: {
+    gap: 8,
+  },
+  diagCardItem: {
+    borderRadius: 14,
+    padding: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+  },
+  diagCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  diagCardBadge: {
+    backgroundColor: "#000",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  diagCardBadgeText: {
+    color: "#fff",
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+  },
+  diagCardTitle: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  diagCardText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 17,
   },
 
   modalOuter: { flex: 1, alignItems: "center", justifyContent: "center" },

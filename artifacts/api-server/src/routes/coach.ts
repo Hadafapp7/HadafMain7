@@ -21,6 +21,28 @@ function fmtMin(m: number): string {
   return `${v}m`;
 }
 
+const SOCIAL_MEDIA_KEYWORDS = [
+  "instagram",
+  "tiktok",
+  "facebook",
+  "snapchat",
+  "twitter",
+  "reddit",
+  "pinterest",
+  "threads",
+  "youtube",
+  "linkedin",
+  "social",
+  "reels",
+  "shorts",
+];
+
+function isSocialMedia(appName: string, category?: string | null): boolean {
+  const n = (appName || "").toLowerCase();
+  const c = (category || "").toLowerCase();
+  return SOCIAL_MEDIA_KEYWORDS.some((kw) => n.includes(kw) || c.includes(kw));
+}
+
 // In-memory cache per user with 5-minute TTL to keep home visits instant
 const coachCache = new Map<string, { data: any; expiresAt: number }>();
 
@@ -59,6 +81,13 @@ router.get("/coach/reality-check", requireAuth, async (req, res): Promise<void> 
 
     // Screen time stats
     const todayMins = todayUsage.reduce((s, e) => s + e.durationMinutes, 0);
+
+    // Social media screen time calculation
+    const socialMediaUsage = todayUsage.filter((e) => isSocialMedia(e.appName, e.category));
+    const socialMediaMins = socialMediaUsage.reduce((s, e) => s + e.durationMinutes, 0);
+    const isGuiltMode = socialMediaMins > 180; // Only guilt when social media > 3 hours (180 mins)
+
+    const topSocialApp = [...socialMediaUsage].sort((a, b) => b.durationMinutes - a.durationMinutes)[0];
     const sortedTodayApps = [...todayUsage].sort((a, b) => b.durationMinutes - a.durationMinutes);
     const topTodayApp = sortedTodayApps[0];
 
@@ -79,6 +108,8 @@ router.get("/coach/reality-check", requireAuth, async (req, res): Promise<void> 
       user?.name ? `- Name: ${user.name}` : "",
       `- Current streak: ${streak} day(s)`,
       `- Screen time today: ${fmtMin(todayMins)}`,
+      `- Social media screen time today: ${fmtMin(socialMediaMins)} (Threshold for guilt is 3 hours / 180m)`,
+      topSocialApp ? `- Top social media sink: ${topSocialApp.appName} (${fmtMin(topSocialApp.durationMinutes)})` : "",
       topTodayApp ? `- Most used app today: ${topTodayApp.appName} (${fmtMin(topTodayApp.durationMinutes)})` : "",
       topWeekApp ? `- Biggest time sink this week: ${topWeekApp[0]} (${fmtMin(topWeekApp[1])})` : "",
       `- Focus sessions completed this week: ${completedSessions}`,
@@ -88,21 +119,37 @@ router.get("/coach/reality-check", requireAuth, async (req, res): Promise<void> 
       .filter(Boolean)
       .join("\n");
 
-    const prompt = `You are Hadaf's AI Focus Coach. Write a short, punchy 2-sentence reality check widget for the app's home screen.
-Sentence 1: Deliver an honest, sharp guilt feeling about their phone time, top app, or missed focus (speak directly to "you").
-Sentence 2: Deliver an immediate, fierce motivational kick to lock in and focus right now.
+    const prompt = isGuiltMode
+      ? `You are Hadaf's Reality Check Coach. Write a short, punchy 2-sentence reality check widget for the app's home screen.
+The user has wasted ${fmtMin(socialMediaMins)} on social media today, which is GREATER than 3 hours!
+Sentence 1: Deliver a sharp, intense guilt-inducing reality check making them feel deeply guilty about wasting over 3 hours on mindless feeds while their goals rot.
+Sentence 2: Deliver an immediate fierce motivational kick to put the phone down and lock in a 25-minute focus session right now.
 
 Rules:
 - Exactly 2 sentences.
 - At most 28 words total.
-- Simple, direct words. No clichés.
+- Simple, direct words.
 - Reply ONLY with a JSON object:
-{"title": "3-5 word punchy hook", "message": "Sentence 1. Sentence 2."}
+{"title": "3-5 word guilt hook", "message": "Sentence 1. Sentence 2."}
+
+USER FACTS:
+${facts}`
+      : `You are Hadaf's Reality Check Coach. Write a short, punchy 2-sentence reality check widget for the app's home screen.
+The user's social media screen time today is only ${fmtMin(socialMediaMins)} (under 3 hours). Do NOT give any guilt messages about social media or phone waste.
+Sentence 1: Acknowledge that they have kept distractions disciplined today.
+Sentence 2: Give a high-energy kick to lock in a 25-minute focus session right now to stay ahead.
+
+Rules:
+- Exactly 2 sentences.
+- At most 28 words total.
+- Simple, direct words.
+- Reply ONLY with a JSON object:
+{"title": "3-5 word motivation hook", "message": "Sentence 1. Sentence 2."}
 
 USER FACTS:
 ${facts}`;
 
-    let title = "Time to lock in";
+    let title = isGuiltMode ? "3+ hours on social feeds" : "Discipline is winning";
     let message = "";
     let source: "bedrock" | "fallback" = "fallback";
 
@@ -113,7 +160,7 @@ ${facts}`;
         if (match) {
           const parsed = JSON.parse(match[0]);
           if (parsed.message && String(parsed.message).trim().length >= 10) {
-            title = String(parsed.title || "Reality Check").trim();
+            title = String(parsed.title || (isGuiltMode ? "Reality Check" : "Stay Locked In")).trim();
             message = String(parsed.message).trim();
             source = "bedrock";
           }
@@ -124,18 +171,12 @@ ${facts}`;
     }
 
     if (!message) {
-      if (topTodayApp && topTodayApp.durationMinutes > 45) {
-        title = `${topTodayApp.appName} took ${fmtMin(topTodayApp.durationMinutes)}`;
-        message = `You spent ${fmtMin(topTodayApp.durationMinutes)} on ${topTodayApp.appName} today while your goals waited. Close the feed and start 25 minutes of deep focus now.`;
-      } else if (todayMins > 120) {
-        title = `${fmtMin(todayMins)} on screen today`;
-        message = `Over 2 hours gone to your screen today already. Take control of your attention before the day is over.`;
-      } else if (quitSessions > 0) {
-        title = "Don't quit on yourself";
-        message = `You ended a focus session early this week. Prove your discipline and finish your next session strong.`;
+      if (isGuiltMode) {
+        title = `${fmtMin(socialMediaMins)} lost to social media`;
+        message = `You surrendered ${fmtMin(socialMediaMins)} to mindless social feeds today while your real ambitions waited. Put the phone down and lock in 25 minutes of focus right now.`;
       } else {
-        title = "Own your focus today";
-        message = `Distraction is easy, but mastery takes discipline. Start your focus session now and protect your streak.`;
+        title = "Discipline is in control";
+        message = `You kept social media under 3 hours today (${fmtMin(socialMediaMins)}). Protect this momentum and get ahead with a 25-minute focus session now.`;
       }
     }
 
@@ -146,6 +187,8 @@ ${facts}`;
       source,
       streak,
       screenTimeToday: fmtMin(todayMins),
+      socialMediaMins,
+      isGuiltMode,
     };
 
     coachCache.set(userId, { data: result, expiresAt: Date.now() + 5 * 60_000 });
