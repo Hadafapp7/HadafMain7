@@ -43,6 +43,7 @@ export type GoalStatus = typeof GoalStatus[keyof typeof GoalStatus];
 export const GoalStatus = {
   pending: 'pending',
   done: 'done',
+  forfeited: 'forfeited',
 } as const;
 
 export interface Goal {
@@ -116,6 +117,7 @@ export type GoalUpdateStatus = typeof GoalUpdateStatus[keyof typeof GoalUpdateSt
 export const GoalUpdateStatus = {
   pending: 'pending',
   done: 'done',
+  forfeited: 'forfeited',
 } as const;
 
 export interface GoalUpdate {

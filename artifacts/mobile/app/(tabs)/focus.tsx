@@ -45,6 +45,7 @@ import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
+import ForfeitModal from "@/components/ForfeitModal";
 import { useColors } from "@/hooks/useColors";
 import {
   type FocusSession,
@@ -522,6 +523,7 @@ export default function FocusScreen() {
   const customRef = useRef<TextInput>(null);
   const hasHydratedBlockedApps = useRef(false);
 
+  const [showForfeitModal, setShowForfeitModal] = useState(false);
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [remaining,    setRemaining]    = useState(duration * 60);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -838,14 +840,18 @@ export default function FocusScreen() {
     } catch (e) {}
   };
 
-  const handleStop   = () => {
+  const handleStop = () => {
+    setShowForfeitModal(true);
+  };
+
+  const handleForfeitConfirm = async (reason: string, roast: string) => {
     try {
       if (startNotificationIdRef.current) {
-        Notifications.cancelScheduledNotificationAsync(startNotificationIdRef.current);
+        Notifications?.cancelScheduledNotificationAsync(startNotificationIdRef.current);
         startNotificationIdRef.current = null;
       }
       if (endNotificationIdRef.current) {
-        Notifications.cancelScheduledNotificationAsync(endNotificationIdRef.current);
+        Notifications?.cancelScheduledNotificationAsync(endNotificationIdRef.current);
         endNotificationIdRef.current = null;
       }
     } catch (e) {}
@@ -861,7 +867,14 @@ export default function FocusScreen() {
     setSessionId(null);
     if (currentId) {
       endFocusSession.mutate(
-        { id: currentId, data: { status: "stopped" } },
+        {
+          id: currentId,
+          data: {
+            status: "stopped",
+            forfeitReason: reason,
+            forfeitRoast: roast,
+          } as any,
+        },
         { onSuccess: invalidateSessions },
       );
     }
@@ -1428,6 +1441,18 @@ export default function FocusScreen() {
         blockedApps={blockedApps}
         onToggle={toggleApp}
         onClose={() => setShowPicker(false)}
+      />
+
+      <ForfeitModal
+        visible={showForfeitModal}
+        type="focus"
+        context={{
+          plannedMinutes: duration,
+          elapsedMinutes: Math.max(0, Math.round((duration * 60 - remaining) / 60)),
+          title: intention || `${duration} min focus`,
+        }}
+        onClose={() => setShowForfeitModal(false)}
+        onForfeited={handleForfeitConfirm}
       />
     </View>
   );

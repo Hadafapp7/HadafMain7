@@ -1,3 +1,4 @@
+import UserAvatar from '@/components/UserAvatar';
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@clerk/expo";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -194,12 +195,7 @@ export default function ProfileScreen() {
           style={styles.identitySection}
         >
           <View style={styles.avatarWrap}>
-            <View style={styles.avatarBox}>
-              <MaterialIcons name="person" size={60} color="#b0b0b0" />
-            </View>
-            <View style={styles.verifiedBadge}>
-              <MaterialIcons name="verified" size={14} color="#fff" />
-            </View>
+            <UserAvatar gender={(me as any)?.gender} isPro={sub.isPro} size={84} />
           </View>
 
           <Text style={styles.profileName}>{displayName}</Text>

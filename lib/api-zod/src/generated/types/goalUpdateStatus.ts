@@ -12,4 +12,5 @@ export type GoalUpdateStatus = typeof GoalUpdateStatus[keyof typeof GoalUpdateSt
 export const GoalUpdateStatus = {
   pending: 'pending',
   done: 'done',
+  forfeited: 'forfeited',
 } as const;

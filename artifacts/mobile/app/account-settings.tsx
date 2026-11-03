@@ -21,6 +21,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import { customFetch } from "@workspace/api-client-react";
+import UserAvatar from "@/components/UserAvatar";
+import { useSubscription } from "@/hooks/useSubscription";
 
 const isWeb = Platform.OS === "web";
 
@@ -84,6 +86,7 @@ const maskPhoneNumber = (phoneStr: string) => {
 export default function AccountSettingsScreen() {
   const insets = useSafeAreaInsets();
   const topPad = isWeb ? 0 : insets.top;
+  const sub = useSubscription();
 
   const { data: userProfile, isLoading, refetch } = useQuery({
     queryKey: ["userMe"],
@@ -244,19 +247,10 @@ export default function AccountSettingsScreen() {
         >
           {/* Avatar */}
           <View style={styles.avatarSection}>
-            <View style={styles.avatarWrap}>
-              <View style={styles.avatarCircle}>
-                <MaterialIcons name="person" size={64} color="#b0b0b0" />
-              </View>
-              <TouchableOpacity
-                style={styles.editBadge}
-                onPress={() => Haptics.selectionAsync()}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="edit" size={14} color="#fff" />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.editPhotoLabel}>EDIT PROFILE PHOTO</Text>
+            <UserAvatar gender={gender} isPro={sub.isPro} size={84} />
+            <Text style={styles.avatarHintText}>
+              {gender ? `${gender} Profile Logo` : "Neutral Profile Logo"}
+            </Text>
           </View>
 
           {isLoading ? (
@@ -370,9 +364,12 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
     borderWidth: 3, borderColor: "#f9f9f9",
   },
-  editPhotoLabel: {
-    fontSize: 10, fontFamily: "Inter_700Bold",
-    color: "#888", letterSpacing: 2,
+  avatarHintText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    color: "#71717a",
+    marginTop: 10,
+    letterSpacing: 0.6,
   },
 
   form: { gap: 16 },

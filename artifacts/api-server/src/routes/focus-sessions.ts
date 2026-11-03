@@ -1,6 +1,6 @@
 import { awardXpAndCheckBadges, updateStreak } from "../utils/gamification";
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, focusSessionsTable } from "@workspace/db";
 import {
   StartFocusSessionBody,
@@ -13,6 +13,18 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { getUserPlan } from "../lib/plan";
 
 const router: IRouter = Router();
+
+let columnsEnsured = false;
+async function ensureFocusColumns() {
+  if (columnsEnsured) return;
+  try {
+    await db.execute(sql`
+      ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS forfeit_reason text;
+      ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS forfeit_roast text;
+    `);
+    columnsEnsured = true;
+  } catch {}
+}
 
 router.get(
   "/focus-sessions",
@@ -66,6 +78,7 @@ router.post(
       }
     }
 
+    await ensureFocusColumns();
     const [session] = await db
       .insert(focusSessionsTable)
       .values({ ...parsed.data, userId: req.userId! })
@@ -91,9 +104,15 @@ router.post(
       return;
     }
 
+    await ensureFocusColumns();
     const [session] = await db
       .update(focusSessionsTable)
-      .set({ status: parsed.data.status, endedAt: new Date() })
+      .set({
+        status: parsed.data.status,
+        endedAt: new Date(),
+        forfeitReason: (req.body as any)?.forfeitReason ? String((req.body as any).forfeitReason) : null,
+        forfeitRoast: (req.body as any)?.forfeitRoast ? String((req.body as any).forfeitRoast) : null,
+      })
       .where(
         and(
           eq(focusSessionsTable.id, params.data.id),

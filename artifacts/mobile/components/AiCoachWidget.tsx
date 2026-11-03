@@ -17,8 +17,9 @@ const COACH_CACHE_KEY = "hadaf_ai_coach_reality_check_v2";
 
 interface CoachData {
   tag: string;
-  title: string;
-  message: string;
+  title: string | null;
+  message: string | null;
+  isNull?: boolean;
   source?: "bedrock" | "fallback";
   streak?: number;
   screenTimeToday?: string;
@@ -26,8 +27,9 @@ interface CoachData {
 
 const DEFAULT_COACH: CoachData = {
   tag: "REALITY CHECK",
-  title: "Protect your focus",
-  message: "Distraction steals your time silently. Lock in for a 25-minute focus session right now.",
+  title: null,
+  message: null,
+  isNull: true,
   source: "fallback",
 };
 
@@ -53,7 +55,10 @@ export default function AiCoachWidget({ firstName }: { firstName: string }) {
       const res = await customFetch<CoachData>(
         `/api/coach/reality-check${refresh ? "?refresh=true" : ""}`
       );
-      if (res?.message) {
+      if (res?.isNull || !res?.message) {
+        setData({ tag: "REALITY CHECK", title: null, message: null, isNull: true });
+        AsyncStorage.removeItem(COACH_CACHE_KEY).catch(() => {});
+      } else {
         setData(res);
         AsyncStorage.setItem(COACH_CACHE_KEY, JSON.stringify(res)).catch(() => {});
       }
@@ -78,6 +83,10 @@ export default function AiCoachWidget({ firstName }: { firstName: string }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push("/(tabs)/focus" as any);
   };
+
+  if (data.isNull || !data.message) {
+    return null;
+  }
 
   return (
     <Animated.View entering={FadeInDown.delay(20).springify()} style={styles.card}>

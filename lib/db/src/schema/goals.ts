@@ -7,7 +7,7 @@ import { usersTable } from "./users";
 
 export const GOAL_TYPES = ["daily", "scheduled"] as const;
 export const GOAL_PRIORITIES = ["low", "medium", "high", "critical"] as const;
-export const GOAL_STATUSES = ["pending", "done"] as const;
+export const GOAL_STATUSES = ["pending", "done", "forfeited"] as const;
 
 export const goalsTable = pgTable("goals", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -24,6 +24,8 @@ export const goalsTable = pgTable("goals", {
   durationMinutes: integer("duration_minutes").notNull(),
   scheduledDate: text("scheduled_date"), // "YYYY-MM-DD", only for type=scheduled
   status: text("status", { enum: GOAL_STATUSES }).notNull().default("pending"),
+  forfeitReason: text("forfeit_reason"),
+  forfeitRoast: text("forfeit_roast"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

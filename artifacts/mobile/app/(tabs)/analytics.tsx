@@ -565,7 +565,7 @@ function HealthIndexBlock({
                 const completed = it.focusCompleted || 0;
                 const forfeited = it.focusForfeited || 0;
                 const total = completed + forfeited;
-                const chartH = 76;
+                const chartH = 48;
                 const barH = total > 0 ? Math.max(12, Math.round((total / maxFocus) * chartH)) : 4;
                 const compRatio = total > 0 ? completed / total : 1;
                 const compH = Math.round(barH * compRatio);
@@ -679,7 +679,7 @@ function HealthIndexBlock({
                 const completed = it.goalsCompleted || 0;
                 const missed = it.goalsMissed || 0;
                 const total = completed + missed;
-                const chartH = 76;
+                const chartH = 48;
                 const barH = total > 0 ? Math.max(12, Math.round((total / maxGoals) * chartH)) : 4;
                 const compRatio = total > 0 ? completed / total : 1;
                 const compH = Math.round(barH * compRatio);
@@ -924,6 +924,10 @@ function BedrockDiagnosticBlock({
     "speed",
     "bolt",
   ];
+
+  if (!loading && !diagnostic) {
+    return null;
+  }
 
   return (
     <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
@@ -1677,16 +1681,23 @@ const styles = StyleSheet.create({
 
   // Flip Container & Faces
   flipContainer: {
-    minHeight: 220,
+    height: 182,
     position: "relative",
     marginTop: 6,
+    overflow: "hidden",
   },
   flipFace: {
-    borderRadius: 18,
-    padding: 14,
-    gap: 12,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 16,
+    padding: 10,
+    gap: 6,
     backfaceVisibility: "hidden",
     width: "100%",
+    height: "100%",
   },
 
   // Health Bar Charts
@@ -1700,7 +1711,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    height: 106,
+    height: 72,
   },
   healthBarCol: {
     flex: 1,

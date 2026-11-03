@@ -42,7 +42,7 @@ export const ListGoalsResponseItem = zod.object({
   "startTime": zod.string(),
   "durationMinutes": zod.number(),
   "scheduledDate": zod.string().nullish(),
-  "status": zod.enum(['pending', 'done']),
+  "status": zod.enum(['pending', 'done', 'forfeited']),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -86,7 +86,7 @@ export const UpdateGoalBody = zod.object({
   "startTime": zod.string().optional(),
   "durationMinutes": zod.number().min(1).optional(),
   "scheduledDate": zod.string().optional(),
-  "status": zod.enum(['pending', 'done']).optional()
+  "status": zod.enum(['pending', 'done', 'forfeited']).optional()
 })
 
 export const UpdateGoalResponse = zod.object({
@@ -99,7 +99,7 @@ export const UpdateGoalResponse = zod.object({
   "startTime": zod.string(),
   "durationMinutes": zod.number(),
   "scheduledDate": zod.string().nullish(),
-  "status": zod.enum(['pending', 'done']),
+  "status": zod.enum(['pending', 'done', 'forfeited']),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

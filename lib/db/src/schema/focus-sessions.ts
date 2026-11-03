@@ -27,6 +27,8 @@ export const focusSessionsTable = pgTable("focus_sessions", {
     .default("running"),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   endedAt: timestamp("ended_at"),
+  forfeitReason: text("forfeit_reason"),
+  forfeitRoast: text("forfeit_roast"),
 });
 
 export const insertFocusSessionSchema = createInsertSchema(

@@ -31,6 +31,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
+import ForfeitModal from "@/components/ForfeitModal";
 import { useColors } from "@/hooks/useColors";
 import {
   type Goal,
@@ -459,8 +460,8 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
 }
 
 // ── Goal Detail Bottom Sheet ───────────────────────────────────────────────────
-function GoalDetailSheet({ goal, onClose, onDone }: {
-  goal: Goal | null; onClose: () => void; onDone: () => void;
+function GoalDetailSheet({ goal, onClose, onDone, onForfeit }: {
+  goal: Goal | null; onClose: () => void; onDone: () => void; onForfeit?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(SCREEN_H);
@@ -528,14 +529,32 @@ function GoalDetailSheet({ goal, onClose, onDone }: {
                 <Text style={[styles.doneBtnText, { color: "#666" }]}>DONE</Text>
               </View>
             </View>
+          ) : (goal.status as string) === "forfeited" ? (
+            <View style={[styles.doneBtn, { backgroundColor: "#fee2e2" }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <MaterialIcons name="cancel" size={18} color="#ef4444" />
+                <Text style={[styles.doneBtnText, { color: "#ef4444" }]}>FORFEITED</Text>
+              </View>
+            </View>
           ) : (
-            <TouchableOpacity
-              style={styles.doneBtn}
-              activeOpacity={0.85}
-              onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onDone(); }}
-            >
-              <Text style={styles.doneBtnText}>DONE</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
+              {onForfeit && (
+                <TouchableOpacity
+                  style={[styles.doneBtn, { flex: 0.38, backgroundColor: "transparent", borderWidth: 1, borderColor: "#ef4444" }]}
+                  activeOpacity={0.8}
+                  onPress={onForfeit}
+                >
+                  <Text style={[styles.doneBtnText, { color: "#ef4444" }]}>FORFEIT</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.doneBtn, { flex: onForfeit ? 0.62 : 1 }]}
+                activeOpacity={0.85}
+                onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onDone(); }}
+              >
+                <Text style={styles.doneBtnText}>DONE</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </Animated.View>
@@ -738,6 +757,7 @@ export default function GoalsScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingGoal,  setEditingGoal]  = useState<Goal | null>(null);
   const [detailGoal,   setDetailGoal]   = useState<Goal | null>(null);
+  const [forfeitingGoal, setForfeitingGoal] = useState<Goal | null>(null);
   const [showFilters,  setShowFilters]  = useState(false);
   const [filters,      setFilters]      = useState<Filters>(DEFAULT_FILTERS);
 
@@ -778,9 +798,33 @@ export default function GoalsScreen() {
     durationMinutes: draft.durationMinutes,
   });
 
-  const handleDeleteGoal = (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    deleteGoal.mutate({ id }, { onSuccess: () => refetch() });
+  const handleDeleteGoal = (goal: Goal) => {
+    if (goal.status === "done" || (goal.status as string) === "forfeited") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      deleteGoal.mutate({ id: goal.id }, { onSuccess: () => refetch() });
+    } else {
+      setForfeitingGoal(goal);
+    }
+  };
+
+  const handleForfeitGoal = async (reason: string, roast: string) => {
+    if (!forfeitingGoal) return;
+    try {
+      await updateGoal.mutateAsync({
+        id: forfeitingGoal.id,
+        data: {
+          status: "forfeited" as any,
+          forfeitReason: reason,
+          forfeitRoast: roast,
+        } as any,
+      });
+      refetch();
+      void syncGuiltNotifications(true);
+    } catch (e) {
+      console.warn("Failed to forfeit goal:", e);
+    } finally {
+      setForfeitingGoal(null);
+    }
   };
 
   const handleAddGoal = (draft: GoalDraft) => {
@@ -881,7 +925,7 @@ export default function GoalsScreen() {
             key={g.id}
             goal={g}
             delay={60 + i * 80}
-            onDelete={() => handleDeleteGoal(g.id)}
+            onDelete={() => handleDeleteGoal(g)}
             onPress={() => { Haptics.selectionAsync(); setDetailGoal(g); }}
             onEdit={() => handleEditGoal(g)}
           />
@@ -924,6 +968,24 @@ export default function GoalsScreen() {
         goal={detailGoal}
         onClose={() => setDetailGoal(null)}
         onDone={() => detailGoal && handleToggleDone(detailGoal)}
+        onForfeit={() => {
+          if (detailGoal) {
+            const g = detailGoal;
+            setDetailGoal(null);
+            setForfeitingGoal(g);
+          }
+        }}
+      />
+
+      <ForfeitModal
+        visible={!!forfeitingGoal}
+        type="goal"
+        context={{
+          title: forfeitingGoal?.title,
+          plannedMinutes: forfeitingGoal?.durationMinutes,
+        }}
+        onClose={() => setForfeitingGoal(null)}
+        onForfeited={handleForfeitGoal}
       />
 
       {/* Modal 3 — Filters */}

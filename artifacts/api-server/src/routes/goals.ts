@@ -1,6 +1,6 @@
 import { awardXpAndCheckBadges, updateStreak } from "../utils/gamification";
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, goalsTable } from "@workspace/db";
 import {
   CreateGoalBody,
@@ -14,6 +14,18 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { getUserPlan } from "../lib/plan";
 
 const router: IRouter = Router();
+
+let goalColumnsEnsured = false;
+async function ensureGoalColumns() {
+  if (goalColumnsEnsured) return;
+  try {
+    await db.execute(sql`
+      ALTER TABLE goals ADD COLUMN IF NOT EXISTS forfeit_reason text;
+      ALTER TABLE goals ADD COLUMN IF NOT EXISTS forfeit_roast text;
+    `);
+    goalColumnsEnsured = true;
+  } catch {}
+}
 
 router.get("/goals", requireAuth, async (req, res): Promise<void> => {
   const goals = await db
@@ -64,7 +76,7 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
 
   const [goal] = await db
     .update(goalsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date(), forfeitReason: req.body?.forfeitReason ? String(req.body.forfeitReason) : null, forfeitRoast: req.body?.forfeitRoast ? String(req.body.forfeitRoast) : null })
     .where(
       and(
         eq(goalsTable.id, params.data.id),

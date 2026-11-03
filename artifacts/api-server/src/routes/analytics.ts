@@ -95,6 +95,28 @@ router.post("/analytics/diagnostic", requireAuth, async (req, res): Promise<void
         ),
     ]);
 
+    // For brand new users with no activity yet, return null diagnostic
+    if (usageEntries.length === 0 && sessions.length === 0 && goals.length === 0) {
+      res.json({
+        range,
+        days,
+        focusScore: 50,
+        targetMin,
+        totalScreenMin: 0,
+        dailyAvgMinutes: 0,
+        daysOverTarget: 0,
+        focusCompleted: 0,
+        focusForfeited: 0,
+        focusMinutes: 0,
+        goalsCompleted: 0,
+        goalsMissed: 0,
+        goalsForfeited: 0,
+        topApps: [],
+        diagnostic: null,
+      });
+      return;
+    }
+
     // ── 1. Focus Sessions Stats ──
     let focusCompleted = 0;
     let focusForfeited = 0;
@@ -119,6 +141,8 @@ router.post("/analytics/diagnostic", requireAuth, async (req, res): Promise<void
     for (const g of goals) {
       if (g.status === "done") {
         goalsCompleted++;
+      } else if (g.status === "forfeited") {
+        goalsForfeited++;
       } else {
         // Goal is pending or was not marked done
         const [hh, mm] = (g.startTime || "00:00").split(":").map(Number);
@@ -130,8 +154,6 @@ router.post("/analytics/diagnostic", requireAuth, async (req, res): Promise<void
 
         if (endMs < now.getTime()) {
           goalsMissed++;
-        } else {
-          goalsForfeited++; // pending / not scheduled
         }
       }
     }

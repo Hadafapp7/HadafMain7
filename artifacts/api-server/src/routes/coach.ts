@@ -79,6 +79,20 @@ router.get("/coach/reality-check", requireAuth, async (req, res): Promise<void> 
         .where(and(eq(appUsageEntriesTable.userId, userId), gte(appUsageEntriesTable.loggedAt, weekAgo))),
     ]);
 
+    // If new user with zero activity, return null reality check
+    if (todayUsage.length === 0 && sessions.length === 0 && goals.length === 0) {
+      res.json({
+        tag: "REALITY CHECK",
+        title: null,
+        message: null,
+        isNull: true,
+        source: "fallback",
+        streak: 0,
+        screenTimeToday: "0m",
+      });
+      return;
+    }
+
     // Screen time stats
     const todayMins = todayUsage.reduce((s, e) => s + e.durationMinutes, 0);
 
@@ -202,6 +216,76 @@ ${facts}`;
       source: "fallback",
     });
   }
+});
+
+router.post("/coach/evaluate-forfeit", requireAuth, async (req, res): Promise<void> => {
+  const { type, reason, context } = req.body || {};
+  const cleanReason = String(reason || "").trim();
+
+  // Keyword check for lame reasons
+  const LAME_PATTERNS = [
+    /bored/i, /lazy/i, /tired/i, /tiktok/i, /instagram/i, /insta/i, /youtube/i, /reels/i,
+    /scroll/i, /later/i, /tomorrow/i, /game/i, /gaming/i, /snack/i, /hungry/i,
+    /dont feel like/i, /don't feel like/i, /can't focus/i, /cant focus/i, /distract/i,
+    /sleepy/i, /hard/i, /boring/i, /netflix/i, /chilling/i, /texting/i, /friend/i, /chat/i,
+    /gave up/i, /quitting/i
+  ];
+  const GENUINE_PATTERNS = [
+    /hospital/i, /doctor/i, /emergency/i, /accident/i, /injury/i, /sick/i, /fever/i,
+    /client/i, /boss/i, /urgent/i, /family emergency/i, /ambulance/i, /fire/i, /danger/i
+  ];
+
+  let isLame = true;
+  if (GENUINE_PATTERNS.some((p) => p.test(cleanReason))) {
+    isLame = false;
+  } else if (cleanReason.length < 5 || LAME_PATTERNS.some((p) => p.test(cleanReason))) {
+    isLame = true;
+  }
+
+  const prompt = `You are Hadaf's Ruthless Reality Check Coach.
+The user is giving up and FORFEITING their ${type === "focus" ? "focus session" : "goal"}.
+User's stated reason: "${cleanReason || 'No reason provided'}".
+Context: ${JSON.stringify(context || {})}.
+
+Task:
+Analyze if this reason is LAME/WEAK (excuses, boredom, laziness, social media, lack of discipline) or GENUINE (urgent medical or family emergency, critical work crisis).
+
+Rules:
+1. If the reason is LAME or weak: Deliver a harsh, strict reality check. Speak directly to "you". Roast them sharply (e.g. "You loser, can't even keep up with a focus session hahaha. Distraction just defeated you again."). Keep it to 2 punchy sentences.
+2. If the reason is GENUINE: Be firm and less strict. Acknowledge real-life priorities come first, and tell them to handle it and get back on track. Keep it to 2 punchy sentences.
+3. Reply ONLY with a valid JSON object:
+{"isLame": boolean, "roast": "2 sentence message"}`;
+
+  let roast = "";
+  if (isBedrockConfigured()) {
+    try {
+      const raw = await generateWithBedrock(prompt, { maxTokens: 140, temperature: 0.8 });
+      const match = raw.match(/\{[\s\S]*?\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (parsed.roast) {
+          roast = String(parsed.roast).trim();
+          isLame = Boolean(parsed.isLame);
+        }
+      }
+    } catch (e: any) {
+      console.warn("[Coach] evaluate-forfeit Bedrock error:", e?.message);
+    }
+  }
+
+  if (!roast) {
+    if (isLame) {
+      roast = `You loser, can't even keep up with a ${type === "focus" ? "focus session" : "goal"} hahaha. Distraction won and your discipline folded. Stop rationalizing your failure.`;
+    } else {
+      roast = `Legitimate priorities come first. Handle what you need to do, reset, and make sure you finish your ${type === "focus" ? "focus block" : "goal"} before the day ends.`;
+    }
+  }
+
+  res.json({
+    isLame,
+    roast,
+    title: isLame ? "Weak Discipline" : "Reason Acknowledged",
+  });
 });
 
 export default router;
