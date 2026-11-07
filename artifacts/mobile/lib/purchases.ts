@@ -21,7 +21,11 @@ const TEST_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY;
 export const ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID || "hadaf_pro";
 
 const apiKey = (): string | undefined => {
-  if (__DEV__ && TEST_KEY) return TEST_KEY;
+  // In local development / dev client, use the Test Store key so simulated
+  // purchases work immediately without needing Google Play Console setup.
+  if (__DEV__) {
+    return TEST_KEY || (ANDROID_KEY?.startsWith("test_") ? ANDROID_KEY : "test_dNkXSYgsaabgRSClSbTcvRifvRX");
+  }
   return Platform.OS === "ios" ? IOS_KEY : ANDROID_KEY;
 };
 
@@ -91,7 +95,7 @@ export async function initPurchases(appUserId: string): Promise<boolean> {
   try {
     if (!configured) {
       try {
-        Purchases.setLogLevel?.(Purchases.LOG_LEVEL?.DEBUG ?? "DEBUG");
+        Purchases.setLogLevel?.(Purchases.LOG_LEVEL?.WARN ?? "WARN");
       } catch {
         /* log level is optional */
       }
@@ -194,8 +198,14 @@ export async function getProPackages(): Promise<ProPackages> {
     );
     return { monthly, annual };
   } catch (e: any) {
-    lastIssue = "Couldn't load products from RevenueCat: " + (e?.message ?? String(e));
-    console.log("[Purchases] getOfferings failed:", e);
+    const rawMsg = e?.message ?? String(e);
+    if (rawMsg.includes("Play Store products") || rawMsg.includes("ConfigurationError") || rawMsg.includes("offerings")) {
+      console.log("[Purchases] Notice: No Play Store products registered in RevenueCat offerings yet. Fallback plans available in UI.");
+      lastIssue = "Play Store products not yet registered in RevenueCat Offerings.";
+    } else {
+      lastIssue = "Couldn't load products from RevenueCat: " + rawMsg;
+      console.log("[Purchases] getOfferings failed:", e);
+    }
     return none;
   }
 }
