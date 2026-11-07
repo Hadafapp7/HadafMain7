@@ -204,7 +204,7 @@ class AppBlockerModule : Module() {
           .setContentText(notifText)
           .setSubText("Hadaf Focus")
           .setPriority(NotificationCompat.PRIORITY_HIGH)
-          .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
+          .setCategory("stopwatch")
           .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
           .setOngoing(sticky)
           .setContentIntent(pendingIntent)
