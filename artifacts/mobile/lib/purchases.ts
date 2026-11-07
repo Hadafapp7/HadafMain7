@@ -43,9 +43,18 @@ export function purchasesAvailable(): boolean {
     lastIssue = "In-app purchases are not supported on web.";
     return false;
   }
-  if (!apiKey()) {
+  const key = apiKey();
+  if (!key) {
     lastIssue =
       "No RevenueCat API key found. Set EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY in artifacts/mobile/.env.local and restart Expo with: npx expo start --dev-client -c";
+    return false;
+  }
+  // RevenueCat's native Android/iOS SDK strictly blocks test_ keys in release builds
+  // and pops up a modal closing the app. Guard against it to prevent app termination.
+  if (!__DEV__ && key.startsWith("test_")) {
+    lastIssue =
+      "RevenueCat test keys (test_...) cannot be used in a Release APK. Obtain a Google Play public API key (starts with 'goog_') from RevenueCat Project Settings -> API Keys.";
+    console.warn("[Purchases] " + lastIssue);
     return false;
   }
   return true;
