@@ -33,7 +33,7 @@
       },
       "env": {
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_bGFzdGluZy1waGVhc2FudC0yNi5jbGVyay5hY2NvdW50cy5kZXYk",
-        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "test_dNkXSYgsaabgRSClSbTcvRifvRX",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "goog_rtRFCtlOTaUBIOBTLgpvzJfhopL",
         "EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID": "hadaf_pro",
         "EXPO_PUBLIC_DOMAIN": "http://192.168.1.101:5000"
       }

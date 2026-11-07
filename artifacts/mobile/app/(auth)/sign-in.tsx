@@ -337,7 +337,12 @@ export default function SignInScreen() {
         return;
       } catch (phoneAuthErr: any) {
         console.error("[SignIn] Backend phone authentication failed:", phoneAuthErr);
-        setError(phoneAuthErr?.message || "Could not sign in with this number. Please check your connection.");
+        const rawMsg = String(phoneAuthErr?.message || "");
+        if (rawMsg.includes("Network request failed")) {
+          setError("Cannot connect to server. Ensure your PC backend is running and your phone is on the same Wi-Fi.");
+        } else {
+          setError(phoneAuthErr?.message || "Could not sign in with this number. Please check your connection.");
+        }
       } finally {
         setLoading(false);
       }
