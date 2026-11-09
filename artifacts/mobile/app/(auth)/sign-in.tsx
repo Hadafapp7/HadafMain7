@@ -821,19 +821,21 @@ export default function SignInScreen() {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.sandboxOtpBtn,
-                  { backgroundColor: colors.primary + "15", borderColor: colors.primary + "35" }
-                ]}
-                onPress={autoFillOTP}
-                disabled={loading}
-              >
-                <MaterialCommunityIcons name="lightning-bolt" size={18} color={colors.primary} />
-                <Text style={[styles.sandboxOtpText, { color: colors.primary }]}>
-                  Autofill code
-                </Text>
-              </TouchableOpacity>
+              {__DEV__ && (
+                <TouchableOpacity
+                  style={[
+                    styles.sandboxOtpBtn,
+                    { backgroundColor: colors.primary + "15", borderColor: colors.primary + "35" }
+                  ]}
+                  onPress={autoFillOTP}
+                  disabled={loading}
+                >
+                  <MaterialCommunityIcons name="lightning-bolt" size={18} color={colors.primary} />
+                  <Text style={[styles.sandboxOtpText, { color: colors.primary }]}>
+                    Autofill code (Dev Only)
+                  </Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
 

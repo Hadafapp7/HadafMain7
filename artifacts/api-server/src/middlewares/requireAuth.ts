@@ -23,16 +23,17 @@ export async function requireAuth(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
-  console.log("[Auth Debug] Raw Authorization Header:", req.headers.authorization);
-  if (req.headers.authorization) {
-    try {
-      const token = req.headers.authorization.split(" ")[1];
-      if (token) {
-        const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString("utf8"));
-        console.log("[Auth Debug] Decoded JWT Payload:", JSON.stringify(payload, null, 2));
+  if (process.env.NODE_ENV !== "production") {
+    if (req.headers.authorization) {
+      try {
+        const token = req.headers.authorization.split(" ")[1];
+        if (token) {
+          const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString("utf8"));
+          console.log("[Auth Debug] Decoded JWT Payload:", JSON.stringify(payload, null, 2));
+        }
+      } catch (err) {
+        console.log("[Auth Debug] Failed to decode token:", (err as any).message);
       }
-    } catch (err) {
-      console.log("[Auth Debug] Failed to decode token:", (err as any).message);
     }
   }
   const auth = getAuth(req);

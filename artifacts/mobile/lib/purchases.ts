@@ -21,10 +21,8 @@ const TEST_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_KEY;
 export const ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID || "hadaf_pro";
 
 const apiKey = (): string | undefined => {
-  // In local development / dev client, use the Test Store key so simulated
-  // purchases work immediately without needing Google Play Console setup.
-  if (__DEV__) {
-    return TEST_KEY || (ANDROID_KEY?.startsWith("test_") ? ANDROID_KEY : "test_dNkXSYgsaabgRSClSbTcvRifvRX");
+  if (__DEV__ && TEST_KEY) {
+    return TEST_KEY;
   }
   return Platform.OS === "ios" ? IOS_KEY : ANDROID_KEY;
 };
