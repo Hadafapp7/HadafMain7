@@ -21,7 +21,7 @@
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_Y29oZXJlbnQtdG91Y2FuLTUyLmNsZXJrLmFjY291bnRzLmRldiQ",
         "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "goog_rtRFCtlOTaUBIOBTLgpvzJfhopL",
         "EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID": "hadaf_pro",
-        "EXPO_PUBLIC_DOMAIN": "http://192.168.1.101:5000"
+        "EXPO_PUBLIC_DOMAIN": "https://api.hadaf.co.in"
       }
     },
     "preview": {
@@ -35,7 +35,7 @@
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuaGFkYWYuY28uaW4k",
         "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "goog_rtRFCtlOTaUBIOBTLgpvzJfhopL",
         "EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID": "hadaf_pro",
-        "EXPO_PUBLIC_DOMAIN": "http://192.168.1.101:5000"
+        "EXPO_PUBLIC_DOMAIN": "https://api.hadaf.co.in"
       }
     },
     "production": {
@@ -49,7 +49,7 @@
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuaGFkYWYuY28uaW4k",
         "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "goog_rtRFCtlOTaUBIOBTLgpvzJfhopL",
         "EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID": "hadaf_pro",
-        "EXPO_PUBLIC_DOMAIN": "http://192.168.1.101:5000"
+        "EXPO_PUBLIC_DOMAIN": "https://api.hadaf.co.in"
       }
     }
   },

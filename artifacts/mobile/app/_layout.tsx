@@ -29,7 +29,7 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
-let baseUrl: string = "http://192.168.1.101:5000";
+let baseUrl: string = "https://api.hadaf.co.in";
 const domain = process.env.EXPO_PUBLIC_DOMAIN;
 if (domain) {
   baseUrl = domain.startsWith("http://") || domain.startsWith("https://")
