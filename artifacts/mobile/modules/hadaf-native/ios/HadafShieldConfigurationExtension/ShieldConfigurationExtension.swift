@@ -10,7 +10,7 @@ import SwiftUI
  * when a user tries to open a blocked app during a Hadaf focus session.
  *
  * Xcode target type: Shield Configuration Extension
- * Bundle ID: com.hadaf.mobile.ShieldConfiguration
+ * Bundle ID: in.co.hadaf.app.ShieldConfiguration
  *
  * The shield replaces the entire screen of the blocked app. The user sees
  * Hadaf's branding and a "Back to Hadaf" button instead of the blocked app.

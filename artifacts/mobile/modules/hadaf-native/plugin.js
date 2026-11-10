@@ -12,7 +12,7 @@
  *   iOS:
  *     - Adds the FamilyControls entitlement
  *     - Adds the DeviceActivityMonitor + ShieldConfiguration app extensions
- *     - Configures the App Group (group.com.hadaf.mobile) for shared UserDefaults
+ *     - Configures the App Group (group.in.co.hadaf.app) for shared UserDefaults
  */
 const { withAndroidManifest, withEntitlementsPlist, withInfoPlist } = require("expo/config-plugins");
 
@@ -94,8 +94,8 @@ function withIOSFamilyControls(config) {
       cfg.modResults["com.apple.security.application-groups"] = [];
     }
     const groups = cfg.modResults["com.apple.security.application-groups"];
-    if (!groups.includes("group.com.hadaf.mobile")) {
-      groups.push("group.com.hadaf.mobile");
+    if (!groups.includes("group.in.co.hadaf.app")) {
+      groups.push("group.in.co.hadaf.app");
     }
     return cfg;
   });

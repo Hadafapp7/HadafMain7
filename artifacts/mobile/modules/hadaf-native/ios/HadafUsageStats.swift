@@ -50,7 +50,7 @@ public class HadafUsageStatsModule: Module {
     // For the bridge we return a curated list based on what the DeviceActivity
     // monitor recorded in shared UserDefaults (App Group).
     AsyncFunction("getUsageStats") { (days: Int, promise: Promise) in
-      let suiteName  = "group.com.hadaf.mobile"
+      let suiteName  = "group.in.co.hadaf.app"
       let defaults   = UserDefaults(suiteName: suiteName)
       let key        = "hadaf_usage_\(days)d"
 

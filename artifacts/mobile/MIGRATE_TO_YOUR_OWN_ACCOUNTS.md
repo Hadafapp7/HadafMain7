@@ -101,7 +101,7 @@ git commit -m "Link EAS project to my own account"
 
 ## Things worth knowing
 
-- **The Android package name (`com.hadaf.mobile`) stays the same for both of us.** That's totally fine while we're each building separate test APKs. It only matters later if this app ever gets published to the Play Store for real — at that point only one of us can be the "official" signer, but that's a future conversation, not something to worry about now.
+- **The Android package name (`in.co.hadaf.app`) stays the same for both of us.** That's totally fine while we're each building separate test APKs. It only matters later if this app ever gets published to the Play Store for real — at that point only one of us can be the "official" signer, but that's a future conversation, not something to worry about now.
 - **You're keeping the full git history**, including my commits. Nothing needs to be rewritten — your new commits just get added on top.
 - **Simpler alternative:** if full independence isn't actually necessary, it's much faster for me to just add you as a collaborator on my existing EAS project (Expo dashboard → project → Members) and my Clerk app (Clerk dashboard → team) — no code changes at all. Worth considering if we're going to be actively co-developing rather than working separately.
 

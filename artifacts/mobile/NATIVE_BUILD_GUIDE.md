@@ -157,14 +157,14 @@ You need to add two App Extension targets manually (Apple requires these as sepa
 **1. Device Activity Monitor Extension**
 - File → New → Target → Device Activity Monitor Extension
 - Name: `HadafDeviceActivityMonitor`
-- Bundle ID: `com.hadaf.mobile.DeviceActivityMonitor`
+- Bundle ID: `in.co.hadaf.app.DeviceActivityMonitor`
 - Replace the generated Swift file with `modules/hadaf-native/ios/HadafDeviceActivityMonitor/DeviceActivityMonitorExtension.swift`
-- Add to the App Group: `group.com.hadaf.mobile`
+- Add to the App Group: `group.in.co.hadaf.app`
 
 **2. Shield Configuration Extension**
 - File → New → Target → Shield Configuration Extension
 - Name: `HadafShieldConfiguration`
-- Bundle ID: `com.hadaf.mobile.ShieldConfiguration`
+- Bundle ID: `in.co.hadaf.app.ShieldConfiguration`
 - Replace the generated Swift file with `modules/hadaf-native/ios/HadafShieldConfigurationExtension/ShieldConfigurationExtension.swift`
 
 ### Grant permission (iOS, one time)

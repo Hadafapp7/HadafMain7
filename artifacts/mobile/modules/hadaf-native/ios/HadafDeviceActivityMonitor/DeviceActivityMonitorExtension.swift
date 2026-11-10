@@ -9,14 +9,14 @@ import Foundation
  * DeviceActivity framework when monitored activity thresholds are crossed.
  *
  * Xcode target type: Device Activity Monitor Extension
- * Bundle ID: com.hadaf.mobile.DeviceActivityMonitor
+ * Bundle ID: in.co.hadaf.app.DeviceActivityMonitor
  *
  * It also aggregates weekly usage data and writes it to the shared App Group
  * UserDefaults so HadafUsageStats can return it to the JS layer.
  */
 class HadafDeviceActivityMonitor: DeviceActivityMonitor {
   let store    = ManagedSettingsStore()
-  let defaults = UserDefaults(suiteName: "group.com.hadaf.mobile")
+  let defaults = UserDefaults(suiteName: "group.in.co.hadaf.app")
 
   // Called when the monitored schedule starts (e.g. beginning of focus session)
   override func intervalDidStart(for activity: DeviceActivityName) {

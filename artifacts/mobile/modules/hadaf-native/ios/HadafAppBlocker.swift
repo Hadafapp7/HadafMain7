@@ -69,7 +69,7 @@ public class HadafAppBlockerModule: Module {
 
         // Persist session state for the JS layer
         let endMs = Date().timeIntervalSince1970 * 1000 + Double(durationMinutes * 60_000)
-        let defaults = UserDefaults(suiteName: "group.com.hadaf.mobile")
+        let defaults = UserDefaults(suiteName: "group.in.co.hadaf.app")
         defaults?.set(true,     forKey: "hadaf_session_active")
         defaults?.set(bundleIds, forKey: "hadaf_blocked_bundles")
         defaults?.set(endMs,    forKey: "hadaf_session_end_ms")
@@ -80,7 +80,7 @@ public class HadafAppBlockerModule: Module {
 
     AsyncFunction("stopSession") { (promise: Promise) in
       self.store.shield.applications = nil
-      let defaults = UserDefaults(suiteName: "group.com.hadaf.mobile")
+      let defaults = UserDefaults(suiteName: "group.in.co.hadaf.app")
       defaults?.set(false, forKey: "hadaf_session_active")
       defaults?.removeObject(forKey: "hadaf_blocked_bundles")
       defaults?.removeObject(forKey: "hadaf_session_end_ms")
@@ -88,14 +88,14 @@ public class HadafAppBlockerModule: Module {
     }
 
     Function("isSessionActive") { () -> Bool in
-      let defaults = UserDefaults(suiteName: "group.com.hadaf.mobile")
+      let defaults = UserDefaults(suiteName: "group.in.co.hadaf.app")
       let active   = defaults?.bool(forKey: "hadaf_session_active") ?? false
       let endMs    = defaults?.double(forKey: "hadaf_session_end_ms") ?? 0
       return active && Date().timeIntervalSince1970 * 1000 < endMs
     }
 
     Function("getBlockedPackages") { () -> [String] in
-      let defaults = UserDefaults(suiteName: "group.com.hadaf.mobile")
+      let defaults = UserDefaults(suiteName: "group.in.co.hadaf.app")
       return defaults?.stringArray(forKey: "hadaf_blocked_bundles") ?? []
     }
   }
@@ -106,7 +106,7 @@ public class HadafAppBlockerModule: Module {
   private func tokenForBundleId(_ bundleId: String) -> ApplicationToken? {
     // On iOS 16+ use the selection picker result (stored in UserDefaults by the
     // FamilyActivityPicker SwiftUI component in the React Native layer).
-    if let data = UserDefaults(suiteName: "group.com.hadaf.mobile")?.data(forKey: "hadaf_selection"),
+    if let data = UserDefaults(suiteName: "group.in.co.hadaf.app")?.data(forKey: "hadaf_selection"),
        let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) {
       return selection.applicationTokens.first { token in
         // Match by checking the token's localizedDisplayName if available

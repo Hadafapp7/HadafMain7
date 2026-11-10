@@ -15,7 +15,7 @@ module.exports = ({ config }) => ({
   },
   ios: {
     supportsTablet: false,
-    bundleIdentifier: "com.hadaf.mobile",
+    bundleIdentifier: "in.co.hadaf.app",
     infoPlist: {
       NSHealthShareUsageDescription:
         "Hadaf uses Screen Time data to show your most used apps.",
@@ -35,7 +35,7 @@ module.exports = ({ config }) => ({
       monochromeImage: "./assets/images/android-icon-monochrome.png",
       backgroundColor: "#ffffff",
     },
-    package: "com.hadaf.mobile",
+    package: "in.co.hadaf.app",
     permissions: [
       "android.permission.PACKAGE_USAGE_STATS",
       "android.permission.FOREGROUND_SERVICE",

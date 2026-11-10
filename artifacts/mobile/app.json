@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.hadaf.mobile"
+      "bundleIdentifier": "in.co.hadaf.app"
     },
     "android": {
       "versionCode": 1,
@@ -26,7 +26,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.hadaf.mobile",
+      "package": "in.co.hadaf.app",
       "permissions": [
         "android.permission.PACKAGE_USAGE_STATS",
         "android.permission.FOREGROUND_SERVICE",
