@@ -14,6 +14,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import Constants from "expo-constants";
 import React, { useEffect } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -69,7 +70,7 @@ function RootLayoutNav() {
   const { data: me, isLoading: meLoading, isError: meError } = useQuery({
     queryKey: ["userMe"],
     enabled: Boolean(isSignedIn),
-    retry: 1,
+    retry: false,
     queryFn: () => customFetch<any>("/api/users/me"),
   });
   const profileComplete = meError || Boolean(me?.email && String(me?.name ?? "").trim());
@@ -97,7 +98,13 @@ function RootLayoutNav() {
 
   if (!isLoaded) return null;
   if (onboardingDone === null) return null;
-  if (isSignedIn && meLoading) return null;
+  if (isSignedIn && meLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#0D0D0D", alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color="#ffffff" />
+      </View>
+    );
+  }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
