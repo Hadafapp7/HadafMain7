@@ -1,0 +1,18 @@
+version: 1.0
+runtime: nodejs20
+build:
+  commands:
+    pre-build:
+      - npm install -g pnpm@11.14.0
+    build:
+      - pnpm install
+      - pnpm --filter @workspace/api-server run build
+run:
+  command: node artifacts/api-server/dist/index.mjs
+  network:
+    port: 5000
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: PORT
+      value: "5000"
