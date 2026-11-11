@@ -360,7 +360,27 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  // Guard against hanging requests with a 15-second timeout controller
+  const timeoutMs = 15000;
+  const controller = !init.signal && typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => {
+        controller.abort(new Error(`Network request timed out after ${Math.round(timeoutMs / 1000)}s`));
+      }, timeoutMs)
+    : null;
+  const signal = init.signal || (controller ? controller.signal : undefined);
+
+  let response: Response;
+  try {
+    response = await fetch(input, { ...init, method, headers, signal });
+  } catch (err: any) {
+    if (controller && controller.signal.aborted) {
+      throw new Error(`Unable to reach server (${requestInfo.url}). Connection timed out after 15s.`);
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
