@@ -18,7 +18,7 @@
       "bundleIdentifier": "in.co.hadaf.app"
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 6,
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",

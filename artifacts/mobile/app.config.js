@@ -27,7 +27,7 @@ module.exports = ({ config }) => ({
     },
   },
   android: {
-    versionCode: config.android?.versionCode || 3,
+    versionCode: config.android?.versionCode || 6,
     usesCleartextTraffic: true,
     adaptiveIcon: {
       foregroundImage: "./assets/images/android-icon-foreground.png",

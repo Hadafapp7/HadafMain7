@@ -1,10 +1,10 @@
 import React from "react";
-import { ActivityIndicator, View } from "react-native";
 import { Redirect } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useOnboarding } from "@/lib/onboarding";
+import AppLoadingScreen from "@/components/AppLoadingScreen";
 
 export default function Index() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -19,11 +19,7 @@ export default function Index() {
   const profileComplete = meError || Boolean(me?.email && String(me?.name ?? "").trim());
 
   if (!isLoaded || onboardingDone === null || (isSignedIn && meLoading)) {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#0D0D0D", alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" color="#ffffff" />
-      </View>
-    );
+    return <AppLoadingScreen />;
   }
 
   if (!isSignedIn) {

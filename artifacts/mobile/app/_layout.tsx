@@ -20,6 +20,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import AppLoadingScreen from "@/components/AppLoadingScreen";
 import { customFetch, setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import { SubscriptionProvider } from "@/hooks/useSubscription";
 import { AppDialogProvider } from "@/components/AppDialog";
@@ -97,11 +98,7 @@ function RootLayoutNav() {
   }, [isSignedIn]);
 
   if (!isLoaded || onboardingDone === null || (isSignedIn && meLoading)) {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#0D0D0D", alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" color="#ffffff" />
-      </View>
-    );
+    return <AppLoadingScreen />;
   }
 
   return (
@@ -156,9 +153,7 @@ export default function RootLayout() {
             proxyUrl={proxyUrl}
           >
             <ClerkLoading>
-              <View style={{ flex: 1, backgroundColor: "#0D0D0D", alignItems: "center", justifyContent: "center" }}>
-                <ActivityIndicator size="large" color="#ffffff" />
-              </View>
+              <AppLoadingScreen />
             </ClerkLoading>
             <ClerkLoaded>
               <QueryClientProvider client={queryClient}>
