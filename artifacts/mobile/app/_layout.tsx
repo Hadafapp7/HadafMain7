@@ -147,21 +147,21 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider
-      publishableKey={publishableKey}
-      tokenCache={tokenCache}
-      proxyUrl={proxyUrl}
-    >
-      <ClerkLoading>
-        <View style={{ flex: 1, backgroundColor: "#0D0D0D", alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator size="large" color="#ffffff" />
-        </View>
-      </ClerkLoading>
-      <ClerkLoaded>
-        <SafeAreaProvider>
-          <ErrorBoundary>
-            <QueryClientProvider client={queryClient}>
-              <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
+      <SafeAreaProvider>
+        <ErrorBoundary>
+          <ClerkProvider
+            publishableKey={publishableKey}
+            tokenCache={tokenCache}
+            proxyUrl={proxyUrl}
+          >
+            <ClerkLoading>
+              <View style={{ flex: 1, backgroundColor: "#0D0D0D", alignItems: "center", justifyContent: "center" }}>
+                <ActivityIndicator size="large" color="#ffffff" />
+              </View>
+            </ClerkLoading>
+            <ClerkLoaded>
+              <QueryClientProvider client={queryClient}>
                 <KeyboardProvider>
                   <AppDialogProvider>
                     <SubscriptionProvider>
@@ -171,11 +171,11 @@ export default function RootLayout() {
                     </SubscriptionProvider>
                   </AppDialogProvider>
                 </KeyboardProvider>
-              </GestureHandlerRootView>
-            </QueryClientProvider>
-          </ErrorBoundary>
-        </SafeAreaProvider>
-      </ClerkLoaded>
-    </ClerkProvider>
+              </QueryClientProvider>
+            </ClerkLoaded>
+          </ClerkProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
