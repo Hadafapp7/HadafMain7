@@ -410,7 +410,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
 
       <KeyboardAvoidingView
         style={styles.addModalCentered}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         pointerEvents="box-none"
       >
         <Animated.ScrollView
@@ -509,6 +509,44 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
               }}
             />
 
+            {/* Block Top 3 Social Media Apps Toggle (like Focus Session) */}
+            <View style={[styles.blockAppsCard, { marginTop: 0, marginBottom: 18 }]}>
+              <View style={styles.blockAppsHeader}>
+                <View style={styles.blockAppsIconWrap}>
+                  <MaterialIcons
+                    name="shield"
+                    size={18}
+                    color={blockApps ? "#fff" : "#555"}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.blockAppsTitle}>
+                    BLOCK TOP 3 SOCIAL APPS
+                  </Text>
+                  <Text style={styles.blockAppsSubtitle}>
+                    Auto-blocks highest screen-time apps during goal window + 15m reminder
+                  </Text>
+                </View>
+                <Switch
+                  value={blockApps}
+                  onValueChange={handleToggleBlockApps}
+                  trackColor={{ false: "#d4d4d8", true: "#000000" }}
+                  thumbColor="#ffffff"
+                />
+              </View>
+
+              {blockApps && (
+                <View style={styles.topAppsPillsRow}>
+                  {topSocialApps.map((app) => (
+                    <View key={app} style={styles.topAppPill}>
+                      <MaterialIcons name="block" size={11} color="#ef4444" />
+                      <Text style={styles.topAppPillText}>{app}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
             {/* Type toggle */}
             <Text style={[styles.formLabel, { marginBottom: 10 }]}>TASK TYPE</Text>
             <View style={styles.typeToggleRow}>
@@ -597,44 +635,6 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
                 <DrumTimePicker value={startTime} onChange={setStartTime} />
               </Animated.View>
             )}
-
-            {/* Block Top 3 Social Media Apps Toggle (like Focus Session) */}
-            <View style={styles.blockAppsCard}>
-              <View style={styles.blockAppsHeader}>
-                <View style={styles.blockAppsIconWrap}>
-                  <MaterialIcons
-                    name="shield"
-                    size={18}
-                    color={blockApps ? "#fff" : "#555"}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.blockAppsTitle}>
-                    BLOCK TOP 3 SOCIAL APPS
-                  </Text>
-                  <Text style={styles.blockAppsSubtitle}>
-                    Auto-blocks highest screen-time apps during goal window + 15m reminder
-                  </Text>
-                </View>
-                <Switch
-                  value={blockApps}
-                  onValueChange={handleToggleBlockApps}
-                  trackColor={{ false: "#d4d4d8", true: "#000000" }}
-                  thumbColor="#ffffff"
-                />
-              </View>
-
-              {blockApps && (
-                <View style={styles.topAppsPillsRow}>
-                  {topSocialApps.map((app) => (
-                    <View key={app} style={styles.topAppPill}>
-                      <MaterialIcons name="block" size={11} color="#ef4444" />
-                      <Text style={styles.topAppPillText}>{app}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
 
             {/* Submit */}
             <TouchableOpacity
@@ -1494,22 +1494,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 28,
     padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 16,
+    borderWidth: 1,
+    borderColor: "#e4e4e7",
   },
   filterCard: {
     width: "100%",
     backgroundColor: "#fff",
     borderRadius: 28,
     padding: 28,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 40,
-    elevation: 16,
+    borderWidth: 1,
+    borderColor: "#e4e4e7",
   },
   addModalClose: { position: "absolute", top: 22, right: 22, width: 32, height: 32, alignItems: "center", justifyContent: "center", zIndex: 10 },
   addModalTitle: { fontSize: 26, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: -0.5, marginBottom: 4 },

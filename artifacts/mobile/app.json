@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hadaf",
     "slug": "mobile",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
@@ -18,7 +18,7 @@
       "bundleIdentifier": "in.co.hadaf.app"
     },
     "android": {
-      "versionCode": 7,
+      "versionCode": 25,
       "softwareKeyboardLayoutMode": "resize",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
@@ -55,6 +55,15 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "9b4acb69-b402-4920-9a52-5383a1d81b62"
+      }
+    },
+    "owner": "hadafapp7"
   }
 }

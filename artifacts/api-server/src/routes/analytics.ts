@@ -267,8 +267,8 @@ ${facts}`;
 
     if (isBedrockConfigured()) {
       try {
-        const raw = await generateWithBedrock(prompt, { maxTokens: 420, temperature: 0.7 });
-        const match = raw.match(/\{[\s\S]*?\}/);
+        const raw = await generateWithBedrock(prompt, { maxTokens: 520, temperature: 0.7 });
+        const match = raw.match(/\{[\s\S]*\}/);
         if (match) {
           const parsed = JSON.parse(match[0]);
           if (parsed.summary) diagnosticSummary = String(parsed.summary).trim();

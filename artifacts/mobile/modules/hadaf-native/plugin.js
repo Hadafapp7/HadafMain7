@@ -8,13 +8,18 @@
  *   Android:
  *     - Adds PACKAGE_USAGE_STATS, SYSTEM_ALERT_WINDOW, FOREGROUND_SERVICE permissions
  *     - Registers HadafAccessibilityService in AndroidManifest.xml
- *     - Adds the accessibility_service_config.xml resource
+ *     - Disables Android OS auto Force-Dark (forceDarkAllowed=false) and locks Light theme
+ *       in styles.xml so Xiaomi/Realme/OnePlus/Samsung Dark Mode never inverts cards/inputs
  *   iOS:
  *     - Adds the FamilyControls entitlement
- *     - Adds the DeviceActivityMonitor + ShieldConfiguration app extensions
  *     - Configures the App Group (group.in.co.hadaf.app) for shared UserDefaults
  */
-const { withAndroidManifest, withEntitlementsPlist, withInfoPlist } = require("expo/config-plugins");
+const {
+  withAndroidManifest,
+  withAndroidStyles,
+  withEntitlementsPlist,
+  withInfoPlist,
+} = require("expo/config-plugins");
 
 // ── Android ────────────────────────────────────────────────────────────────
 
@@ -35,6 +40,8 @@ function withAndroidAccessibilityService(config) {
       "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
       "android.permission.SYSTEM_ALERT_WINDOW",
       "android.permission.RECEIVE_BOOT_COMPLETED",
+      "android.permission.POST_NOTIFICATIONS",
+      "android.permission.VIBRATE",
     ];
 
     for (const perm of requiredPermissions) {
@@ -84,6 +91,37 @@ function withAndroidAccessibilityService(config) {
   });
 }
 
+function withDisableAndroidForceDark(config) {
+  return withAndroidStyles(config, (cfg) => {
+    const styles = cfg.modResults?.resources?.style;
+    if (Array.isArray(styles)) {
+      const appTheme = styles.find((s) => s.$?.name === "AppTheme");
+      if (appTheme) {
+        appTheme.$.parent = "Theme.AppCompat.Light.NoActionBar";
+        if (!Array.isArray(appTheme.item)) {
+          appTheme.item = [];
+        }
+        const hasForceDark = appTheme.item.some(
+          (i) => i.$?.name === "android:forceDarkAllowed"
+        );
+        if (!hasForceDark) {
+          appTheme.item.push({
+            $: { name: "android:forceDarkAllowed", "tools:targetApi": "29" },
+            _: "false",
+          });
+        } else {
+          for (const item of appTheme.item) {
+            if (item.$?.name === "android:forceDarkAllowed") {
+              item._ = "false";
+            }
+          }
+        }
+      }
+    }
+    return cfg;
+  });
+}
+
 // ── iOS ────────────────────────────────────────────────────────────────────
 
 function withIOSFamilyControls(config) {
@@ -114,6 +152,7 @@ function withIOSFamilyControls(config) {
 
 module.exports = (config) => {
   config = withAndroidAccessibilityService(config);
+  config = withDisableAndroidForceDark(config);
   config = withIOSFamilyControls(config);
   return config;
 };

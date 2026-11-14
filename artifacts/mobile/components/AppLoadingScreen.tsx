@@ -193,34 +193,36 @@ export default function AppLoadingScreen({ message }: AppLoadingScreenProps) {
   return (
     <View style={styles.container}>
       <View style={styles.centerBox}>
-        {/* Glowing aura ring behind the logo */}
-        <Animated.View
-          style={[
-            styles.glowRing,
-            {
-              transform: [{ scale: pulseAnim }],
-              opacity: glowAnim,
-            },
-          ]}
-        />
+        <View style={styles.logoRingBox}>
+          {/* Glowing aura ring behind the logo */}
+          <Animated.View
+            style={[
+              styles.glowRing,
+              {
+                transform: [{ scale: pulseAnim }],
+                opacity: glowAnim,
+              },
+            ]}
+          />
 
-        {/* Outer subtle rotating ring */}
-        <Animated.View
-          style={[
-            styles.rotatingRing,
-            { transform: [{ rotate: spin }] },
-          ]}
-        />
+          {/* Outer subtle rotating ring */}
+          <Animated.View
+            style={[
+              styles.rotatingRing,
+              { transform: [{ rotate: spin }] },
+            ]}
+          />
 
-        {/* Hadaf Brand Logo with breathing pulse */}
-        <Animated.View
-          style={[
-            styles.logoWrap,
-            { transform: [{ scale: pulseAnim }] },
-          ]}
-        >
-          <Image source={LOGO} style={styles.logoImage} resizeMode="cover" />
-        </Animated.View>
+          {/* Hadaf Brand Logo with breathing pulse */}
+          <Animated.View
+            style={[
+              styles.logoWrap,
+              { transform: [{ scale: pulseAnim }] },
+            ]}
+          >
+            <Image source={LOGO} style={styles.logoImage} resizeMode="cover" />
+          </Animated.View>
+        </View>
 
         {/* Brand Name */}
         <Text style={styles.brandTitle}>HADAF</Text>
@@ -238,6 +240,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   centerBox: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoRingBox: {
+    width: 124,
+    height: 124,
     alignItems: "center",
     justifyContent: "center",
   },

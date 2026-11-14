@@ -4,32 +4,64 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "runtimePlatform": { "cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX" },
-  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/hadafApiTaskRole",
+  "executionRoleArn": "arn:aws:iam::656373082056:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::656373082056:role/hadafEcsTaskRole",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
   "containerDefinitions": [
     {
-      "name": "hadaf-api",
-      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/hadaf-api:latest",
+      "name": "api-server",
+      "image": "656373082056.dkr.ecr.us-east-1.amazonaws.com/hadaf-api:latest",
       "essential": true,
-      "portMappings": [{ "containerPort": 5000, "protocol": "tcp" }],
+      "portMappings": [
+        {
+          "containerPort": 5000,
+          "hostPort": 5000,
+          "protocol": "tcp"
+        }
+      ],
       "environment": [
         { "name": "NODE_ENV", "value": "production" },
         { "name": "PORT", "value": "5000" },
-        { "name": "CLERK_PUBLISHABLE_KEY", "value": "pk_live_Y2xlcmsuaGFkYWYuY28uaW4k" },
         { "name": "AWS_REGION", "value": "us-east-1" },
-        { "name": "BEDROCK_MODEL_ID", "value": "us.meta.llama3-1-8b-instruct-v1:0" },
         { "name": "AWS_SES_REGION", "value": "us-east-1" },
+        { "name": "BEDROCK_MODEL_ID", "value": "us.meta.llama3-1-8b-instruct-v1:0" },
         { "name": "SES_FROM_EMAIL", "value": "Hadaf <noreply@hadaf.co.in>" },
         { "name": "SES_REPLY_TO", "value": "support@hadaf.co.in" },
         { "name": "REVENUECAT_ENTITLEMENT_ID", "value": "hadaf_pro" },
         { "name": "OTP_RETURN_IN_RESPONSE", "value": "true" }
       ],
       "secrets": [
-        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:hadaf/DATABASE_URL" },
-        { "name": "CLERK_SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:hadaf/CLERK_SECRET_KEY" },
-        { "name": "REVENUECAT_SECRET_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:hadaf/REVENUECAT_SECRET_API_KEY" },
-        { "name": "ADMIN_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:hadaf/ADMIN_API_KEY" }
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:ssm:us-east-1:656373082056:parameter/hadaf/prod/DATABASE_URL"
+        },
+        {
+          "name": "CLERK_PUBLISHABLE_KEY",
+          "valueFrom": "arn:aws:ssm:us-east-1:656373082056:parameter/hadaf/prod/CLERK_PUBLISHABLE_KEY"
+        },
+        {
+          "name": "CLERK_SECRET_KEY",
+          "valueFrom": "arn:aws:ssm:us-east-1:656373082056:parameter/hadaf/prod/CLERK_SECRET_KEY"
+        },
+        {
+          "name": "SUPABASE_PUBLISHABLE_KEY",
+          "valueFrom": "arn:aws:ssm:us-east-1:656373082056:parameter/hadaf/prod/SUPABASE_PUBLISHABLE_KEY"
+        },
+        {
+          "name": "SUPABASE_SECRET_KEY",
+          "valueFrom": "arn:aws:ssm:us-east-1:656373082056:parameter/hadaf/prod/SUPABASE_SECRET_KEY"
+        },
+        {
+          "name": "REVENUECAT_SECRET_API_KEY",
+          "valueFrom": "arn:aws:ssm:us-east-1:656373082056:parameter/hadaf/prod/REVENUECAT_SECRET_API_KEY"
+        },
+        {
+          "name": "ADMIN_API_KEY",
+          "valueFrom": "arn:aws:ssm:us-east-1:656373082056:parameter/hadaf/prod/ADMIN_API_KEY"
+        }
       ],
       "healthCheck": {
         "command": [
@@ -46,10 +78,9 @@
         "options": {
           "awslogs-group": "/ecs/hadaf-api",
           "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "api"
+          "awslogs-stream-prefix": "ecs"
         }
       }
     }
   ]
 }
-

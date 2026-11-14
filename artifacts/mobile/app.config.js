@@ -2,7 +2,7 @@ module.exports = ({ config }) => ({
   ...config,
   name: "Hadaf",
   slug: "mobile",
-  version: "1.0.0",
+  version: "1.0.3",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "mobile",
@@ -27,7 +27,8 @@ module.exports = ({ config }) => ({
     },
   },
   android: {
-    versionCode: config.android?.versionCode || 6,
+    versionCode: config.android?.versionCode || 25,
+    softwareKeyboardLayoutMode: "resize",
     usesCleartextTraffic: true,
     adaptiveIcon: {
       foregroundImage: "./assets/images/android-icon-foreground.png",
@@ -77,9 +78,5 @@ module.exports = ({ config }) => ({
   },
   extra: {
     ...(config?.extra || {}),
-    eas: {
-      projectId: "cd0e5f1d-d9b1-4a84-b6fa-7c96653f7c69",
-    },
   },
-  owner: "tauqirmomin77",
 });

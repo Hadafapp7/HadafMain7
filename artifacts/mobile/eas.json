@@ -26,6 +26,7 @@
     },
     "preview": {
       "node": "22.13.0",
+      "credentialsSource": "local",
       "distribution": "internal",
       "android": {
         "image": "latest",
@@ -40,6 +41,7 @@
     },
     "production": {
       "node": "22.13.0",
+      "credentialsSource": "local",
       "autoIncrement": true,
       "android": {
         "image": "latest",

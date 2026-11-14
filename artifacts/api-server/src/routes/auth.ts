@@ -11,13 +11,11 @@ const otpStore = new Map<string, { code: string; expires: number; createdAt: num
 
 /**
  * While there is no SMS provider connected, the code is returned in the API response so the
- * app can autofill it (and it is printed in the server log). Set OTP_RETURN_IN_RESPONSE=false
- * (or run with NODE_ENV=production) once real SMS delivery is plugged in below.
+ * app can autofill it and deliver a local OTP notification (and it is printed in the server log).
+ * Set OTP_RETURN_IN_RESPONSE=false once real SMS delivery is plugged in below.
  */
 const exposeOtpInResponse = (): boolean =>
-  process.env.OTP_RETURN_IN_RESPONSE
-    ? process.env.OTP_RETURN_IN_RESPONSE === "true"
-    : process.env.NODE_ENV !== "production";
+  process.env.OTP_RETURN_IN_RESPONSE !== "false";
 
 router.post("/auth/phone-otp/request", async (req, res) => {
   const raw = req.body?.phone;

@@ -1059,7 +1059,7 @@ export default function FocusScreen() {
         isNativeAppBlockerSupported={isNativeAppBlockerSupported}
       />
 
-      <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <Animated.ScrollView
           style={styles.scroll}
           contentContainerStyle={[
@@ -1150,7 +1150,7 @@ export default function FocusScreen() {
           {!isActive && (
             <>
               {/* Intention — shake + red border on error */}
-              <Animated.View entering={isWeb ? undefined : FadeInDown.delay(80).springify()}>
+              <View>
                 <Animated.View style={intentionShakeStyle}>
                   <View style={[
                     styles.intentionCard,
@@ -1190,13 +1190,10 @@ export default function FocusScreen() {
                     </View>
                   </View>
                 </Animated.View>
-              </Animated.View>
+              </View>
 
               {/* Duration */}
-              <Animated.View
-                entering={isWeb ? undefined : FadeInDown.delay(120).springify()}
-                style={styles.section}
-              >
+              <View style={styles.section}>
                 <Text style={[styles.sectionLabel, { color: colors.outline }]}>DURATION</Text>
                 <View style={styles.durationRow}>
                   {durationOptions.map((opt) => (
@@ -1263,10 +1260,10 @@ export default function FocusScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
-              </Animated.View>
+              </View>
 
               {/* Restricted access — shake + red border on error */}
-              <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()}>
+              <View>
                 <Animated.View style={[styles.section, appsShakeStyle]}>
                   <View style={styles.restrictedHeader}>
                     <Text style={[
@@ -1402,38 +1399,29 @@ export default function FocusScreen() {
                     </View>
                   )}
                 </Animated.View>
-              </Animated.View>
+              </View>
             </>
           )}
 
           {/* During session — intention + blocked reminder */}
           {isActive && intention.length > 0 && (
-            <Animated.View
-              entering={isWeb ? undefined : FadeInDown.springify()}
-              style={[styles.intentionPill, { backgroundColor: colors.card }]}
-            >
+            <View style={[styles.intentionPill, { backgroundColor: colors.card }]}>
               <MaterialIcons name="lightbulb" size={14} color={colors.outline} />
               <Text style={[styles.intentionPillText, { color: colors.outline }]} numberOfLines={1}>{intention}</Text>
-            </Animated.View>
+            </View>
           )}
           {isActive && blockedApps.length > 0 && (
-            <Animated.View
-              entering={isWeb ? undefined : FadeInDown.delay(40).springify()}
-              style={[styles.blockedReminder, { backgroundColor: colors.card }]}
-            >
+            <View style={[styles.blockedReminder, { backgroundColor: colors.card }]}>
               <MaterialIcons name="block" size={16} color={colors.outline} />
               <Text style={[styles.blockedReminderText, { color: colors.outline }]}>
                 {blockedApps.length} app{blockedApps.length !== 1 ? "s" : ""} blocked
               </Text>
-            </Animated.View>
+            </View>
           )}
 
           {/* In-app app launcher — tapping a blocked app during an active session shows the interstitial */}
           {isActive && blockedApps.length > 0 && (
-            <Animated.View
-              entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
-              style={styles.section}
-            >
+            <View style={styles.section}>
               <Text style={[styles.sectionLabel, { color: colors.outline }]}>QUICK LAUNCH</Text>
               <View style={[styles.appsCard, { backgroundColor: colors.card }]}>
                 <View style={styles.quickLaunchGrid}>
@@ -1453,7 +1441,7 @@ export default function FocusScreen() {
               <Text style={[styles.nativeBuildNote, { color: colors.outline }]}>
                 Full system-wide app blocking requires a future native build. Right now, blocking is enforced only for apps launched from within Hadaf.
               </Text>
-            </Animated.View>
+            </View>
           )}
         </Animated.ScrollView>
 
@@ -1499,9 +1487,7 @@ export default function FocusScreen() {
 
       {/* ── Zen Black Focus Screen (Active Session) ── */}
       {(sessionState === "running" || sessionState === "paused") && (
-        <Animated.View
-          entering={FadeIn.duration(450)}
-          exiting={FadeOut.duration(300)}
+        <View
           style={[styles.zenBlackScreen, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 36 }]}
         >
           {/* Top subtle bar */}
@@ -1573,7 +1559,7 @@ export default function FocusScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       )}
 
       <AppPickerModal
@@ -1628,7 +1614,7 @@ const styles = StyleSheet.create({
   actionBtnPrimaryText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold" },
 
   // Intention
-  intentionCard:   { borderRadius: 18, flexDirection: "row", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
+  intentionCard:   { borderRadius: 18, flexDirection: "row", overflow: "hidden", borderWidth: 1, borderColor: "#ececec" },
   intentionAccent: { width: 4 },
   intentionInner:  { flex: 1, padding: 16, gap: 10 },
   intentionHeader: { flexDirection: "row", alignItems: "center", gap: 7 },

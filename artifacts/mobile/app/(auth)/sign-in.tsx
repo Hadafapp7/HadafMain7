@@ -24,7 +24,7 @@ import * as Haptics from "expo-haptics";
 import BrandLogo from "@/components/BrandLogo";
 import KeyboardFloatingPreview, { useKeyboardState } from "@/components/KeyboardFloatingPreview";
 import { useColors } from "@/hooks/useColors";
-import { getDevicePhoneNumber, requestPhoneNumberHint, addPhoneNumberListener } from "../../modules/hadaf-native/src";
+import { getDevicePhoneNumber, requestPhoneNumberHint, addPhoneNumberListener, showNativeNotification } from "../../modules/hadaf-native/src";
 
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
@@ -336,8 +336,16 @@ export default function SignInScreen() {
         devOtpRef.current = otpReq.devOtp ?? null;
         setOtp("");
         setStep("otp");
-        // Until SMS delivery is connected the server hands the code back so we can autofill it.
-        if (otpReq.devOtp) autoFillOTP();
+        // Until SMS delivery is connected the server hands the code back so we can notify + autofill it.
+        if (otpReq.devOtp) {
+          showNativeNotification(
+            "Hadaf Verification Code",
+            `Your 6-digit verification code is ${otpReq.devOtp}`,
+            false,
+            0
+          );
+          autoFillOTP();
+        }
         return;
       } catch (phoneAuthErr: any) {
         console.error("[SignIn] Backend phone authentication failed:", phoneAuthErr);
@@ -520,7 +528,7 @@ export default function SignInScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View
         style={[
@@ -846,7 +854,7 @@ export default function SignInScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {__DEV__ && (
+              {(devOtpRef.current || __DEV__) && (
                 <TouchableOpacity
                   style={[
                     styles.sandboxOtpBtn,
@@ -857,7 +865,9 @@ export default function SignInScreen() {
                 >
                   <MaterialCommunityIcons name="lightning-bolt" size={18} color={colors.primary} />
                   <Text style={[styles.sandboxOtpText, { color: colors.primary }]}>
-                    Autofill code (Dev Only)
+                    {devOtpRef.current
+                      ? `Tap to autofill OTP: ${devOtpRef.current}`
+                      : "Autofill code"}
                   </Text>
                 </TouchableOpacity>
               )}
