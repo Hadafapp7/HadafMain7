@@ -251,7 +251,7 @@ Task:
 Analyze if this reason is LAME/WEAK (excuses, boredom, laziness, social media, lack of discipline) or GENUINE (urgent medical or family emergency, critical work crisis).
 
 Rules:
-1. If the reason is LAME or weak: Deliver a harsh, strict reality check. Speak directly to "you". Roast them sharply (e.g. "You loser, can't even keep up with a focus session hahaha. Distraction just defeated you again."). Keep it to 2 punchy sentences.
+1. If the reason is LAME or weak: Deliver a harsh, strict reality check about the ACTION (not the person's worth). Speak directly to "you", reference their exact reason and the goal/session name, and make them feel the cost of quitting (e.g. "You quit 'Study chapter 4' because you felt lazy. Your future self is still waiting on that chapter."). No profanity, no insults about the person, nothing about health, body or family. Keep it to 2 punchy sentences.
 2. If the reason is GENUINE: Be firm and less strict. Acknowledge real-life priorities come first, and tell them to handle it and get back on track. Keep it to 2 punchy sentences.
 3. Reply ONLY with a valid JSON object:
 {"isLame": boolean, "roast": "2 sentence message"}`;
@@ -275,7 +275,7 @@ Rules:
 
   if (!roast) {
     if (isLame) {
-      roast = `You loser, can't even keep up with a ${type === "focus" ? "focus session" : "goal"} hahaha. Distraction won and your discipline folded. Stop rationalizing your failure.`;
+      roast = `You quit your ${type === "focus" ? "focus session" : "goal"}${context?.title ? ` "${String(context.title).slice(0, 60)}"` : ""} because: "${cleanReason || "no reason"}". That's an excuse, not a reason — your future self is still waiting on it.`;
     } else {
       roast = `Legitimate priorities come first. Handle what you need to do, reset, and make sure you finish your ${type === "focus" ? "focus block" : "goal"} before the day ends.`;
     }

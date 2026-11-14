@@ -4,6 +4,7 @@ import { db, usersTable, notificationsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { buildGuiltNotifications, generateGuiltPreview } from "../lib/guilt";
 import { isBedrockConfigured } from "../lib/bedrock";
+import { ensureSchema } from "../lib/schema-sync";
 
 const router: IRouter = Router();
 
@@ -22,6 +23,7 @@ router.get("/notifications/guilt", requireAuth, async (req, res): Promise<void> 
   const userId = req.userId!;
   const tz = parseTz(req.query.tz);
   try {
+    await ensureSchema();
     const [row] = await db
       .select({ lastActiveAt: usersTable.lastActiveAt })
       .from(usersTable)
@@ -77,11 +79,12 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
  * Shows the generated copy plus the exact Bedrock error if credentials / model access are wrong.
  */
 router.get("/notifications/guilt/preview", requireAuth, async (req, res): Promise<void> => {
-  const t = String(req.query.trigger ?? "missed_goal");
-  const trigger = (["missed_goal", "failed_focus", "inactive"].includes(t) ? t : "missed_goal") as
+  const t = String(req.query.trigger ?? "inconsistent");
+  const trigger = (["missed_goal", "failed_focus", "inactive", "inconsistent"].includes(t) ? t : "inconsistent") as
     | "missed_goal"
     | "failed_focus"
-    | "inactive";
+    | "inactive"
+    | "inconsistent";
   try {
     const item = await generateGuiltPreview(req.userId!, trigger, parseTz(req.query.tz));
     res.json({ bedrockConfigured: isBedrockConfigured(), model: process.env.BEDROCK_MODEL_ID || "(default)", item });

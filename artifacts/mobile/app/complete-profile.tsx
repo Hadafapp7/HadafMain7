@@ -19,6 +19,8 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import KeyboardFloatingPreview, { useKeyboardState } from "@/components/KeyboardFloatingPreview";
+
 const isWeb = Platform.OS === "web";
 const EMAIL_REGEX = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
 
@@ -42,9 +44,12 @@ export default function CompleteProfileScreen() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [focusedField, setFocusedField] = useState<"name" | "email" | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hydrated = useRef(false);
+  const emailInputRef = useRef<TextInput>(null);
+  const { isKeyboardVisible } = useKeyboardState();
 
   useEffect(() => {
     if (me && !hydrated.current) {
@@ -99,30 +104,57 @@ export default function CompleteProfileScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: (isWeb ? 0 : insets.top) + 56, paddingBottom: insets.bottom + 32 },
+          {
+            paddingTop: (isWeb ? 0 : insets.top) + (isKeyboardVisible ? 16 : 56),
+            paddingBottom: insets.bottom + (isKeyboardVisible ? 90 : 32),
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View entering={isWeb ? undefined : FadeInDown.springify()} style={styles.hero}>
-          <View style={styles.iconWrap}>
-            <MaterialIcons name="person-add-alt-1" size={30} color="#fff" />
-          </View>
-          <Text style={styles.title}>Complete your profile</Text>
-          <Text style={styles.subtitle}>
-            Just two quick details before you start. We use your email for account, payment and update notifications.
+        <Animated.View
+          entering={isWeb ? undefined : FadeInDown.springify()}
+          style={[styles.hero, isKeyboardVisible && { gap: 4 }]}
+        >
+          {!isKeyboardVisible && (
+            <View style={styles.iconWrap}>
+              <MaterialIcons name="person-add-alt-1" size={30} color="#fff" />
+            </View>
+          )}
+          <Text style={[styles.title, isKeyboardVisible && { fontSize: 20 }]}>
+            Complete your profile
           </Text>
+          {!isKeyboardVisible && (
+            <Text style={styles.subtitle}>
+              Just two quick details before you start. We use your email for account, payment and update notifications.
+            </Text>
+          )}
         </Animated.View>
 
         <Animated.View entering={isWeb ? undefined : FadeInDown.delay(80).springify()} style={styles.card}>
-          <Text style={styles.label}>FULL NAME</Text>
+          <Text
+            style={[
+              styles.label,
+              focusedField === "name" && { color: "#FFFFFF" },
+            ]}
+          >
+            FULL NAME
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              focusedField === "name" && styles.inputFocused,
+            ]}
             value={name}
+            onFocus={() => setFocusedField("name")}
+            onBlur={() => setFocusedField((f) => (f === "name" ? null : f))}
             onChangeText={(v) => {
               setName(v);
               setError(null);
@@ -130,13 +162,35 @@ export default function CompleteProfileScreen() {
             placeholder="Your name"
             placeholderTextColor="#aaa"
             autoCapitalize="words"
-            returnKeyType="next"
+            returnKeyType={emailLocked ? "done" : "next"}
+            onSubmitEditing={() => {
+              if (!emailLocked) {
+                emailInputRef.current?.focus();
+              } else {
+                handleSave();
+              }
+            }}
           />
 
-          <Text style={[styles.label, { marginTop: 18 }]}>EMAIL ADDRESS</Text>
+          <Text
+            style={[
+              styles.label,
+              { marginTop: 18 },
+              focusedField === "email" && { color: "#FFFFFF" },
+            ]}
+          >
+            EMAIL ADDRESS
+          </Text>
           <TextInput
-            style={[styles.input, emailLocked && styles.inputLocked]}
+            ref={emailInputRef}
+            style={[
+              styles.input,
+              emailLocked && styles.inputLocked,
+              focusedField === "email" && styles.inputFocused,
+            ]}
             value={email}
+            onFocus={() => setFocusedField("email")}
+            onBlur={() => setFocusedField((f) => (f === "email" ? null : f))}
             onChangeText={(v) => {
               setEmail(v);
               setError(null);
@@ -159,7 +213,7 @@ export default function CompleteProfileScreen() {
             disabled={saving}
             onPress={handleSave}
           >
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>SAVE & CONTINUE</Text>}
+            {saving ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>SAVE & CONTINUE</Text>}
           </TouchableOpacity>
         </Animated.View>
 
@@ -167,6 +221,29 @@ export default function CompleteProfileScreen() {
           <Text style={styles.signOut}>Use a different account</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <KeyboardFloatingPreview
+        label={
+          focusedField === "name"
+            ? "Full Name"
+            : focusedField === "email"
+              ? "Email Address"
+              : null
+        }
+        value={focusedField === "name" ? name : email}
+        placeholder={
+          focusedField === "name" ? "Enter your full name..." : "name@example.com"
+        }
+        actionLabel={focusedField === "name" && !emailLocked ? "Next" : "Save"}
+        onSubmit={() => {
+          if (focusedField === "name" && !emailLocked) {
+            emailInputRef.current?.focus();
+          } else {
+            handleSave();
+          }
+        }}
+        insideKeyboardAvoiding
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -202,6 +279,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_500Medium",
     color: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  inputFocused: {
+    borderColor: "#FFFFFF",
+    backgroundColor: "#2D2D2D",
   },
   inputLocked: { color: "rgba(255,255,255,0.4)" },
   error: { color: "#ff6b6b", fontSize: 13, fontFamily: "Inter_500Medium", marginTop: 14, lineHeight: 19 },

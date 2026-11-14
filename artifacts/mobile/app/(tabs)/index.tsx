@@ -33,6 +33,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
+import { HadafInlineLoader } from "@/components/AppLoadingScreen";
 import { useColors } from "@/hooks/useColors";
 import {
   type AppUsageSummaryItem,
@@ -1114,7 +1115,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
           {loadingStats ? (
-            <ActivityIndicator color={colors.primary} style={{ paddingVertical: 20 }} />
+            <HadafInlineLoader message="Syncing screen time..." compact light />
           ) : (!nativePermGranted && Platform.OS !== "web") ? (
             <TouchableOpacity
               onPress={handleRequestPermission}

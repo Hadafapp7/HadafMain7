@@ -139,17 +139,19 @@ function FocusFAB({ onPress, isFocused }: { onPress: () => void; isFocused: bool
 
 // ── Tab bar ────────────────────────────────────────────────────────────────────
 export default function AnimatedTabBar({ state, navigation }: BottomTabBarProps) {
+  // IMPORTANT: every hook must run on every render, in the same order. The early
+  // return for an active focus session has to come AFTER all hooks, otherwise React
+  // throws "Rendered fewer hooks than expected" the moment a session starts.
   const isFocusActive = useIsFocusSessionActive();
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const isIOS  = Platform.OS === "ios";
+  const isWeb  = Platform.OS === "web";
 
   // If a focus session is actively running or paused, hide the bottom menu bar entirely!
   if (isFocusActive) {
     return null;
   }
-
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const isIOS  = Platform.OS === "ios";
-  const isWeb  = Platform.OS === "web";
 
   const barHeight = isWeb ? 84 : 62 + insets.bottom;
 

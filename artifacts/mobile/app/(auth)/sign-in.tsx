@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import BrandLogo from "@/components/BrandLogo";
+import KeyboardFloatingPreview, { useKeyboardState } from "@/components/KeyboardFloatingPreview";
 import { useColors } from "@/hooks/useColors";
 import { getDevicePhoneNumber, requestPhoneNumberHint, addPhoneNumberListener } from "../../modules/hadaf-native/src";
 
@@ -42,6 +44,8 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [focusedField, setFocusedField] = useState<"phone" | "email" | "otp" | null>(null);
+  const { isKeyboardVisible } = useKeyboardState();
 
   // Stale closure refs
   const isSignUpRef = useRef(false);
@@ -608,12 +612,23 @@ export default function SignInScreen() {
           </View>
         </Modal>
 
-        <View style={styles.hero}>
-          <BrandLogo size={76} style={styles.logoWrap} />
-          <Text style={[styles.title, { color: colors.foreground }]}>Hadaf</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Set goals. Stay focused. Reach your Hadaf.
-          </Text>
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: isKeyboardVisible ? "flex-end" : "space-between",
+            paddingBottom: isKeyboardVisible ? 74 : 0,
+          }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+        <View style={[styles.hero, isKeyboardVisible && { marginTop: 8, marginBottom: 12 }]}>
+          <BrandLogo size={isKeyboardVisible ? 52 : 76} style={styles.logoWrap} />
+          <Text style={[styles.title, { color: colors.foreground }, isKeyboardVisible && { fontSize: 24, marginBottom: 2 }]}>Hadaf</Text>
+          {!isKeyboardVisible && (
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              Set goals. Stay focused. Reach your Hadaf.
+            </Text>
+          )}
         </View>
 
         <View style={styles.form}>
@@ -630,11 +645,13 @@ export default function SignInScreen() {
                       styles.countryCodeInput,
                       {
                         backgroundColor: colors.card,
-                        borderColor: colors.border,
+                        borderColor: focusedField === "phone" ? colors.primary : colors.border,
                         color: colors.foreground,
                       },
                     ]}
                     value={countryCode}
+                    onFocus={() => setFocusedField("phone")}
+                    onBlur={() => setFocusedField((f) => (f === "phone" ? null : f))}
                     onChangeText={(t) => setCountryCode(t)}
                     keyboardType="phone-pad"
                     maxLength={4}
@@ -647,11 +664,14 @@ export default function SignInScreen() {
                       styles.digitsInput,
                       {
                         backgroundColor: colors.card,
-                        borderColor: colors.border,
+                        borderColor: focusedField === "phone" ? colors.primary : colors.border,
+                        borderWidth: focusedField === "phone" ? 1.5 : 1,
                         color: colors.foreground,
                       },
                     ]}
                     value={phoneDigits}
+                    onFocus={() => setFocusedField("phone")}
+                    onBlur={() => setFocusedField((f) => (f === "phone" ? null : f))}
                     onChangeText={(t) => {
                       setPhoneDigits(t.replace(/\D/g, ""));
                       setError(null);
@@ -671,7 +691,8 @@ export default function SignInScreen() {
                     styles.input,
                     {
                       backgroundColor: colors.card,
-                      borderColor: colors.border,
+                      borderColor: focusedField === "email" ? colors.primary : colors.border,
+                      borderWidth: focusedField === "email" ? 1.5 : 1,
                       color: colors.foreground,
                     },
                   ]}
@@ -681,6 +702,8 @@ export default function SignInScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   value={email}
+                  onFocus={() => setFocusedField("email")}
+                  onBlur={() => setFocusedField((f) => (f === "email" ? null : f))}
                   onChangeText={(t) => {
                     setEmail(t);
                     setError(null);
@@ -790,6 +813,8 @@ export default function SignInScreen() {
                 <TextInput
                   ref={otpRef}
                   value={otp}
+                  onFocus={() => setFocusedField("otp")}
+                  onBlur={() => setFocusedField((f) => (f === "otp" ? null : f))}
                   onChangeText={handleOTPChange}
                   onSubmitEditing={() => verifyCode(otp)}
                   keyboardType="number-pad"
@@ -844,6 +869,41 @@ export default function SignInScreen() {
             Hadaf.
           </Text>
         </View>
+        </ScrollView>
+
+        <KeyboardFloatingPreview
+          label={
+            step === "otp"
+              ? "Verification OTP Code"
+              : loginType === "phone"
+                ? "Mobile Number"
+                : "Email Address"
+          }
+          prefix={step === "identifier" && loginType === "phone" ? `${countryCode} ` : ""}
+          value={
+            step === "otp"
+              ? otp
+              : loginType === "phone"
+                ? phoneDigits
+                : email
+          }
+          placeholder={
+            step === "otp"
+              ? "Enter 6-digit code..."
+              : loginType === "phone"
+                ? `${countryCode} 98765 43210`
+                : "you@example.com"
+          }
+          actionLabel={step === "otp" ? "Verify" : "Continue"}
+          onSubmit={() => {
+            if (step === "otp") {
+              verifyCode(otp);
+            } else {
+              sendCode();
+            }
+          }}
+          insideKeyboardAvoiding
+        />
       </View>
     </KeyboardAvoidingView>
   );

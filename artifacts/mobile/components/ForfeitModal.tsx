@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -21,6 +22,8 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { customFetch } from "@workspace/api-client-react";
+import KeyboardFloatingPreview from "@/components/KeyboardFloatingPreview";
+import { notifyRealityCheck } from "@/lib/goalAutomation";
 
 interface ForfeitModalProps {
   visible: boolean;
@@ -59,6 +62,8 @@ export default function ForfeitModal({
 }: ForfeitModalProps) {
   const [selectedChip, setSelectedChip] = useState<string>("");
   const [customText, setCustomText] = useState<string>("");
+  const [reasonFocused, setReasonFocused] = useState(false);
+  const [reasonError, setReasonError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [roastResult, setRoastResult] = useState<{
     isLame: boolean;
@@ -75,6 +80,8 @@ export default function ForfeitModal({
       opacity.value = withTiming(1, { duration: 200 });
       setSelectedChip("");
       setCustomText("");
+      setReasonFocused(false);
+      setReasonError(false);
       setRoastResult(null);
       setLoading(false);
     } else {
@@ -89,9 +96,16 @@ export default function ForfeitModal({
   }));
 
   const reasonList = type === "focus" ? DEFAULT_FOCUS_REASONS : DEFAULT_GOAL_REASONS;
+  const hasReason = Boolean(customText.trim() || selectedChip);
   const activeReason = customText.trim() || selectedChip || "No reason provided";
 
   const handleEvaluateAndForfeit = async () => {
+    if (!hasReason) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      setReasonError(true);
+      return;
+    }
+    setReasonError(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setLoading(true);
 
@@ -109,21 +123,23 @@ export default function ForfeitModal({
         }),
       });
 
-      if (res?.roast) {
-        setRoastResult(res);
-      } else {
-        setRoastResult({
-          isLame: true,
-          roast: "You gave up on your commitment. Distraction just defeated you again.",
-          title: "Session Forfeited",
-        });
-      }
+      const finalResult = res?.roast
+        ? res
+        : {
+            isLame: true,
+            roast: "You gave up on your commitment. Distraction just defeated you again.",
+            title: "Session Forfeited",
+          };
+      setRoastResult(finalResult);
+      await notifyRealityCheck(finalResult.title, finalResult.roast);
     } catch (e: any) {
-      setRoastResult({
+      const fallback = {
         isLame: true,
-        roast: `You couldn't finish your ${type === "focus" ? "focus session" : "goal"}. Excuses won't build your life.`,
+        roast: `You couldn't finish your ${type === "focus" ? "focus session" : "goal"} ("${activeReason}"). Excuses won't build your life.`,
         title: "Commitment Abandoned",
-      });
+      };
+      setRoastResult(fallback);
+      await notifyRealityCheck(fallback.title, fallback.roast);
     } finally {
       setLoading(false);
     }
@@ -140,7 +156,10 @@ export default function ForfeitModal({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <BlurView intensity={24} tint="dark" style={StyleSheet.absoluteFill} />
         <Pressable style={StyleSheet.absoluteFill} onPress={roastResult ? undefined : onClose} />
 
@@ -156,7 +175,7 @@ export default function ForfeitModal({
                 Abandon {type === "focus" ? "Focus Session" : "Goal"}?
               </Text>
               <Text style={styles.subtitle}>
-                Give your honest reason. Hadaf AI will evaluate your discipline.
+                Give your honest reason. Hadaf AI will evaluate your discipline and send a reality check.
               </Text>
 
               {/* Quick Reason Chips */}
@@ -171,6 +190,7 @@ export default function ForfeitModal({
                         Haptics.selectionAsync();
                         setSelectedChip(r);
                         setCustomText("");
+                        setReasonError(false);
                       }}
                       activeOpacity={0.8}
                     >
@@ -182,18 +202,41 @@ export default function ForfeitModal({
                 })}
               </View>
 
-              {/* Custom Input */}
-              <TextInput
-                style={styles.textInput}
-                placeholder="Or type a specific reason..."
-                placeholderTextColor="#999"
-                value={customText}
-                onChangeText={(t) => {
-                  setCustomText(t);
-                  if (t) setSelectedChip("");
-                }}
-                maxLength={120}
-              />
+              {/* Custom Input with dynamic floating label */}
+              <View style={{ width: "100%", gap: 4 }}>
+                {(reasonFocused || customText.length > 0) && (
+                  <Text style={styles.inputLabel}>
+                    REASON FOR FORFEITING {context?.title ? `(${context.title.toUpperCase()})` : ""}
+                  </Text>
+                )}
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    reasonFocused && { borderColor: "#0a0a0a", borderWidth: 1.5 },
+                    reasonError && !hasReason && { borderColor: "#ef4444", borderWidth: 1.5 },
+                  ]}
+                  placeholder="Or type your specific reason..."
+                  placeholderTextColor="#999"
+                  value={customText}
+                  onFocus={() => setReasonFocused(true)}
+                  onBlur={() => setReasonFocused(false)}
+                  onChangeText={(t) => {
+                    setCustomText(t);
+                    if (t) {
+                      setSelectedChip("");
+                      setReasonError(false);
+                    }
+                  }}
+                  returnKeyType="done"
+                  onSubmitEditing={handleEvaluateAndForfeit}
+                  maxLength={120}
+                />
+                {reasonError && !hasReason && (
+                  <Text style={styles.errorHint}>
+                    Please select or enter a reason before forfeiting.
+                  </Text>
+                )}
+              </View>
 
               {/* Action Buttons */}
               <View style={styles.btnRow}>
@@ -216,7 +259,7 @@ export default function ForfeitModal({
                   activeOpacity={0.85}
                 >
                   {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color="#ef4444" />
                   ) : (
                     <Text style={styles.forfeitBtnText}>Forfeit</Text>
                   )}
@@ -259,7 +302,14 @@ export default function ForfeitModal({
             </>
           )}
         </Animated.View>
-      </View>
+
+        <KeyboardFloatingPreview
+          label={reasonFocused ? "Reason for Forfeiting" : null}
+          value={customText}
+          placeholder="Type why you are abandoning this commitment..."
+          insideKeyboardAvoiding
+        />
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -346,6 +396,19 @@ const styles = StyleSheet.create({
     color: "#000",
     borderWidth: 1,
     borderColor: "#e4e4e7",
+  },
+  inputLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.4,
+    color: "#0a0a0a",
+    paddingLeft: 4,
+  },
+  errorHint: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    color: "#ef4444",
+    paddingLeft: 4,
   },
   btnRow: {
     flexDirection: "row",

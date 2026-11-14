@@ -42,6 +42,9 @@ class AppBlockerModule : Module() {
     const val KEY_ACTIVE      = "sessionActive"
     const val KEY_BLOCKED     = "blockedPackages"
     const val KEY_SESSION_END = "sessionEndMs"
+    // JSON array of upcoming blocking windows, e.g. [{"start":1700000000000,"end":1700003600000,"pkgs":["com.instagram.android"]}]
+    // Written by JS (goal schedules) and enforced by HadafAccessibilityService even if the app process is dead.
+    const val KEY_SCHEDULED   = "scheduledBlocks"
   }
 
   private fun prefs(ctx: Context) =
@@ -284,6 +287,34 @@ class AppBlockerModule : Module() {
         } catch (e: Exception) {
           // ignore
         }
+      }
+    }
+
+    // ── Scheduled blocking windows (goals) ─────────────────────────────────
+
+    /** Replace the whole list of scheduled blocking windows (JSON array string). */
+    Function("setScheduledBlocks") { json: String ->
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        prefs(ctx).edit().putString(KEY_SCHEDULED, json).apply()
+      }
+      Unit
+    }
+
+    Function("clearScheduledBlocks") {
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        prefs(ctx).edit().remove(KEY_SCHEDULED).apply()
+      }
+      Unit
+    }
+
+    Function("getScheduledBlocks") {
+      val ctx = appContext.reactContext
+      if (ctx == null) {
+        "[]"
+      } else {
+        prefs(ctx).getString(KEY_SCHEDULED, "[]") ?: "[]"
       }
     }
 

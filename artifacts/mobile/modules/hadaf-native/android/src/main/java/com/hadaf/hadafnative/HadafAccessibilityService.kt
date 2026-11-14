@@ -10,14 +10,15 @@ import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.accessibility.AccessibilityEvent
+import org.json.JSONArray
 
 /**
  * HadafAccessibilityService
  *
  * Runs as a persistent background Accessibility Service.
- * When a focus session is active, every time a blocked app is detected in foreground,
- * this service immediately brings Hadaf directly back to the foreground so the user
- * cannot access the blocked app and is returned straight to the active focus screen.
+ * When a focus session is active (or a scheduled goal window is open), every time a blocked app is
+ * detected in foreground, this service immediately brings Hadaf directly back to the foreground so
+ * the user cannot access the blocked app.
  */
 class HadafAccessibilityService : AccessibilityService() {
 
@@ -67,13 +68,25 @@ class HadafAccessibilityService : AccessibilityService() {
     val pkg = event.packageName?.toString() ?: return
     if (pkg == packageName) return // never block Hadaf itself
 
-    // Auto-expire sessions
-    if (System.currentTimeMillis() > sessionEndMs) {
-      onSessionStopped()
-      return
+    val now = System.currentTimeMillis()
+    var shouldBlock = false
+
+    // 1) Live focus session
+    if (sessionEndMs > 0L) {
+      if (now > sessionEndMs) {
+        // Auto-expire sessions
+        onSessionStopped()
+      } else if (blockedPackages.contains(pkg)) {
+        shouldBlock = true
+      }
     }
 
-    if (blockedPackages.contains(pkg)) {
+    // 2) Scheduled goal windows (work even when the Hadaf app process is not running)
+    if (!shouldBlock && isInScheduledWindow(pkg, now)) {
+      shouldBlock = true
+    }
+
+    if (shouldBlock) {
       try {
         val launchIntent = packageManager
           .getLaunchIntentForPackage(packageName)
@@ -115,5 +128,28 @@ class HadafAccessibilityService : AccessibilityService() {
       blockedPackages = prefs.getStringSet(AppBlockerModule.KEY_BLOCKED, emptySet()) ?: emptySet()
       sessionEndMs    = endMs
     }
+  }
+
+  // ── Scheduled windows ──────────────────────────────────────────────────────
+
+  private fun isInScheduledWindow(pkg: String, now: Long): Boolean {
+    try {
+      val raw = prefs.getString(AppBlockerModule.KEY_SCHEDULED, null)
+      if (raw.isNullOrEmpty()) return false
+      val windows = JSONArray(raw)
+      for (i in 0 until windows.length()) {
+        val window = windows.optJSONObject(i) ?: continue
+        val start = window.optLong("start", 0L)
+        val end = window.optLong("end", 0L)
+        if (now < start || now >= end) continue
+        val pkgs = window.optJSONArray("pkgs") ?: continue
+        for (j in 0 until pkgs.length()) {
+          if (pkgs.optString(j) == pkg) return true
+        }
+      }
+    } catch (_: Exception) {
+      // Malformed JSON must never crash the accessibility service.
+    }
+    return false
   }
 }

@@ -21,6 +21,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import { customFetch } from "@workspace/api-client-react";
+import { HadafInlineLoader } from "@/components/AppLoadingScreen";
+import KeyboardFloatingPreview from "@/components/KeyboardFloatingPreview";
 import UserAvatar from "@/components/UserAvatar";
 import { useSubscription } from "@/hooks/useSubscription";
 
@@ -33,6 +35,9 @@ function FormField({
   keyboardType = "default",
   editable = true,
   onPress,
+  onFocus,
+  onBlur,
+  focused = false,
 }: {
   label: string;
   value: string;
@@ -40,6 +45,9 @@ function FormField({
   keyboardType?: "default" | "email-address" | "phone-pad" | "numeric";
   editable?: boolean;
   onPress?: () => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  focused?: boolean;
 }) {
   if (onPress) {
     return (
@@ -53,10 +61,16 @@ function FormField({
   }
   return (
     <View style={styles.fieldWrap}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={[styles.fieldLabel, focused && { color: "#000" }]}>{label}</Text>
       <TextInput
-        style={styles.fieldInput}
+        style={[
+          styles.fieldInput,
+          focused && { borderColor: "#000", borderWidth: 1.5 },
+          !editable && { opacity: 0.65, backgroundColor: "#f3f3f3" },
+        ]}
         value={value}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
         editable={editable}
@@ -98,6 +112,7 @@ export default function AccountSettingsScreen() {
   const [phone, setPhone] = useState("");
   const [gender, setGender] = useState("");
   const [age, setAge] = useState("");
+  const [focusedField, setFocusedField] = useState<"name" | "email" | "age" | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Custom picker modal
@@ -254,18 +269,39 @@ export default function AccountSettingsScreen() {
           </View>
 
           {isLoading ? (
-            <View style={{ paddingVertical: 32, alignItems: "center" }}>
-              <ActivityIndicator color="#000" size="large" />
-            </View>
+            <HadafInlineLoader message="Loading account details..." light />
           ) : (
             <>
               {/* Form */}
               <View style={styles.form}>
-                <FormField label="NAME" value={name} onChangeText={setName} />
-                <FormField label="EMAIL" value={email} onChangeText={setEmail} keyboardType="email-address" />
+                <FormField
+                  label="NAME"
+                  value={name}
+                  onChangeText={setName}
+                  focused={focusedField === "name"}
+                  onFocus={() => setFocusedField("name")}
+                  onBlur={() => setFocusedField((f) => (f === "name" ? null : f))}
+                />
+                <FormField
+                  label="EMAIL"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  focused={focusedField === "email"}
+                  onFocus={() => setFocusedField("email")}
+                  onBlur={() => setFocusedField((f) => (f === "email" ? null : f))}
+                />
                 <FormField label="PHONE NUMBER" value={maskPhoneNumber(phone)} editable={false} />
                 <FormField label="GENDER" value={gender} onPress={() => setShowGenderModal(true)} />
-                <FormField label="AGE" value={age} onChangeText={setAge} keyboardType="numeric" />
+                <FormField
+                  label="AGE"
+                  value={age}
+                  onChangeText={setAge}
+                  keyboardType="numeric"
+                  focused={focusedField === "age"}
+                  onFocus={() => setFocusedField("age")}
+                  onBlur={() => setFocusedField((f) => (f === "age" ? null : f))}
+                />
               </View>
 
               {/* Save */}
@@ -286,6 +322,28 @@ export default function AccountSettingsScreen() {
             </>
           )}
         </ScrollView>
+
+        <KeyboardFloatingPreview
+          label={
+            focusedField === "name"
+              ? "Full Name"
+              : focusedField === "email"
+                ? "Email Address"
+                : focusedField === "age"
+                  ? "Age"
+                  : null
+          }
+          value={
+            focusedField === "name"
+              ? name
+              : focusedField === "email"
+                ? email
+                : age
+          }
+          placeholder="Type here..."
+          actionLabel="Done"
+          insideKeyboardAvoiding
+        />
       </KeyboardAvoidingView>
 
       {/* Gender Picker Bottom Sheet Modal */}

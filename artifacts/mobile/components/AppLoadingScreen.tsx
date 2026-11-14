@@ -14,6 +14,114 @@ interface AppLoadingScreenProps {
   message?: string;
 }
 
+export function HadafInlineLoader({
+  message,
+  compact = false,
+  light = false,
+}: {
+  message?: string;
+  compact?: boolean;
+  light?: boolean;
+}) {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const breathing = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.06,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.96,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const rotating = Animated.loop(
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 1500,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    breathing.start();
+    rotating.start();
+
+    return () => {
+      breathing.stop();
+      rotating.stop();
+    };
+  }, [pulseAnim, rotateAnim]);
+
+  const spin = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
+  const ringSize = compact ? 52 : 68;
+  const logoSize = compact ? 38 : 50;
+
+  return (
+    <View style={[styles.inlineContainer, compact && { paddingVertical: 20 }]}>
+      <View style={[styles.centerBox, { width: ringSize + 8, height: ringSize + 8 }]}>
+        <Animated.View
+          style={[
+            styles.rotatingRing,
+            {
+              width: ringSize,
+              height: ringSize,
+              borderRadius: ringSize / 2,
+              borderTopColor: light ? "rgba(0,0,0,0.65)" : "rgba(255,255,255,0.55)",
+              borderRightColor: light ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.15)",
+              transform: [{ rotate: spin }],
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.logoWrap,
+            {
+              width: logoSize,
+              height: logoSize,
+              borderRadius: Math.round(logoSize * 0.28),
+              transform: [{ scale: pulseAnim }],
+            },
+          ]}
+        >
+          <Image
+            source={LOGO}
+            style={{
+              width: logoSize - 2,
+              height: logoSize - 2,
+              borderRadius: Math.round((logoSize - 2) * 0.26),
+            }}
+            resizeMode="cover"
+          />
+        </Animated.View>
+      </View>
+      {message ? (
+        <Text
+          style={[
+            styles.inlineMessage,
+            light && { color: "rgba(0,0,0,0.55)" },
+          ]}
+        >
+          {message.toUpperCase()}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export default function AppLoadingScreen({ message }: AppLoadingScreenProps) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0.4)).current;
@@ -185,4 +293,18 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.45)",
     fontWeight: "500",
   },
+  inlineContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 36,
+    gap: 12,
+  },
+  inlineMessage: {
+    fontSize: 10,
+    letterSpacing: 2.2,
+    color: "rgba(255, 255, 255, 0.55)",
+    fontWeight: "700",
+    textAlign: "center",
+  },
 });
+

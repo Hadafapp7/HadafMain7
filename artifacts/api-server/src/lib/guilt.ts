@@ -7,8 +7,14 @@ import {
   appUsageEntriesTable,
 } from "@workspace/db";
 import { generateWithBedrock, isBedrockConfigured } from "./bedrock";
+import { ensureSchema } from "./schema-sync";
 
-export type GuiltTrigger = "missed_goal" | "failed_focus" | "inactive" | "general";
+export type GuiltTrigger =
+  | "missed_goal"
+  | "failed_focus"
+  | "inactive"
+  | "inconsistent"
+  | "general";
 
 export interface GuiltItem {
   id: string;
@@ -23,6 +29,7 @@ export interface GuiltItem {
 }
 
 const MIN = 60_000;
+const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const INACTIVITY_DAYS = 3;
 
@@ -36,17 +43,44 @@ const fmtMin = (n: number): string => {
 };
 
 /** `tz` = minutes the user's clock is ahead of UTC (IST = 330). */
-const localDate = (ms: number, tz: number): string => new Date(ms + tz * MIN).toISOString().slice(0, 10);
+const localDate = (ms: number, tz: number): string =>
+  new Date(ms + tz * MIN).toISOString().slice(0, 10);
+
+const localHour = (ms: number, tz: number): number =>
+  new Date(ms + tz * MIN).getUTCHours();
 
 const fmtClock = (ms: number, tz: number): string => {
   const d = new Date(ms + tz * MIN);
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(
+    d.getUTCMinutes(),
+  ).padStart(2, "0")}`;
 };
 
-const goalEndMs = (dateStr: string, startTime: string, durationMin: number, tz: number): number => {
+/** Goals store the start time as "10:00 AM" (app picker) — older rows may be 24h "HH:MM". Accept both. */
+const parseClock = (t: string): [number, number] => {
+  const m = String(t ?? "")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return [0, 0];
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (m[3]) h = (h % 12) + (m[3].toUpperCase() === "PM" ? 12 : 0);
+  return [h, min];
+};
+
+const goalEndMs = (
+  dateStr: string,
+  startTime: string,
+  durationMin: number,
+  tz: number,
+): number => {
   const [y, m, d] = dateStr.split("-").map(Number);
-  const [hh, mm] = startTime.split(":").map(Number);
-  return Date.UTC(y, (m || 1) - 1, d || 1, hh || 0, mm || 0) + durationMin * MIN - tz * MIN;
+  const [hh, mm] = parseClock(startTime);
+  return (
+    Date.UTC(y, (m || 1) - 1, d || 1, hh || 0, mm || 0) +
+    durationMin * MIN -
+    tz * MIN
+  );
 };
 
 /** Never ping people between 22:00 and 08:00 local time. */
@@ -55,7 +89,16 @@ const avoidQuietHours = (ms: number, tz: number): number => {
   const h = local.getUTCHours();
   if (h >= 8 && h < 22) return ms;
   const dayOffset = h >= 22 ? 1 : 0;
-  return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + dayOffset, 8, 0) - tz * MIN;
+  return (
+    Date.UTC(
+      local.getUTCFullYear(),
+      local.getUTCMonth(),
+      local.getUTCDate() + dayOffset,
+      8,
+      30,
+    ) -
+    tz * MIN
+  );
 };
 
 // ───────────────────────── data → facts ─────────────────────────
@@ -69,6 +112,8 @@ interface Facts {
   focusTodayMin: number;
   focusSessionsCompletedWeek: number;
   goalsDoneWeek: number;
+  goalsPendingToday: number;
+  goalsForfeitedWeek: number;
   goalsMissedNow: number;
   daysInactive: number;
 }
@@ -76,27 +121,58 @@ interface Facts {
 interface Loaded {
   facts: Facts;
   missedGoals: { id: string; key: string; title: string; endMs: number }[];
+  forfeitedGoals: { id: string; title: string; reason: string | null }[];
   upcomingGoals: { id: string; key: string; title: string; endMs: number }[];
-  failedSessions: { id: string; planned: number; ran: number; abandoned: boolean; intention: string | null }[];
+  pendingGoalTitles: string[];
+  failedSessions: {
+    id: string;
+    planned: number;
+    ran: number;
+    abandoned: boolean;
+    intention: string | null;
+  }[];
 }
 
 function factsToText(f: Facts): string {
   const lines: string[] = [];
-  lines.push(`- Name: ${f.name ?? "unknown"}`);
-  lines.push(`- Current streak: ${f.streak} day(s) (best ever: ${f.bestStreak})`);
-  lines.push(`- Focus time today: ${fmtMin(f.focusTodayMin)}`);
-  lines.push(`- Focus sessions completed in the last 7 days: ${f.focusSessionsCompletedWeek}`);
+  lines.push(`- Name: ${f.name ?? "friend"}`);
+  lines.push(
+    `- Current streak: ${f.streak} day(s) (best streak ever: ${f.bestStreak})`,
+  );
+  lines.push(`- Focus time completed today: ${fmtMin(f.focusTodayMin)}`);
+  lines.push(
+    `- Focus sessions completed in the last 7 days: ${f.focusSessionsCompletedWeek} (target for consistency: at least 7)`,
+  );
   lines.push(`- Goals completed in the last 7 days: ${f.goalsDoneWeek}`);
+  lines.push(`- Goals currently pending: ${f.goalsPendingToday}`);
+  lines.push(`- Goals forfeited/quit this week: ${f.goalsForfeitedWeek}`);
   lines.push(`- Goals currently overdue: ${f.goalsMissedNow}`);
   if (f.topApps.length > 0) {
-    lines.push(`- Most used apps in the last 7 days: ${f.topApps.map((a) => `${a.name} (${fmtMin(a.minutes)})`).join(", ")}`);
+    lines.push(
+      `- Most used distracting apps in the last 7 days: ${f.topApps
+        .map((a) => `${a.name} (${fmtMin(a.minutes)})`)
+        .join(", ")}`,
+    );
   }
-  if (f.topAppToday) lines.push(`- Most used app today: ${f.topAppToday.name} (${fmtMin(f.topAppToday.minutes)})`);
-  if (f.daysInactive > 0) lines.push(`- Days since the user last opened Hadaf: ${f.daysInactive}`);
+  if (f.topAppToday) {
+    lines.push(
+      `- Most used app today: ${f.topAppToday.name} (${fmtMin(
+        f.topAppToday.minutes,
+      )})`,
+    );
+  }
+  if (f.daysInactive > 0) {
+    lines.push(`- Days since the user last opened Hadaf: ${f.daysInactive}`);
+  }
   return lines.join("\n");
 }
 
-async function loadAll(userId: string, tz: number, prevLastActive: Date | null): Promise<Loaded> {
+async function loadAll(
+  userId: string,
+  tz: number,
+  prevLastActive: Date | null,
+): Promise<Loaded> {
+  await ensureSchema();
   const nowMs = Date.now();
   const today = localDate(nowMs, tz);
   const weekAgo = new Date(nowMs - 7 * DAY);
@@ -107,30 +183,60 @@ async function loadAll(userId: string, tz: number, prevLastActive: Date | null):
     db
       .select()
       .from(focusSessionsTable)
-      .where(and(eq(focusSessionsTable.userId, userId), gte(focusSessionsTable.startedAt, weekAgo)))
+      .where(
+        and(
+          eq(focusSessionsTable.userId, userId),
+          gte(focusSessionsTable.startedAt, weekAgo),
+        ),
+      )
       .orderBy(desc(focusSessionsTable.startedAt)),
     db
       .select()
       .from(appUsageEntriesTable)
-      .where(and(eq(appUsageEntriesTable.userId, userId), gte(appUsageEntriesTable.loggedAt, weekAgo))),
+      .where(
+        and(
+          eq(appUsageEntriesTable.userId, userId),
+          gte(appUsageEntriesTable.loggedAt, weekAgo),
+        ),
+      ),
   ]);
 
   // Goals ------------------------------------------------------
   const missedGoals: Loaded["missedGoals"] = [];
+  const forfeitedGoals: Loaded["forfeitedGoals"] = [];
   const upcomingGoals: Loaded["upcomingGoals"] = [];
+  const pendingGoalTitles: string[] = [];
   let goalsDoneWeek = 0;
+  let goalsForfeitedWeek = 0;
+
   for (const g of goals) {
+    if ((g.status as string) === "forfeited") {
+      if (g.updatedAt.getTime() >= weekAgo.getTime()) {
+        goalsForfeitedWeek++;
+        forfeitedGoals.push({
+          id: g.id,
+          title: g.title,
+          reason: (g as any).forfeitReason ?? null,
+        });
+      }
+      continue;
+    }
     if (g.status === "done") {
       if (g.updatedAt.getTime() >= weekAgo.getTime()) goalsDoneWeek++;
       continue;
     }
+    pendingGoalTitles.push(g.title);
     const dateStr = g.scheduledDate || today;
     const endMs = goalEndMs(dateStr, g.startTime, g.durationMinutes, tz);
     if (!Number.isFinite(endMs)) continue;
-    const entry = { id: g.id, key: `${g.id}:${dateStr}`, title: g.title, endMs };
+    const entry = {
+      id: g.id,
+      key: `${g.id}:${dateStr}`,
+      title: g.title,
+      endMs,
+    };
     if (endMs < nowMs) {
-      // Only recent misses, and only if the goal existed before it ended.
-      if (nowMs - endMs <= 2 * DAY && g.createdAt.getTime() < endMs) missedGoals.push(entry);
+      if (nowMs - endMs <= 2 * DAY) missedGoals.push(entry);
     } else if (endMs - nowMs <= 1.5 * DAY) {
       upcomingGoals.push(entry);
     }
@@ -146,17 +252,33 @@ async function loadAll(userId: string, tz: number, prevLastActive: Date | null):
     const started = s.startedAt.getTime();
     if (s.status === "completed") {
       focusSessionsCompletedWeek++;
-      if (localDate(started, tz) === today) focusTodayMin += s.plannedDurationMinutes;
+      if (localDate(started, tz) === today)
+        focusTodayMin += s.plannedDurationMinutes;
       continue;
     }
     if (nowMs - started > DAY) continue;
     if (s.status === "stopped" && s.endedAt) {
       const ran = (s.endedAt.getTime() - started) / MIN;
       if (ran < s.plannedDurationMinutes * 0.8) {
-        failedSessions.push({ id: s.id, planned: s.plannedDurationMinutes, ran: Math.round(ran), abandoned: false, intention: s.intention });
+        failedSessions.push({
+          id: s.id,
+          planned: s.plannedDurationMinutes,
+          ran: Math.round(ran),
+          abandoned: false,
+          intention: s.intention,
+        });
       }
-    } else if ((s.status === "running" || s.status === "paused") && nowMs - started > (s.plannedDurationMinutes + 60) * MIN) {
-      failedSessions.push({ id: s.id, planned: s.plannedDurationMinutes, ran: 0, abandoned: true, intention: s.intention });
+    } else if (
+      (s.status === "running" || s.status === "paused") &&
+      nowMs - started > (s.plannedDurationMinutes + 60) * MIN
+    ) {
+      failedSessions.push({
+        id: s.id,
+        planned: s.plannedDurationMinutes,
+        ran: 0,
+        abandoned: true,
+        intention: s.intention,
+      });
     }
   }
 
@@ -174,11 +296,15 @@ async function loadAll(userId: string, tz: number, prevLastActive: Date | null):
     if (day === today) perAppToday.set(name, minutes);
   }
   const rank = (m: Map<string, number>) =>
-    [...m.entries()].map(([name, minutes]) => ({ name, minutes })).sort((a, b) => b.minutes - a.minutes);
+    [...m.entries()]
+      .map(([name, minutes]) => ({ name, minutes }))
+      .sort((a, b) => b.minutes - a.minutes);
   const topApps = rank(perApp).slice(0, 3);
   const topAppToday = rank(perAppToday)[0] ?? null;
 
-  const daysInactive = prevLastActive ? Math.floor((nowMs - prevLastActive.getTime()) / DAY) : 0;
+  const daysInactive = prevLastActive
+    ? Math.floor((nowMs - prevLastActive.getTime()) / DAY)
+    : 0;
 
   return {
     facts: {
@@ -190,11 +316,15 @@ async function loadAll(userId: string, tz: number, prevLastActive: Date | null):
       focusTodayMin,
       focusSessionsCompletedWeek,
       goalsDoneWeek,
+      goalsPendingToday: pendingGoalTitles.length,
+      goalsForfeitedWeek,
       goalsMissedNow: missedGoals.length,
       daysInactive,
     },
     missedGoals,
+    forfeitedGoals,
     upcomingGoals,
+    pendingGoalTitles,
     failedSessions,
   };
 }
@@ -202,21 +332,23 @@ async function loadAll(userId: string, tz: number, prevLastActive: Date | null):
 // ───────────────────────── LLM prompt ─────────────────────────
 
 function buildPrompt(situation: string, facts: string): string {
-  return `You write short push notifications for "Hadaf", a focus and productivity app. Your job is to make the user feel a pang of GUILT about the specific thing they did (or failed to do) so they get back on track.
+  return `You write short, high-impact push notifications for "Hadaf", a strict focus and discipline app.
+Your job is to make the user feel a real pang of GUILT about not being consistent with their focus sessions and goals so they stop procrastinating and lock in immediately.
 
 Rules:
-- Use the USER FACTS. Mention at least one concrete detail (a goal name, minutes, an app name, or a number of days).
-- Tone: a sharp, disappointed coach who knows the user can do better. Speak directly to "you".
-- Guilt the ACTION, never insult the person. No profanity, no threats, nothing about health, body, family, money or self-harm.
-- Title: at most 6 words. Body: at most 25 words. At most one emoji.
-- Reply with ONLY a JSON object, nothing else: {"title": "...", "body": "..."}
+- Use the USER FACTS. Contrast their lack of consistency (0 focus minutes today, broken streak, unfinished or forfeited goals) against the time they gave to distracting apps (like Instagram, YouTube, TikTok) if available.
+- Tone: a sharp, disappointed, no-excuses mentor who knows the user is capable of much more. Speak directly to "you" (and use their first name if known).
+- Guilt the INCONSISTENCY and the ACTION, never insult the person's worth. No profanity, no threats, nothing about health, body, family, money or self-harm.
+- Title: 3 to 6 punchy words (max 45 chars).
+- Body: 1 to 2 sharp sentences, at most 28 words total. End with a call to lock in right now.
+- Reply with ONLY a valid JSON object, nothing else: {"title": "...", "body": "..."}
 
 Examples:
-SITUATION: The user abandoned a 25 minute focus session after 4 minutes.
-{"title": "4 minutes. That's it?", "body": "You planned 25 and quit after 4. Instagram got your attention instead of your goals."}
+SITUATION: The user has not been consistent today (0m focus) while spending time on distracting apps.
+{"title": "Consistent on reels, not goals?", "body": "You found time for Instagram today, yet your focus timer is still at 0 minutes. Stop negotiating with weakness and lock in one session right now."}
 
-SITUATION: The user has not opened the app for 4 days.
-{"title": "Remember your streak?", "body": "4 days gone. Your 6 day streak is dust now. One session today and you're back."}
+SITUATION: The user abandoned a 25 minute focus session after 4 minutes.
+{"title": "4 minutes. That's your limit?", "body": "You promised 25 minutes and folded after 4. Consistency isn't built when it's easy—get back in and finish what you started."}
 
 SITUATION: ${situation}
 
@@ -225,21 +357,34 @@ ${facts}`;
 }
 
 function parseModelOutput(raw: string): { title: string; body: string } | null {
-  const clean = (s: string) => s.replace(/\s+/g, " ").replace(/^["'`]+|["'`]+$/g, "").trim();
+  const clean = (s: string) =>
+    s
+      .replace(/\s+/g, " ")
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .trim();
   const match = raw.match(/\{[\s\S]*?\}/);
   if (match) {
     try {
       const obj = JSON.parse(match[0]) as { title?: unknown; body?: unknown };
       if (typeof obj.body === "string" && obj.body.trim().length >= 8) {
-        const title = typeof obj.title === "string" && obj.title.trim() ? clean(obj.title) : "Hadaf";
-        return { title: title.slice(0, 50), body: clean(obj.body).slice(0, 180) };
+        const title =
+          typeof obj.title === "string" && obj.title.trim()
+            ? clean(obj.title)
+            : "Consistency Check";
+        return {
+          title: title.slice(0, 55),
+          body: clean(obj.body).slice(0, 200),
+        };
       }
     } catch {
       /* fall through to plain-text handling */
     }
   }
-  const firstLine = clean(raw.split("\n").find((l) => l.trim().length > 8) ?? "");
-  if (firstLine.length >= 8 && !firstLine.startsWith("{")) return { title: "Hadaf", body: firstLine.slice(0, 180) };
+  const firstLine = clean(
+    raw.split("\n").find((l) => l.trim().length > 8) ?? "",
+  );
+  if (firstLine.length >= 8 && !firstLine.startsWith("{"))
+    return { title: "Consistency Check", body: firstLine.slice(0, 200) };
   return null;
 }
 
@@ -275,7 +420,9 @@ async function craft(
   let error: string | undefined;
   if (isBedrockConfigured()) {
     try {
-      const raw = await generateWithBedrock(buildPrompt(situation, factsToText(facts)));
+      const raw = await generateWithBedrock(
+        buildPrompt(situation, factsToText(facts)),
+      );
       const parsed = parseModelOutput(raw);
       if (parsed) {
         const result: Crafted = { ...parsed, source: "bedrock" };
@@ -288,13 +435,22 @@ async function craft(
       console.warn("[Guilt] Bedrock call failed, using fallback copy:", error);
     }
   } else {
-    error = "AWS credentials are not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).";
+    error =
+      "AWS credentials are not configured (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).";
   }
   return { ...fallback, source: "fallback", error };
 }
 
 const withApp = (f: Facts, tail: string): string =>
-  f.topApps[0] ? `${f.topApps[0].name} got ${fmtMin(f.topApps[0].minutes)} this week. ${tail}` : tail;
+  f.topAppToday
+    ? `${f.topAppToday.name} already got ${fmtMin(
+        f.topAppToday.minutes,
+      )} of your day. ${tail}`
+    : f.topApps[0]
+      ? `${f.topApps[0].name} got ${fmtMin(
+          f.topApps[0].minutes,
+        )} this week. ${tail}`
+      : tail;
 
 // ───────────────────────── public API ─────────────────────────
 
@@ -304,10 +460,27 @@ export async function buildGuiltNotifications(
   prevLastActive: Date | null,
 ): Promise<{ immediate: GuiltItem[]; scheduled: GuiltItem[] }> {
   const nowMs = Date.now();
-  const { facts, missedGoals, upcomingGoals, failedSessions } = await loadAll(userId, tz, prevLastActive);
+  const today = localDate(nowMs, tz);
+  const hour = localHour(nowMs, tz);
+  // Group day into 3 windows (morning / afternoon / evening) so consistency nudges can fire if the user remains inconsistent
+  const daySlot = hour < 12 ? "am" : hour < 17 ? "pm" : "eve";
 
-  // ---- things that already happened (shown now, once each) ----
-  type Pending = { id: string; trigger: GuiltTrigger; situation: string; fallback: { title: string; body: string } };
+  const {
+    facts,
+    missedGoals,
+    forfeitedGoals,
+    upcomingGoals,
+    pendingGoalTitles,
+    failedSessions,
+  } = await loadAll(userId, tz, prevLastActive);
+
+  // ---- things that already happened (shown now, once per id) ----
+  type Pending = {
+    id: string;
+    trigger: GuiltTrigger;
+    situation: string;
+    fallback: { title: string; body: string };
+  };
   const pending: Pending[] = [];
 
   for (const s of failedSessions.slice(0, 1)) {
@@ -315,35 +488,86 @@ export async function buildGuiltNotifications(
       id: `failed_focus:${s.id}`,
       trigger: "failed_focus",
       situation: s.abandoned
-        ? `The user started a ${s.planned} minute focus session${s.intention ? ` ("${s.intention}")` : ""} and never finished it.`
-        : `The user quit a ${s.planned} minute focus session${s.intention ? ` ("${s.intention}")` : ""} after only ${s.ran} minutes.`,
+        ? `The user started a ${s.planned} minute focus session${
+            s.intention ? ` ("${s.intention}")` : ""
+          } and walked away without finishing.`
+        : `The user quit a ${s.planned} minute focus session${
+            s.intention ? ` ("${s.intention}")` : ""
+          } after only ${s.ran} minutes.`,
       fallback: {
         title: "Focus session abandoned",
         body: s.abandoned
-          ? `You started ${s.planned} minutes of focus and walked away. ${withApp(facts, "Think about that.")}`
-          : `You quit after ${s.ran} of ${s.planned} minutes. ${withApp(facts, "Your future self noticed.")}`,
+          ? `You started ${s.planned} minutes of focus and walked away. ${withApp(
+              facts,
+              "Consistency means finishing what you start.",
+            )}`
+          : `You quit after ${s.ran} of ${s.planned} minutes. ${withApp(
+              facts,
+              "Your future self noticed.",
+            )}`,
       },
     });
   }
+
   for (const g of missedGoals.slice(0, 1)) {
     pending.push({
       id: `missed_goal:${g.key}`,
       trigger: "missed_goal",
-      situation: `The user scheduled the goal "${g.title}" which was due to end at ${fmtClock(g.endMs, tz)} but never marked it as done.`,
+      situation: `The user scheduled the goal "${g.title}" which was due to end at ${fmtClock(
+        g.endMs,
+        tz,
+      )} but never completed it.`,
       fallback: {
         title: "Goal slipped away",
-        body: `"${g.title}" was due at ${fmtClock(g.endMs, tz)} and it's still not done. ${withApp(facts, "Excuses don't tick boxes.")}`,
+        body: `"${g.title}" was due at ${fmtClock(
+          g.endMs,
+          tz,
+        )} and it's still not done. ${withApp(
+          facts,
+          "Excuses don't build consistency.",
+        )}`,
       },
     });
   }
+
   if (facts.daysInactive >= INACTIVITY_DAYS && prevLastActive) {
     pending.push({
       id: `inactive:${localDate(prevLastActive.getTime(), tz)}`,
       trigger: "inactive",
-      situation: `The user did not open Hadaf for ${facts.daysInactive} days and just came back.`,
+      situation: `The user disappeared from Hadaf for ${facts.daysInactive} days, breaking their consistency, and just came back.`,
       fallback: {
         title: "Look who's back",
-        body: `${facts.daysInactive} days without opening Hadaf. ${withApp(facts, "Your goals didn't go anywhere - you did.")}`,
+        body: `${facts.daysInactive} days without opening Hadaf. ${withApp(
+          facts,
+          "Your goals didn't go anywhere — your consistency did.",
+        )}`,
+      },
+    });
+  }
+
+  // Consistency check: if the user has 0 focus minutes today or low weekly consistency, trigger an LLM guilt notification!
+  const isInconsistentToday =
+    facts.focusTodayMin === 0 ||
+    facts.focusSessionsCompletedWeek < 4 ||
+    facts.goalsForfeitedWeek > 0 ||
+    (facts.streak === 0 && facts.bestStreak > 0);
+
+  if (pending.length === 0 && isInconsistentToday) {
+    const goalHint = pendingGoalTitles[0]
+      ? ` while "${pendingGoalTitles[0]}" sits untouched`
+      : forfeitedGoals[0]
+        ? ` after forfeiting "${forfeitedGoals[0].title}"`
+        : "";
+    pending.push({
+      id: `inconsistent:${today}:${daySlot}`,
+      trigger: "inconsistent",
+      situation: `The user is not being consistent with their discipline (${facts.focusTodayMin}m focused today, ${facts.focusSessionsCompletedWeek} sessions all week, streak: ${facts.streak}d)${goalHint}. Make them feel guilty about their inconsistency and urge them to start a focus session or complete their goal right now.`,
+      fallback: {
+        title: "Where is your consistency?",
+        body: withApp(
+          facts,
+          `0 focus minutes logged today${goalHint}. Stop breaking promises to yourself and lock in one session right now.`,
+        ),
       },
     });
   }
@@ -351,37 +575,88 @@ export async function buildGuiltNotifications(
   const immediate: GuiltItem[] = await Promise.all(
     pending.slice(0, 2).map(async (p) => {
       const c = await craft(p.id, p.situation, facts, p.fallback);
-      return { id: p.id, trigger: p.trigger, title: c.title, body: c.body, source: c.source };
+      return {
+        id: p.id,
+        trigger: p.trigger,
+        title: c.title,
+        body: c.body,
+        source: c.source,
+      };
     }),
   );
 
   // ---- things that may happen (phone schedules them, resynced every app open) ----
   const scheduledPending: (Pending & { fireAtMs: number })[] = [];
 
-  const inactiveFire = avoidQuietHours(nowMs + INACTIVITY_DAYS * DAY, tz);
+  // 1. Same-day consistency check (fires 3 hours from now if they don't stay consistent today)
+  const sameDayFire = avoidQuietHours(nowMs + 3 * HOUR, tz);
   scheduledPending.push({
-    id: `inactive_future:${localDate(nowMs, tz)}`,
-    trigger: "inactive",
-    fireAtMs: inactiveFire,
-    situation: `The user has not opened Hadaf for ${INACTIVITY_DAYS} days (this notification is sent exactly after 3 days of silence).`,
+    id: `inconsistent_later:${today}:${daySlot}`,
+    trigger: "inconsistent",
+    fireAtMs: sameDayFire,
+    situation: `3 hours have passed and the user still hasn't stayed consistent with their focus sessions and daily goals${
+      pendingGoalTitles[0] ? ` (especially "${pendingGoalTitles[0]}")` : ""
+    }. Deliver a sharp guilt nudge about choosing distractions over consistency.`,
     fallback: {
-      title: "3 days. Still nothing?",
-      body: withApp(facts, `You haven't opened Hadaf in ${INACTIVITY_DAYS} days. One small session is all it takes to come back.`),
+      title: "Another day slipping by?",
+      body: withApp(
+        facts,
+        `You still haven't locked in your daily focus. Consistency is built today, not "tomorrow".`,
+      ),
     },
   });
 
+  // 2. Next-day consistency check (fires ~22 hours from now so if they skip tomorrow they get called out)
+  const nextDayFire = avoidQuietHours(nowMs + 22 * HOUR, tz);
+  scheduledPending.push({
+    id: `inconsistent_tomorrow:${today}`,
+    trigger: "inconsistent",
+    fireAtMs: nextDayFire,
+    situation: `24 hours have passed since the user last checked in, and they are about to break their daily consistency streak (${facts.streak} day streak). Make them feel guilty about letting another day slip into distraction.`,
+    fallback: {
+      title: "Don't break the chain",
+      body: withApp(
+        facts,
+        `Skipping one day makes skipping two easy. Open Hadaf and protect your consistency right now.`,
+      ),
+    },
+  });
+
+  // 3. Upcoming goals that become overdue
   for (const g of upcomingGoals.slice(0, 2)) {
     scheduledPending.push({
       id: `missed_goal_future:${g.key}`,
       trigger: "missed_goal",
       fireAtMs: avoidQuietHours(g.endMs + 10 * MIN, tz),
-      situation: `The user's goal "${g.title}" was due to end at ${fmtClock(g.endMs, tz)} and it is still not marked as done.`,
+      situation: `The user's goal "${g.title}" was due to end at ${fmtClock(
+        g.endMs,
+        tz,
+      )} and it is still not marked as done.`,
       fallback: {
-        title: "Goal still not done",
-        body: `"${g.title}" was due at ${fmtClock(g.endMs, tz)}. ${withApp(facts, "Is it done yet? Be honest.")}`,
+        title: "Goal still not done?",
+        body: `"${g.title}" was due at ${fmtClock(g.endMs, tz)}. ${withApp(
+          facts,
+          "Did you finish it, or did distraction win again?",
+        )}`,
       },
     });
   }
+
+  // 4. 3-day inactivity callout
+  const inactiveFire = avoidQuietHours(nowMs + INACTIVITY_DAYS * DAY, tz);
+  scheduledPending.push({
+    id: `inactive_future:${today}`,
+    trigger: "inactive",
+    fireAtMs: inactiveFire,
+    situation: `The user has not opened Hadaf for ${INACTIVITY_DAYS} days (sent after 3 days of silence).`,
+    fallback: {
+      title: "3 days of excuses?",
+      body: withApp(
+        facts,
+        `You haven't opened Hadaf in ${INACTIVITY_DAYS} days. Your goals are still waiting on you.`,
+      ),
+    },
+  });
 
   const scheduled: GuiltItem[] = await Promise.all(
     scheduledPending.map(async (p) => {
@@ -403,25 +678,57 @@ export async function buildGuiltNotifications(
 /** Debug helper: generates one message on demand and reports why Bedrock failed (if it did). */
 export async function generateGuiltPreview(
   userId: string,
-  trigger: "missed_goal" | "failed_focus" | "inactive",
+  trigger: "missed_goal" | "failed_focus" | "inactive" | "inconsistent",
   tz: number,
 ): Promise<GuiltItem> {
   const { facts } = await loadAll(userId, tz, null);
   const samples = {
     missed_goal: {
       situation: `The user scheduled the goal "Finish project report" which was due to end at 18:00 but never marked it as done.`,
-      fallback: { title: "Goal slipped away", body: `"Finish project report" was due at 18:00 and it's still not done.` },
+      fallback: {
+        title: "Goal slipped away",
+        body: `"Finish project report" was due at 18:00 and it's still not done.`,
+      },
     },
     failed_focus: {
       situation: `The user quit a 25 minute focus session after only 4 minutes.`,
-      fallback: { title: "Focus session abandoned", body: `You quit after 4 of 25 minutes. Your future self noticed.` },
+      fallback: {
+        title: "Focus session abandoned",
+        body: `You quit after 4 of 25 minutes. Your future self noticed.`,
+      },
     },
     inactive: {
       situation: `The user did not open Hadaf for 4 days and just came back.`,
-      fallback: { title: "Look who's back", body: `4 days without opening Hadaf. Your goals didn't go anywhere - you did.` },
+      fallback: {
+        title: "Look who's back",
+        body: `4 days without opening Hadaf. Your goals didn't go anywhere - you did.`,
+      },
+    },
+    inconsistent: {
+      situation: `The user has not been consistent with their daily focus sessions and goals while spending hours on distracting social media apps.`,
+      fallback: {
+        title: "Where is your consistency?",
+        body: `You found hours for social feeds this week, yet your focus goals sit unfinished. Lock in right now.`,
+      },
     },
   }[trigger];
 
-  const c = await craft(`preview:${trigger}`, samples.situation, { ...facts, daysInactive: trigger === "inactive" ? 4 : facts.daysInactive }, samples.fallback, { useCache: false });
-  return { id: `preview:${trigger}`, trigger, title: c.title, body: c.body, source: c.source, error: c.error };
+  const c = await craft(
+    `preview:${trigger}`,
+    samples.situation,
+    {
+      ...facts,
+      daysInactive: trigger === "inactive" ? 4 : facts.daysInactive,
+    },
+    samples.fallback,
+    { useCache: false },
+  );
+  return {
+    id: `preview:${trigger}`,
+    trigger,
+    title: c.title,
+    body: c.body,
+    source: c.source,
+    error: c.error,
+  };
 }

@@ -18,7 +18,8 @@
       "bundleIdentifier": "in.co.hadaf.app"
     },
     "android": {
-      "versionCode": 6,
+      "versionCode": 7,
+      "softwareKeyboardLayoutMode": "resize",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",

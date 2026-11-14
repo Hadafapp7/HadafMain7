@@ -29,6 +29,7 @@ import Svg, { Circle, Defs, LinearGradient, Path, Stop, Text as SvgText } from "
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
+import { HadafInlineLoader } from "@/components/AppLoadingScreen";
 import { useColors } from "@/hooks/useColors";
 import {
   computePeriodInsights,
@@ -1174,7 +1175,7 @@ export default function AnalyticsScreen() {
 
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator color={colors.primary} size="large" />
+            <HadafInlineLoader message="Analyzing your focus & goals..." />
           </View>
         ) : (
           <>

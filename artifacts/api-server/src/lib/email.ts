@@ -5,7 +5,14 @@ import { db, usersTable } from "@workspace/db";
 let client: SESv2Client | null = null;
 
 export function isEmailConfigured(): boolean {
-  return Boolean(process.env.SES_FROM_EMAIL && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+  const hasCredentials = Boolean(
+    (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) ||
+      // Running on ECS/EKS with an IAM task role: the SDK picks the credentials up by itself.
+      process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI ||
+      process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI ||
+      process.env.AWS_WEB_IDENTITY_TOKEN_FILE,
+  );
+  return Boolean(process.env.SES_FROM_EMAIL && hasCredentials);
 }
 
 // Lazy so the .env file is already loaded when credentials are read.

@@ -1,0 +1,43 @@
+# Keep the Docker build context small and keep secrets out of the image.
+
+# VCS / tooling
+.git
+.gitignore
+.agents
+.canvas
+.config
+.local
+.cache
+.replit
+.replitignore
+replit.md
+CLAUDE.md
+README
+
+# Dependencies and build output are produced inside the image
+**/node_modules
+**/dist
+**/.expo
+**/.gradle
+**/build
+**/*.tsbuildinfo
+
+# Large / irrelevant assets
+attached_assets
+assests
+*.aab
+*.apk
+*.ipa
+artifacts/mobile/android
+artifacts/mobile/ios
+
+# Secrets (inject via ECS task definition / Secrets Manager instead)
+.env
+.env.*
+**/.env
+**/.env.*
+**/.env.local
+
+# Logs
+*.log
+error_logs.txt

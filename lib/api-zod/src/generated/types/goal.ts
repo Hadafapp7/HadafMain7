@@ -22,6 +22,11 @@ export interface Goal {
   /** @nullable */
   scheduledDate?: string | null;
   status: GoalStatus;
+  /** @nullable */
+  forfeitReason?: string | null;
+  /** @nullable */
+  forfeitRoast?: string | null;
+  blockApps?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

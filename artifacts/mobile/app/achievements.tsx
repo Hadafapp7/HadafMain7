@@ -16,6 +16,8 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { HadafInlineLoader } from "@/components/AppLoadingScreen";
+
 const isWeb = Platform.OS === "web";
 
 export default function AchievementsScreen() {
@@ -36,7 +38,7 @@ export default function AchievementsScreen() {
   if (isLoading || !data) {
     return (
       <View style={[styles.root, { justifyContent: "center", alignItems: "center" }]}>
-        <ActivityIndicator size="large" color="#000" />
+        <HadafInlineLoader message="Loading your achievements..." light />
       </View>
     );
   }

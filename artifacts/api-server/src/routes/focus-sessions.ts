@@ -1,6 +1,6 @@
 import { awardXpAndCheckBadges, updateStreak } from "../utils/gamification";
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { db, focusSessionsTable } from "@workspace/db";
 import {
   StartFocusSessionBody,
@@ -11,25 +11,14 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getUserPlan } from "../lib/plan";
+import { ensureSchema } from "../lib/schema-sync";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-let columnsEnsured = false;
-async function ensureFocusColumns() {
-  if (columnsEnsured) return;
+router.get("/focus-sessions", requireAuth, async (req, res): Promise<void> => {
   try {
-    await db.execute(sql`
-      ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS forfeit_reason text;
-      ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS forfeit_roast text;
-    `);
-    columnsEnsured = true;
-  } catch {}
-}
-
-router.get(
-  "/focus-sessions",
-  requireAuth,
-  async (req, res): Promise<void> => {
+    await ensureSchema();
     const sessions = await db
       .select()
       .from(focusSessionsTable)
@@ -37,13 +26,16 @@ router.get(
       .orderBy(desc(focusSessionsTable.startedAt));
 
     res.json(ListFocusSessionsResponse.parse(sessions));
-  },
-);
+  } catch (err: any) {
+    logger.error({ err: err?.message ?? err }, "[focus] list failed");
+    res.status(500).json({ error: "Could not load your focus sessions." });
+  }
+});
 
-router.post(
-  "/focus-sessions",
-  requireAuth,
-  async (req, res): Promise<void> => {
+router.post("/focus-sessions", requireAuth, async (req, res): Promise<void> => {
+  try {
+    await ensureSchema();
+
     const parsed = StartFocusSessionBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -78,20 +70,22 @@ router.post(
       }
     }
 
-    await ensureFocusColumns();
     const [session] = await db
       .insert(focusSessionsTable)
       .values({ ...parsed.data, userId: req.userId! })
       .returning();
 
     res.status(201).json(EndFocusSessionResponse.parse(session));
-  },
-);
+  } catch (err: any) {
+    logger.error({ err: err?.message ?? err }, "[focus] start failed");
+    res.status(500).json({ error: "Could not start your focus session." });
+  }
+});
 
-router.post(
-  "/focus-sessions/:id/end",
-  requireAuth,
-  async (req, res): Promise<void> => {
+router.post("/focus-sessions/:id/end", requireAuth, async (req, res): Promise<void> => {
+  try {
+    await ensureSchema();
+
     const params = EndFocusSessionParams.safeParse(req.params);
     if (!params.success) {
       res.status(400).json({ error: params.error.message });
@@ -104,21 +98,16 @@ router.post(
       return;
     }
 
-    await ensureFocusColumns();
+    const body = (req.body ?? {}) as { forfeitReason?: unknown; forfeitRoast?: unknown };
     const [session] = await db
       .update(focusSessionsTable)
       .set({
         status: parsed.data.status,
         endedAt: new Date(),
-        forfeitReason: (req.body as any)?.forfeitReason ? String((req.body as any).forfeitReason) : null,
-        forfeitRoast: (req.body as any)?.forfeitRoast ? String((req.body as any).forfeitRoast) : null,
+        forfeitReason: body.forfeitReason ? String(body.forfeitReason) : null,
+        forfeitRoast: body.forfeitRoast ? String(body.forfeitRoast) : null,
       })
-      .where(
-        and(
-          eq(focusSessionsTable.id, params.data.id),
-          eq(focusSessionsTable.userId, req.userId!),
-        ),
-      )
+      .where(and(eq(focusSessionsTable.id, params.data.id), eq(focusSessionsTable.userId, req.userId!)))
       .returning();
 
     if (!session) {
@@ -134,7 +123,10 @@ router.post(
     }
 
     res.json(EndFocusSessionResponse.parse(session));
-  },
-);
+  } catch (err: any) {
+    logger.error({ err: err?.message ?? err }, "[focus] end failed");
+    res.status(500).json({ error: "Could not end your focus session." });
+  }
+});
 
 export default router;

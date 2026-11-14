@@ -23,10 +23,13 @@ if (Number.isNaN(port) || port <= 0) {
 
 import { pool } from "@workspace/db";
 
-// Database connectivity check on boot
+import { ensureSchema } from "./lib/schema-sync";
+
+// Database connectivity check on boot (then bring the schema up to date)
 pool.query("SELECT 1")
   .then(() => {
     logger.info("Database connection to Supabase verified successfully.");
+    return ensureSchema();
   })
   .catch((err: any) => {
     if (err?.message?.includes("tenant") || err?.message?.includes("ENOTFOUND") || err?.code === "XX000") {

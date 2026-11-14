@@ -179,6 +179,42 @@ export function isNativeSessionActive(): boolean {
   return AppBlockerNative.isSessionActive() as boolean;
 }
 
+// ── Scheduled blocking windows (used by goals) ──────────────────────────────
+
+export interface ScheduledBlockWindow {
+  /** Free-form id, e.g. "goalId:2026-11-14" */
+  id: string;
+  /** Window start, epoch milliseconds */
+  start: number;
+  /** Window end, epoch milliseconds */
+  end: number;
+  /** Android package names to block while the window is open */
+  pkgs: string[];
+}
+
+/**
+ * True when this binary can enforce blocking windows on its own (Android accessibility service),
+ * even while the Hadaf app process is not running. Older binaries return false.
+ */
+export const isScheduledBlockingSupported: boolean =
+  isAndroid && !!AppBlockerNative && typeof AppBlockerNative.setScheduledBlocks === "function";
+
+/**
+ * Replace the full list of scheduled blocking windows. Pass an empty array to clear everything.
+ */
+export function setScheduledBlocks(windows: ScheduledBlockWindow[]): void {
+  if (!isScheduledBlockingSupported) return;
+  try {
+    if (windows.length === 0 && typeof AppBlockerNative.clearScheduledBlocks === "function") {
+      AppBlockerNative.clearScheduledBlocks();
+    } else {
+      AppBlockerNative.setScheduledBlocks(JSON.stringify(windows));
+    }
+  } catch (e) {
+    console.warn("[HadafNative] setScheduledBlocks failed:", e);
+  }
+}
+
 // ── Package → App name lookup table ───────────────────────────────────────
 // Maps common Android package names and iOS bundle IDs to human-readable
 // app names and categories so the UI can display them nicely.

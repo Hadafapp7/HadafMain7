@@ -48,6 +48,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { focusSessionState } from "@/lib/focusSessionState";
 import ForfeitModal from "@/components/ForfeitModal";
+import KeyboardFloatingPreview from "@/components/KeyboardFloatingPreview";
 import { useColors } from "@/hooks/useColors";
 import {
   type FocusSession,
@@ -519,6 +520,7 @@ export default function FocusScreen() {
     }
   }, [sub.isLimited, sub.maxFocusMinutes, duration]);
   const [intention,   setIntention]   = useState("");
+  const [focusedInput, setFocusedInput] = useState<"intention" | "custom" | null>(null);
   const [blockedApps, setBlockedApps] = useState<string[]>([]);
   const [showPicker,  setShowPicker]  = useState(false);
   const [showCustom,  setShowCustom]  = useState(false);
@@ -1175,10 +1177,13 @@ export default function FocusScreen() {
                           styles.intentionInput,
                           { backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface },
                           errors.intention && { borderWidth: 1, borderColor: "#ef444440" },
+                          focusedInput === "intention" && { borderWidth: 1.5, borderColor: colors.primary },
                         ]}
                         placeholder="What are you working on?"
                         placeholderTextColor={errors.intention ? "#ef444480" : colors.outline}
                         value={intention}
+                        onFocus={() => setFocusedInput("intention")}
+                        onBlur={() => setFocusedInput((f) => (f === "intention" ? null : f))}
                         onChangeText={handleIntentionChange}
                         returnKeyType="done"
                       />
@@ -1241,6 +1246,8 @@ export default function FocusScreen() {
                       placeholder="e.g. 20"
                       placeholderTextColor={colors.outline}
                       value={customInput}
+                      onFocus={() => setFocusedInput("custom")}
+                      onBlur={() => setFocusedInput((f) => (f === "custom" ? null : f))}
                       onChangeText={setCustomInput}
                       maxLength={3}
                       returnKeyType="done"
@@ -1449,6 +1456,25 @@ export default function FocusScreen() {
             </Animated.View>
           )}
         </Animated.ScrollView>
+
+        <KeyboardFloatingPreview
+          label={
+            focusedInput === "intention"
+              ? "Focus Intention"
+              : focusedInput === "custom"
+                ? "Custom Duration (Minutes)"
+                : null
+          }
+          value={focusedInput === "intention" ? intention : customInput}
+          placeholder={
+            focusedInput === "intention"
+              ? "What are you working on?"
+              : "e.g. 20"
+          }
+          actionLabel={focusedInput === "custom" ? "Set" : "Done"}
+          onSubmit={focusedInput === "custom" ? handleCustomConfirm : undefined}
+          insideKeyboardAvoiding
+        />
       </KeyboardAvoidingView>
 
       {blockedAttempt && (

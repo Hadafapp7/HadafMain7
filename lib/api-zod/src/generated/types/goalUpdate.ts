@@ -20,4 +20,9 @@ export interface GoalUpdate {
   durationMinutes?: number;
   scheduledDate?: string;
   status?: GoalUpdateStatus;
+  /** @nullable */
+  forfeitReason?: string | null;
+  /** @nullable */
+  forfeitRoast?: string | null;
+  blockApps?: boolean;
 }

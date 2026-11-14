@@ -1,0 +1,55 @@
+{
+  "family": "hadaf-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": { "cpuArchitecture": "X86_64", "operatingSystemFamily": "LINUX" },
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/hadafApiTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "hadaf-api",
+      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/hadaf-api:latest",
+      "essential": true,
+      "portMappings": [{ "containerPort": 5000, "protocol": "tcp" }],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "PORT", "value": "5000" },
+        { "name": "CLERK_PUBLISHABLE_KEY", "value": "pk_live_Y2xlcmsuaGFkYWYuY28uaW4k" },
+        { "name": "AWS_REGION", "value": "us-east-1" },
+        { "name": "BEDROCK_MODEL_ID", "value": "us.meta.llama3-1-8b-instruct-v1:0" },
+        { "name": "AWS_SES_REGION", "value": "us-east-1" },
+        { "name": "SES_FROM_EMAIL", "value": "Hadaf <noreply@hadaf.co.in>" },
+        { "name": "SES_REPLY_TO", "value": "support@hadaf.co.in" },
+        { "name": "REVENUECAT_ENTITLEMENT_ID", "value": "hadaf_pro" },
+        { "name": "OTP_RETURN_IN_RESPONSE", "value": "true" }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:hadaf/DATABASE_URL" },
+        { "name": "CLERK_SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:hadaf/CLERK_SECRET_KEY" },
+        { "name": "REVENUECAT_SECRET_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:hadaf/REVENUECAT_SECRET_API_KEY" },
+        { "name": "ADMIN_API_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:hadaf/ADMIN_API_KEY" }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:5000/api/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/hadaf-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "api"
+        }
+      }
+    }
+  ]
+}
+

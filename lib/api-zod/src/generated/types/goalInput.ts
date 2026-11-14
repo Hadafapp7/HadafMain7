@@ -18,4 +18,5 @@ export interface GoalInput {
   /** @minimum 1 */
   durationMinutes: number;
   scheduledDate?: string;
+  blockApps?: boolean;
 }
