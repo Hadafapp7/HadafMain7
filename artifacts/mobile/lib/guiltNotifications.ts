@@ -31,7 +31,8 @@ interface GuiltResponse {
 }
 
 const PREFIX = "guilt-";
-const SHOWN_KEY = "guilt_shown_ids_v2";
+const SHOWN_KEY = "guilt_shown_ids_v3";
+const LAST_USER_KEY = "guilt_last_user_id_v1";
 const CHANNEL_ID = "guilt";
 const MIN_GAP_MS = 60_000;
 
@@ -297,9 +298,30 @@ export async function syncGuiltNotifications(force = false): Promise<void> {
       }
     }
 
+    // Fetch current logged-in user so we scope notifications strictly to this user and their actual name
+    let currentUserId = "anon";
+    let currentFirstName = "";
+    try {
+      const me = await customFetch<{ id?: string; name?: string | null }>("/api/users/me");
+      if (me?.id) currentUserId = me.id;
+      if (me?.name) currentFirstName = me.name.trim().split(/\s+/)[0] || "";
+    } catch {}
+
+    const prevUserId = await AsyncStorage.getItem(LAST_USER_KEY);
+    if (prevUserId && prevUserId !== currentUserId) {
+      await cancelAllGuilt();
+    }
+    await AsyncStorage.setItem(LAST_USER_KEY, currentUserId);
+
+    const userShownKey = `${SHOWN_KEY}:${currentUserId}`;
     const shown: string[] = JSON.parse(
-      (await AsyncStorage.getItem(SHOWN_KEY)) ?? "[]",
+      (await AsyncStorage.getItem(userShownKey)) ?? "[]",
     );
+
+    const sanitizeName = (text: string): string => {
+      if (!currentFirstName || !text) return text;
+      return text.replace(/\bAman\b/gi, currentFirstName);
+    };
 
     const tz = -new Date().getTimezoneOffset();
     let data: GuiltResponse = { immediate: [], scheduled: [] };
@@ -330,6 +352,7 @@ export async function syncGuiltNotifications(force = false): Promise<void> {
     await cancelAllGuilt();
 
     const fresh = (data.immediate ?? [])
+      .map((i) => ({ ...i, title: sanitizeName(i.title), body: sanitizeName(i.body) }))
       .filter((i) => !shown.includes(i.id))
       .slice(0, 1);
 
@@ -339,9 +362,14 @@ export async function syncGuiltNotifications(force = false): Promise<void> {
         void fireImmediateGuilt(item, `${PREFIX}now-${item.id}`);
       }, 2500);
     }
-    await AsyncStorage.setItem(SHOWN_KEY, JSON.stringify(shown.slice(-100)));
+    await AsyncStorage.setItem(userShownKey, JSON.stringify(shown.slice(-100)));
 
-    for (const item of data.scheduled ?? []) {
+    for (const rawItem of data.scheduled ?? []) {
+      const item = {
+        ...rawItem,
+        title: sanitizeName(rawItem.title),
+        body: sanitizeName(rawItem.body),
+      };
       if (!item.fireAt) continue;
       const at = new Date(item.fireAt);
       if (at.getTime() > Date.now() + 30_000) {

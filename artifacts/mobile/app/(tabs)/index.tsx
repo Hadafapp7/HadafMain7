@@ -13,6 +13,7 @@ import {
   Dimensions,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -35,6 +36,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { HadafInlineLoader } from "@/components/AppLoadingScreen";
 import { useColors } from "@/hooks/useColors";
+import { isSocialOrGameApp, localDayKey } from "@/lib/usageStats";
 import {
   type AppUsageSummaryItem,
   type FocusSession,
@@ -353,7 +355,7 @@ function AppRow({ app, index, last, maxMinutes }: {
         <View style={styles.appRight}>
           <Text style={styles.appTime}>{formatDuration(app.dailyMinutes)}</Text>
           <Text style={{ fontSize: 10, color: "#888", marginTop: 1, fontFamily: "Inter_500Medium" }}>
-            weekly: {formatDuration(app.totalMinutes)}
+            weekly avg: {formatDuration(app.weeklyAvgMinutes ?? Math.max(1, Math.round((app.totalMinutes || app.dailyMinutes) / 7)))}/d
           </Text>
           <View style={[styles.appBarTrack, { marginTop: 4 }]}>
             <Animated.View style={[styles.appBarFill, barStyle]} />
@@ -715,6 +717,7 @@ interface MergedAppUsage {
   category?: string | null;
   dailyMinutes: number;
   totalMinutes: number;
+  weeklyAvgMinutes?: number;
 }
 let memoryMostUsedCache: MergedAppUsage[] = [];
 const MOST_USED_CACHE_KEY = "hadaf_most_used_apps_v3";
@@ -729,13 +732,6 @@ export default function HomeScreen() {
   const [showOptIn, setShowOptIn] = useState(false);
 
   // Native device usage state
-  interface MergedAppUsage {
-    appName: string;
-    packageName: string;
-    category?: string | null;
-    dailyMinutes: number;
-    totalMinutes: number;
-  }
   const [deviceUsage, setDeviceUsage] = useState<MergedAppUsage[]>(memoryMostUsedCache);
 
   useEffect(() => {
@@ -753,16 +749,18 @@ export default function HomeScreen() {
   }, []);
   const [nativePermGranted, setNativePermGranted] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [coachRefreshTrigger, setCoachRefreshTrigger] = useState(0);
 
-  const { data: me } = useGetMe();
-  const { data: rawGoals } = useListGoals();
+  const { data: me, refetch: refetchMe } = useGetMe();
+  const { data: rawGoals, refetch: refetchGoals } = useListGoals();
   const goals = Array.isArray(rawGoals) ? rawGoals : [];
   const { data: rawAppUsage, refetch: refetchAppUsage } = useGetAppUsageSummary();
   const appUsage = Array.isArray(rawAppUsage) ? rawAppUsage : [];
   const { data: settings } = useGetUserSettings();
-  const { data: rawFocusSessions } = useListFocusSessions();
+  const { data: rawFocusSessions, refetch: refetchFocusSessions } = useListFocusSessions();
   const focusSessions = Array.isArray(rawFocusSessions) ? rawFocusSessions : [];
-  const { data: rawEntries } = useListAppUsageEntries();
+  const { data: rawEntries, refetch: refetchEntries } = useListAppUsageEntries();
   const entries = Array.isArray(rawEntries) ? rawEntries : [];
   const updateSettings = useUpdateUserSettings();
   const createUsageEntry = useCreateAppUsageEntry();
@@ -818,16 +816,37 @@ export default function HomeScreen() {
         const weekly = await getDeviceUsageStats(7);
         console.log(`[Home] checkAndLoadStats: Fetched ${daily.length} daily and ${weekly.length} weekly apps`);
 
-        const combined: MergedAppUsage[] = weekly.map(w => {
-          const d = daily.find(x => x.packageName === w.packageName);
-          return {
-            appName: w.appName,
-            packageName: w.packageName,
-            category: w.category,
-            dailyMinutes: d ? d.totalMinutes : 0,
-            totalMinutes: w.totalMinutes
-          };
-        });
+        // Merge union of today's apps and weekly apps, sorted by today's daily screen time descending
+        const pkgMap = new Map<string, MergedAppUsage>();
+        for (const d of daily) {
+          const w = weekly.find((x) => x.packageName === d.packageName || x.appName === d.appName);
+          const total7 = w ? Math.max(w.totalMinutes, d.totalMinutes) : d.totalMinutes;
+          pkgMap.set(d.packageName || d.appName, {
+            appName: d.appName,
+            packageName: d.packageName,
+            category: d.category,
+            dailyMinutes: d.totalMinutes,
+            totalMinutes: total7,
+            weeklyAvgMinutes: Math.max(1, Math.round(total7 / 7)),
+          });
+        }
+        for (const w of weekly) {
+          const key = w.packageName || w.appName;
+          if (!pkgMap.has(key)) {
+            const d = daily.find((x) => x.packageName === w.packageName || x.appName === w.appName);
+            pkgMap.set(key, {
+              appName: w.appName,
+              packageName: w.packageName,
+              category: w.category,
+              dailyMinutes: d ? d.totalMinutes : 0,
+              totalMinutes: w.totalMinutes,
+              weeklyAvgMinutes: Math.max(1, Math.round(w.totalMinutes / 7)),
+            });
+          }
+        }
+        const combined: MergedAppUsage[] = Array.from(pkgMap.values()).sort(
+          (a, b) => b.dailyMinutes - a.dailyMinutes || b.totalMinutes - a.totalMinutes
+        );
 
         setDeviceUsage(combined);
         memoryMostUsedCache = combined;
@@ -894,24 +913,100 @@ export default function HomeScreen() {
   // Merge device usage with server usage — device data takes priority when available
   interface DisplayAppUsage {
     appName: string;
+    packageName?: string;
     category?: string | null;
     dailyMinutes: number;
     totalMinutes: number;
+    weeklyAvgMinutes: number;
   }
 
-  const mergedUsage: DisplayAppUsage[] = deviceUsage.length > 0
-    ? deviceUsage.map(d => ({
-        appName: d.appName,
-        category: d.category,
-        dailyMinutes: d.dailyMinutes,
-        totalMinutes: d.totalMinutes,
-      }))
-    : appUsage.map(a => ({
-        appName: a.appName,
-        category: a.category,
-        dailyMinutes: a.totalMinutes, // fallback to total for web/mock
-        totalMinutes: a.totalMinutes,
-      }));
+  const todayKeyStr = localDayKey(new Date());
+  const weekCutoffMs = Date.now() - 7 * 86_400_000;
+
+  // Build accurate fallback daily & weekly avg per app from server entries (deduped per day)
+  const fallbackServerUsage = React.useMemo<DisplayAppUsage[]>(() => {
+    if (entries.length > 0) {
+      const perAppDay = new Map<string, { appName: string; category?: string | null; day: string; mins: number }>();
+      for (const e of entries) {
+        const ts = new Date(e.loggedAt).getTime();
+        if (ts < weekCutoffMs) continue;
+        const day = localDayKey(new Date(e.loggedAt));
+        const key = `${e.appName.toLowerCase()}|${day}`;
+        const prev = perAppDay.get(key);
+        if (!prev || e.durationMinutes >= prev.mins) {
+          perAppDay.set(key, { appName: e.appName, category: e.category, day, mins: e.durationMinutes });
+        }
+      }
+      const activeDaysSet = new Set<string>();
+      const byApp = new Map<string, { appName: string; category?: string | null; todayMins: number; weekMins: number }>();
+      for (const item of perAppDay.values()) {
+        activeDaysSet.add(item.day);
+        const k = item.appName.toLowerCase();
+        const cur = byApp.get(k) ?? { appName: item.appName, category: item.category, todayMins: 0, weekMins: 0 };
+        cur.weekMins += item.mins;
+        if (item.day === todayKeyStr) cur.todayMins = Math.max(cur.todayMins, item.mins);
+        byApp.set(k, cur);
+      }
+      const numDays = Math.max(1, activeDaysSet.size);
+      return Array.from(byApp.values())
+        .map((a) => ({
+          appName: a.appName,
+          category: a.category,
+          dailyMinutes: a.todayMins,
+          totalMinutes: a.weekMins,
+          weeklyAvgMinutes: Math.max(1, Math.round(a.weekMins / numDays)),
+        }))
+        .sort((a, b) => b.dailyMinutes - a.dailyMinutes || b.totalMinutes - a.totalMinutes);
+    }
+    return appUsage.map((a) => ({
+      appName: a.appName,
+      category: a.category,
+      dailyMinutes: a.totalMinutes,
+      totalMinutes: a.totalMinutes,
+      weeklyAvgMinutes: Math.max(1, Math.round(a.totalMinutes / 7)),
+    }));
+  }, [entries, appUsage, todayKeyStr, weekCutoffMs]);
+
+  const mergedUsage: DisplayAppUsage[] =
+    deviceUsage.length > 0
+      ? deviceUsage.map((d) => ({
+          appName: d.appName,
+          packageName: d.packageName,
+          category: d.category,
+          dailyMinutes: d.dailyMinutes,
+          totalMinutes: d.totalMinutes,
+          weeklyAvgMinutes: d.weeklyAvgMinutes || Math.max(1, Math.round((d.totalMinutes || d.dailyMinutes) / 7)),
+        }))
+      : fallbackServerUsage;
+
+  const handlePullRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    Haptics.selectionAsync();
+    try {
+      setCoachRefreshTrigger((c) => c + 1);
+      await Promise.allSettled([
+        checkAndLoadStats(),
+        refetchMe(),
+        refetchProfile(),
+        refetchTodayMood(),
+        refetchGoals(),
+        refetchFocusSessions(),
+        refetchAppUsage(),
+        refetchEntries(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [
+    checkAndLoadStats,
+    refetchMe,
+    refetchProfile,
+    refetchTodayMood,
+    refetchGoals,
+    refetchFocusSessions,
+    refetchAppUsage,
+    refetchEntries,
+  ]);
 
   const handleOpenLogUsage = () => {
     Haptics.selectionAsync();
@@ -966,63 +1061,68 @@ export default function HomeScreen() {
 
   const pendingGoals = goals.filter(g => g.status === "pending").length;
   const doneGoals    = goals.filter(g => g.status === "done").length;
-  const totalScreenMinutes = mergedUsage.reduce((sum, a) => sum + a.dailyMinutes, 0);
-  const maxAppMinutes = Math.max(1, ...mergedUsage.map(a => a.dailyMinutes));
-  const topApps = [...mergedUsage].sort((a, b) => b.dailyMinutes - a.dailyMinutes).slice(0, 4);
 
-  // Sum daily screen time of distracting social apps: Instagram, TikTok, YouTube, Snapchat
-  const distractingApps = ["Instagram", "TikTok", "YouTube", "Snapchat"];
-  const distractingMinutes = mergedUsage
-    .filter(app => distractingApps.some(d => app.appName.toLowerCase().includes(d.toLowerCase())))
-    .reduce((sum, app) => sum + app.dailyMinutes, 0);
-
-  // Find which of these distracting apps are actually present/used on the device
-  const presentDistractingApps = distractingApps.filter(d =>
-    mergedUsage.some(app => app.appName.toLowerCase().includes(d.toLowerCase()))
+  // Most Used Apps list: sorted strictly by today's daily screen time activity (with weekly average below each app)
+  const sortedByToday = [...mergedUsage].sort(
+    (a, b) => b.dailyMinutes - a.dailyMinutes || b.totalMinutes - a.totalMinutes
   );
+  const usedTodayApps = sortedByToday.filter((a) => a.dailyMinutes > 0);
+  const topApps = (usedTodayApps.length > 0 ? usedTodayApps : sortedByToday).slice(0, 5);
+  const maxAppMinutes = Math.max(1, ...topApps.map((a) => a.dailyMinutes));
 
-  // Dynamic limit: 120 minutes (2 hours) allowed per present distracting app
-  const maxSocialLimit = Math.max(120, presentDistractingApps.length * 120);
+  // Total Screen Time & DoomScore: calculated ONLY from Social Media apps and Games!
+  const socialAndGameApps = mergedUsage.filter((app) =>
+    isSocialOrGameApp(app.appName, app.category, app.packageName)
+  );
+  const distractingMinutes = socialAndGameApps.reduce((sum, app) => sum + app.dailyMinutes, 0);
+  const totalScreenMinutes = distractingMinutes;
+
+  // Dynamic limit: 120 minutes (2 hours) allowed across social media & games (scaled by active social/game apps, max 240m)
+  const activeSocialOrGameCount = Math.max(
+    1,
+    socialAndGameApps.filter((a) => a.dailyMinutes > 0 || a.totalMinutes > 0).length
+  );
+  const maxSocialLimit = Math.min(240, Math.max(120, activeSocialOrGameCount * 90));
 
   function calculateDoomScore(mins: number): number {
+    if (mins <= 0) return 0;
     return Math.min(100, Math.round((mins / maxSocialLimit) * 100));
   }
 
   const doomScore = calculateDoomScore(distractingMinutes);
 
-  // Group entries by date (YYYY-MM-DD) over the last 7 days to calculate weekly averages
-  const dailyTotals: Record<string, { total: number; distracting: number }> = {};
-  entries.forEach(entry => {
-    const dateStr = entry.loggedAt.slice(0, 10);
-    const entryDate = new Date(entry.loggedAt);
-    const diffTime = Math.abs(Date.now() - entryDate.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays <= 7) {
-      if (!dailyTotals[dateStr]) {
-        dailyTotals[dateStr] = { total: 0, distracting: 0 };
-      }
-      dailyTotals[dateStr].total += entry.durationMinutes;
-
-      const isDistracting = distractingApps.some(d => 
-        entry.appName.toLowerCase().includes(d.toLowerCase())
+  // Weekly average screen time & weekly average DoomScore (ONLY Social Media & Games)
+  const avgScreenTime = React.useMemo(() => {
+    if (socialAndGameApps.length > 0 && deviceUsage.length > 0) {
+      const totalWeeklySocialAndGames = socialAndGameApps.reduce(
+        (sum, app) => sum + (app.totalMinutes || app.dailyMinutes),
+        0
       );
-      if (isDistracting) {
-        dailyTotals[dateStr].distracting += entry.durationMinutes;
+      return Math.round(totalWeeklySocialAndGames / 7);
+    }
+    const perDaySocial = new Map<string, number>();
+    const perAppDayMax = new Map<string, { day: string; mins: number }>();
+    for (const entry of entries) {
+      const entryDate = new Date(entry.loggedAt);
+      const diffDays = Math.ceil(Math.abs(Date.now() - entryDate.getTime()) / 86_400_000);
+      if (diffDays <= 7 && isSocialOrGameApp(entry.appName, entry.category)) {
+        const dayStr = localDayKey(entryDate);
+        const key = `${dayStr}|${entry.appName.toLowerCase()}`;
+        const prev = perAppDayMax.get(key);
+        if (!prev || entry.durationMinutes >= prev.mins) {
+          perAppDayMax.set(key, { day: dayStr, mins: entry.durationMinutes });
+        }
       }
     }
-  });
+    for (const item of perAppDayMax.values()) {
+      perDaySocial.set(item.day, (perDaySocial.get(item.day) ?? 0) + item.mins);
+    }
+    if (perDaySocial.size === 0) return distractingMinutes;
+    const sum = Array.from(perDaySocial.values()).reduce((a, b) => a + b, 0);
+    return Math.round(sum / perDaySocial.size);
+  }, [socialAndGameApps, deviceUsage.length, entries, distractingMinutes]);
 
-  const activeDays = Object.keys(dailyTotals);
-  const numDays = activeDays.length || 1;
-
-  const totalWeeklyScreenTime = activeDays.reduce((sum, d) => sum + dailyTotals[d].total, 0);
-  const avgScreenTime = Math.round(totalWeeklyScreenTime / numDays);
-
-  const totalWeeklyDoomScore = activeDays.reduce((sum, d) => 
-    sum + calculateDoomScore(dailyTotals[d].distracting), 0
-  );
-  const avgDoomScore = Math.round(totalWeeklyDoomScore / numDays);
+  const avgDoomScore = calculateDoomScore(avgScreenTime);
 
   const progressColor = doomScore < 30 ? "#4ade80" : doomScore < 70 ? "#facc15" : "#f87171";
 
@@ -1051,10 +1151,18 @@ export default function HomeScreen() {
           { paddingTop: topPad + 20, paddingBottom: isWeb ? 34 + 84 : 100 },
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
+            tintColor="#000"
+            colors={["#000000"]}
+          />
+        }
       >
 
         {/* ── AI Coach Reality Check & Motivation Widget ── */}
-        <AiCoachWidget firstName={firstName} />
+        <AiCoachWidget firstName={firstName} refreshTrigger={coachRefreshTrigger} />
 
         {/* ── Two stat cards ── */}
         <Animated.View

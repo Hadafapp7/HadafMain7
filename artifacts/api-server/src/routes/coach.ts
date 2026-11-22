@@ -32,9 +32,30 @@ const SOCIAL_MEDIA_KEYWORDS = [
   "threads",
   "youtube",
   "linkedin",
+  "discord",
+  "twitch",
+  "whatsapp",
+  "telegram",
   "social",
   "reels",
   "shorts",
+  "game",
+  "games",
+  "gaming",
+  "pubg",
+  "bgmi",
+  "free fire",
+  "freefire",
+  "roblox",
+  "clash",
+  "brawl",
+  "call of duty",
+  "cod",
+  "ludo",
+  "candy crush",
+  "genshin",
+  "minecraft",
+  "subway",
 ];
 
 function isSocialMedia(appName: string, category?: string | null): boolean {
@@ -43,18 +64,12 @@ function isSocialMedia(appName: string, category?: string | null): boolean {
   return SOCIAL_MEDIA_KEYWORDS.some((kw) => n.includes(kw) || c.includes(kw));
 }
 
-// In-memory cache per user with 5-minute TTL to keep home visits instant
+// In-memory cache per user+name with 45-second TTL to support 1-minute live auto-refresh
 const coachCache = new Map<string, { data: any; expiresAt: number }>();
 
 router.get("/coach/reality-check", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const force = req.query.refresh === "true";
-
-  const cached = coachCache.get(userId);
-  if (!force && cached && cached.expiresAt > Date.now()) {
-    res.json(cached.data);
-    return;
-  }
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -78,6 +93,13 @@ router.get("/coach/reality-check", requireAuth, async (req, res): Promise<void> 
         .from(appUsageEntriesTable)
         .where(and(eq(appUsageEntriesTable.userId, userId), gte(appUsageEntriesTable.loggedAt, weekAgo))),
     ]);
+
+    const cacheKey = `${userId}:${user?.name ?? ""}`;
+    const cached = coachCache.get(cacheKey);
+    if (!force && cached && cached.expiresAt > Date.now()) {
+      res.json(cached.data);
+      return;
+    }
 
     // If new user with zero activity, return null reality check
     if (todayUsage.length === 0 && sessions.length === 0 && goals.length === 0) {
@@ -205,7 +227,7 @@ ${facts}`;
       isGuiltMode,
     };
 
-    coachCache.set(userId, { data: result, expiresAt: Date.now() + 5 * 60_000 });
+    coachCache.set(cacheKey, { data: result, expiresAt: Date.now() + 45_000 });
     res.json(result);
   } catch (err: any) {
     console.error("[Coach] Reality check error:", err);

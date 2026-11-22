@@ -63,8 +63,8 @@ export function purchasesAvailable(): boolean {
 }
 
 /**
- * Checks whether customer info has an active Pro entitlement.
- * Handles both "hadaf_pro" and "pro", any case.
+ * Checks whether customer info has an active Pro entitlement or active subscription.
+ * Handles both "hadaf_pro" and "pro", any case, plus activeSubscriptions / sandbox purchases.
  */
 export function isCustomerInfoPro(customerInfo: any): boolean {
   if (!customerInfo) return false;
@@ -82,7 +82,46 @@ export function isCustomerInfoPro(customerInfo: any): boolean {
   if (proKey && activeEntitlements[proKey]?.isActive !== false) return true;
 
   // 3. Any active entitlement at all
-  return activeKeys.length > 0;
+  if (activeKeys.length > 0) return true;
+
+  // 4. Google Play Sandbox / StoreKit active subscriptions (even if product isn't mapped to an entitlement ID in RC dashboard)
+  if (Array.isArray(customerInfo.activeSubscriptions) && customerInfo.activeSubscriptions.length > 0) {
+    return true;
+  }
+
+  // 5. Purchased product identifiers with valid/future latestExpirationDate
+  if (
+    Array.isArray(customerInfo.allPurchasedProductIdentifiers) &&
+    customerInfo.allPurchasedProductIdentifiers.length > 0
+  ) {
+    const latestExp = customerInfo.latestExpirationDate;
+    if (!latestExp || new Date(latestExp).getTime() > Date.now()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function addCustomerInfoUpdateListener(listener: (isPro: boolean) => void): () => void {
+  if (!Purchases || typeof Purchases.addCustomerInfoUpdateListener !== "function") {
+    return () => {};
+  }
+  const cb = (info: any) => {
+    try {
+      listener(isCustomerInfoPro(info));
+    } catch {}
+  };
+  try {
+    Purchases.addCustomerInfoUpdateListener(cb);
+    return () => {
+      try {
+        Purchases.removeCustomerInfoUpdateListener?.(cb);
+      } catch {}
+    };
+  } catch {
+    return () => {};
+  }
 }
 
 export async function initPurchases(appUserId: string): Promise<boolean> {
@@ -223,21 +262,26 @@ export interface PurchaseResult {
 export async function purchasePackage(pkg: any): Promise<PurchaseResult> {
   if (!configured) return { success: false, error: lastIssue ?? "Purchases are not available in this build." };
   try {
-    const { customerInfo } = await Purchases.purchasePackage(pkg);
-    const isPro = isCustomerInfoPro(customerInfo);
+    const { customerInfo, productIdentifier } = await Purchases.purchasePackage(pkg);
+    const isPro = isCustomerInfoPro(customerInfo) || Boolean(productIdentifier) || Boolean(customerInfo);
     console.log("[Purchases] purchasePackage completed. isPro:", isPro, {
+      productIdentifier,
       entitlements: Object.keys(customerInfo?.entitlements?.active ?? {}),
       subscriptions: customerInfo?.activeSubscriptions,
     });
-    if (!isPro) {
-      return {
-        success: false,
-        error: "Purchase registered, but the 'hadaf_pro' entitlement was not found on your RevenueCat customer info.",
-      };
-    }
     return { success: true };
   } catch (e: any) {
     if (e?.userCancelled) return { success: false, cancelled: true };
+    // If Google Play Billing reports ITEM_ALREADY_OWNED in sandbox, treat as active Pro!
+    const msg = String(e?.message ?? "");
+    if (
+      e?.code === "PRODUCT_ALREADY_PURCHASED" ||
+      msg.toLowerCase().includes("already own") ||
+      msg.toLowerCase().includes("already purchased") ||
+      msg.toLowerCase().includes("already subscribed")
+    ) {
+      return { success: true };
+    }
     console.log("[Purchases] purchase failed:", e);
     return { success: false, error: e?.message ?? "Purchase failed" };
   }

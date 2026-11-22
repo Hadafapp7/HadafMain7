@@ -1,9 +1,11 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@clerk/expo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import {
+  addCustomerInfoUpdateListener,
   getProPackages,
   getPurchasesIssue,
   hasProEntitlement,
@@ -135,7 +137,23 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         return;
       }
       if (cancelled) return;
-      setRcPro(await hasProEntitlement());
+      // Check locally cached sandbox/pro flag for instant activation
+      try {
+        const cachedPro = await AsyncStorage.getItem(`@hadaf/pro_active_${userId}`);
+        if (cachedPro === "true" && !cancelled) {
+          setRcPro(true);
+        }
+      } catch {}
+
+      const livePro = await hasProEntitlement();
+      if (!cancelled && livePro) {
+        setRcPro(true);
+        AsyncStorage.setItem(`@hadaf/pro_active_${userId}`, "true").catch(() => {});
+        customFetch("/api/subscription/sync", {
+          method: "POST",
+          body: JSON.stringify({ clientVerifiedPro: true }),
+        }).catch(() => {});
+      }
       const found = await getProPackages();
       if (!cancelled) {
         if (found.monthly || found.annual) {
@@ -146,19 +164,61 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         }
       }
     })();
+    const removeListener = addCustomerInfoUpdateListener((isProNow) => {
+      if (!cancelled && isProNow) {
+        setRcPro(true);
+        if (userId) {
+          AsyncStorage.setItem(`@hadaf/pro_active_${userId}`, "true").catch(() => {});
+        }
+        customFetch("/api/subscription/sync", {
+          method: "POST",
+          body: JSON.stringify({ clientVerifiedPro: true }),
+        })
+          .then(() => queryClient.invalidateQueries({ queryKey: STATUS_KEY }))
+          .catch(() => {});
+      }
+    });
     return () => {
       cancelled = true;
+      removeListener();
     };
-  }, [isSignedIn, userId]);
+  }, [isSignedIn, userId, queryClient]);
 
-  const syncServer = useCallback(async () => {
-    try {
-      await customFetch("/api/subscription/sync", { method: "POST" });
-    } catch (e) {
-      console.log("[Subscription] sync failed (webhook will catch up):", e);
-    }
-    await queryClient.invalidateQueries({ queryKey: STATUS_KEY });
-  }, [queryClient]);
+  const syncServer = useCallback(
+    async (clientVerifiedPro = false, period: BillingPeriod = "monthly") => {
+      // Optimistically set React Query cache to Pro immediately so UI unlocks in <10ms
+      if (clientVerifiedPro) {
+        if (userId) {
+          AsyncStorage.setItem(`@hadaf/pro_active_${userId}`, "true").catch(() => {});
+        }
+        const days = period === "annual" ? 365 : 30;
+        const optimisticStatus: ServerStatus = {
+          plan: "pro",
+          isPro: true,
+          trialEndsAt: new Date().toISOString(),
+          trialDaysLeft: 0,
+          proExpiresAt: new Date(Date.now() + days * 86_400_000).toISOString(),
+          limits: {
+            goals: true,
+            analytics: true,
+            maxFocusMinutes: null,
+            maxFocusSessionsPerDay: null,
+          },
+        };
+        queryClient.setQueryData(STATUS_KEY, optimisticStatus);
+      }
+      try {
+        await customFetch("/api/subscription/sync", {
+          method: "POST",
+          body: JSON.stringify({ clientVerifiedPro, period }),
+        });
+      } catch (e) {
+        console.log("[Subscription] sync failed (webhook will catch up):", e);
+      }
+      await queryClient.invalidateQueries({ queryKey: STATUS_KEY });
+    },
+    [queryClient, userId],
+  );
 
   const refresh = useCallback(async () => {
     if (purchasesAvailable()) setRcPro(await hasProEntitlement());
@@ -190,7 +250,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         const result = await purchasePackage(target);
         if (result.success) {
           setRcPro(true);
-          await syncServer();
+          await syncServer(true, period);
         }
         return result;
       } finally {
@@ -206,7 +266,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       const result = await restorePurchases();
       if (result.success) {
         setRcPro(true);
-        await syncServer();
+        await syncServer(true, "monthly");
       }
       return result;
     } finally {

@@ -331,24 +331,22 @@ async function loadAll(
 
 // ───────────────────────── LLM prompt ─────────────────────────
 
-function buildPrompt(situation: string, facts: string): string {
-  return `You write short, high-impact push notifications for "Hadaf", a strict focus and discipline app.
-Your job is to make the user feel a real pang of GUILT about not being consistent with their focus sessions and goals so they stop procrastinating and lock in immediately.
+function buildPrompt(situation: string, facts: string, firstName: string | null): string {
+  const nameRule = firstName
+    ? `- CRITICAL: The logged-in user's first name is "${firstName}". Address them directly as "${firstName}" and NEVER use any other name.`
+    : `- Address the user directly as "you" (do not invent any name).`;
+  return `You write short, high-impact, deeply guilt-inducing push notifications for "Hadaf", a strict focus and discipline app.
+Your job is to make the user feel a real, visceral pang of GUILT about wasting their life on distractions and failing their focus sessions and goals so they stop procrastinating and lock in immediately.
 
 Rules:
-- Use the USER FACTS. Contrast their lack of consistency (0 focus minutes today, broken streak, unfinished or forfeited goals) against the time they gave to distracting apps (like Instagram, YouTube, TikTok) if available.
-- Tone: a sharp, disappointed, no-excuses mentor who knows the user is capable of much more. Speak directly to "you" (and use their first name if known).
+${nameRule}
+- Use ONLY the exact numbers, app names, goal titles, focus session counts, and streak from USER FACTS. Never invent apps (like TikTok) if they are not listed in USER FACTS.
+- Contrast their lack of discipline (0 focus minutes today, broken streak, forfeited or overdue goals) directly against the exact minutes they gave to their most-used apps today/this week.
+- Tone: a sharp, disappointed, no-excuses mentor who is calling out their exact behavior and making them feel deeply guilty for choosing cheap dopamine over their goals.
 - Guilt the INCONSISTENCY and the ACTION, never insult the person's worth. No profanity, no threats, nothing about health, body, family, money or self-harm.
-- Title: 3 to 6 punchy words (max 45 chars).
-- Body: 1 to 2 sharp sentences, at most 28 words total. End with a call to lock in right now.
+- Title: 3 to 6 punchy words (max 50 chars).
+- Body: 1 to 2 sharp sentences, at most 32 words total. Cite their actual numbers/apps/goals and end with a command to lock in right now.
 - Reply with ONLY a valid JSON object, nothing else: {"title": "...", "body": "..."}
-
-Examples:
-SITUATION: The user has not been consistent today (0m focus) while spending time on distracting apps.
-{"title": "Consistent on reels, not goals?", "body": "You found time for Instagram today, yet your focus timer is still at 0 minutes. Stop negotiating with weakness and lock in one session right now."}
-
-SITUATION: The user abandoned a 25 minute focus session after 4 minutes.
-{"title": "4 minutes. That's your limit?", "body": "You promised 25 minutes and folded after 4. Consistency isn't built when it's easy—get back in and finish what you started."}
 
 SITUATION: ${situation}
 
@@ -405,15 +403,18 @@ const cacheSet = (key: string, value: Crafted) => {
 };
 
 async function craft(
+  userId: string,
   key: string,
   situation: string,
   facts: Facts,
   fallback: { title: string; body: string },
   opts: { useCache?: boolean } = {},
 ): Promise<Crafted> {
+  const firstName = facts.name ? facts.name.trim().split(/\s+/)[0] : null;
+  const scopedCacheKey = `${userId}:${firstName ?? "anon"}:${key}`;
   const useCache = opts.useCache !== false;
   if (useCache) {
-    const hit = cache.get(key);
+    const hit = cache.get(scopedCacheKey);
     if (hit) return hit;
   }
 
@@ -421,12 +422,12 @@ async function craft(
   if (isBedrockConfigured()) {
     try {
       const raw = await generateWithBedrock(
-        buildPrompt(situation, factsToText(facts)),
+        buildPrompt(situation, factsToText(facts), firstName),
       );
       const parsed = parseModelOutput(raw);
       if (parsed) {
         const result: Crafted = { ...parsed, source: "bedrock" };
-        if (useCache) cacheSet(key, result);
+        if (useCache) cacheSet(scopedCacheKey, result);
         return result;
       }
       error = `Could not parse model output: ${raw.slice(0, 120)}`;
@@ -552,6 +553,10 @@ export async function buildGuiltNotifications(
     facts.goalsForfeitedWeek > 0 ||
     (facts.streak === 0 && facts.bestStreak > 0);
 
+  const userShort = userId.slice(-8);
+  const firstName = facts.name ? facts.name.trim().split(/\s+/)[0] : null;
+  const namePrefix = firstName ? `${firstName}, ` : "";
+
   if (pending.length === 0 && isInconsistentToday) {
     const goalHint = pendingGoalTitles[0]
       ? ` while "${pendingGoalTitles[0]}" sits untouched`
@@ -559,14 +564,14 @@ export async function buildGuiltNotifications(
         ? ` after forfeiting "${forfeitedGoals[0].title}"`
         : "";
     pending.push({
-      id: `inconsistent:${today}:${daySlot}`,
+      id: `inconsistent:${userShort}:${today}:${daySlot}`,
       trigger: "inconsistent",
-      situation: `The user is not being consistent with their discipline (${facts.focusTodayMin}m focused today, ${facts.focusSessionsCompletedWeek} sessions all week, streak: ${facts.streak}d)${goalHint}. Make them feel guilty about their inconsistency and urge them to start a focus session or complete their goal right now.`,
+      situation: `The user is not being consistent with their discipline (${facts.focusTodayMin}m focused today, ${facts.focusSessionsCompletedWeek} sessions all week, ${facts.goalsDoneWeek} goals done vs ${facts.goalsForfeitedWeek} forfeited, streak: ${facts.streak}d)${goalHint}. Make them feel deeply guilty about their inconsistency and urge them to start a focus session or complete their goal right now.`,
       fallback: {
-        title: "Where is your consistency?",
+        title: `${firstName ? `${firstName}: ` : ""}Where is your discipline?`,
         body: withApp(
           facts,
-          `0 focus minutes logged today${goalHint}. Stop breaking promises to yourself and lock in one session right now.`,
+          `${namePrefix}you logged ${facts.focusTodayMin}m of focus today (${facts.streak}d streak)${goalHint}. Stop breaking promises to yourself and lock in right now.`,
         ),
       },
     });
@@ -574,7 +579,7 @@ export async function buildGuiltNotifications(
 
   const immediate: GuiltItem[] = await Promise.all(
     pending.slice(0, 2).map(async (p) => {
-      const c = await craft(p.id, p.situation, facts, p.fallback);
+      const c = await craft(userId, p.id, p.situation, facts, p.fallback);
       return {
         id: p.id,
         trigger: p.trigger,
@@ -591,17 +596,17 @@ export async function buildGuiltNotifications(
   // 1. Same-day consistency check (fires 3 hours from now if they don't stay consistent today)
   const sameDayFire = avoidQuietHours(nowMs + 3 * HOUR, tz);
   scheduledPending.push({
-    id: `inconsistent_later:${today}:${daySlot}`,
+    id: `inconsistent_later:${userShort}:${today}:${daySlot}`,
     trigger: "inconsistent",
     fireAtMs: sameDayFire,
     situation: `3 hours have passed and the user still hasn't stayed consistent with their focus sessions and daily goals${
       pendingGoalTitles[0] ? ` (especially "${pendingGoalTitles[0]}")` : ""
     }. Deliver a sharp guilt nudge about choosing distractions over consistency.`,
     fallback: {
-      title: "Another day slipping by?",
+      title: `${firstName ? `${firstName}, another` : "Another"} day wasted?`,
       body: withApp(
         facts,
-        `You still haven't locked in your daily focus. Consistency is built today, not "tomorrow".`,
+        `${namePrefix}you still haven't locked in your daily focus (${facts.focusSessionsCompletedWeek} sessions this week). Stop procrastinating.`,
       ),
     },
   });
@@ -609,15 +614,15 @@ export async function buildGuiltNotifications(
   // 2. Next-day consistency check (fires ~22 hours from now so if they skip tomorrow they get called out)
   const nextDayFire = avoidQuietHours(nowMs + 22 * HOUR, tz);
   scheduledPending.push({
-    id: `inconsistent_tomorrow:${today}`,
+    id: `inconsistent_tomorrow:${userShort}:${today}`,
     trigger: "inconsistent",
     fireAtMs: nextDayFire,
     situation: `24 hours have passed since the user last checked in, and they are about to break their daily consistency streak (${facts.streak} day streak). Make them feel guilty about letting another day slip into distraction.`,
     fallback: {
-      title: "Don't break the chain",
+      title: `${firstName ? `${firstName}, don't` : "Don't"} break your ${facts.streak}d streak`,
       body: withApp(
         facts,
-        `Skipping one day makes skipping two easy. Open Hadaf and protect your consistency right now.`,
+        `Skipping one day makes quitting easy. Open Hadaf and finish your goals right now.`,
       ),
     },
   });
@@ -625,7 +630,7 @@ export async function buildGuiltNotifications(
   // 3. Upcoming goals that become overdue
   for (const g of upcomingGoals.slice(0, 2)) {
     scheduledPending.push({
-      id: `missed_goal_future:${g.key}`,
+      id: `missed_goal_future:${userShort}:${g.key}`,
       trigger: "missed_goal",
       fireAtMs: avoidQuietHours(g.endMs + 10 * MIN, tz),
       situation: `The user's goal "${g.title}" was due to end at ${fmtClock(
@@ -633,10 +638,10 @@ export async function buildGuiltNotifications(
         tz,
       )} and it is still not marked as done.`,
       fallback: {
-        title: "Goal still not done?",
+        title: `"${g.title.slice(0, 28)}" left unfinished?`,
         body: `"${g.title}" was due at ${fmtClock(g.endMs, tz)}. ${withApp(
           facts,
-          "Did you finish it, or did distraction win again?",
+          `${namePrefix}did you finish it, or did distraction win again?`,
         )}`,
       },
     });
@@ -645,12 +650,12 @@ export async function buildGuiltNotifications(
   // 4. 3-day inactivity callout
   const inactiveFire = avoidQuietHours(nowMs + INACTIVITY_DAYS * DAY, tz);
   scheduledPending.push({
-    id: `inactive_future:${today}`,
+    id: `inactive_future:${userShort}:${today}`,
     trigger: "inactive",
     fireAtMs: inactiveFire,
     situation: `The user has not opened Hadaf for ${INACTIVITY_DAYS} days (sent after 3 days of silence).`,
     fallback: {
-      title: "3 days of excuses?",
+      title: `${firstName ? `${firstName}: ` : ""}${INACTIVITY_DAYS} days of excuses?`,
       body: withApp(
         facts,
         `You haven't opened Hadaf in ${INACTIVITY_DAYS} days. Your goals are still waiting on you.`,
@@ -660,7 +665,7 @@ export async function buildGuiltNotifications(
 
   const scheduled: GuiltItem[] = await Promise.all(
     scheduledPending.map(async (p) => {
-      const c = await craft(p.id, p.situation, facts, p.fallback);
+      const c = await craft(userId, p.id, p.situation, facts, p.fallback);
       return {
         id: p.id,
         trigger: p.trigger,
@@ -714,6 +719,7 @@ export async function generateGuiltPreview(
   }[trigger];
 
   const c = await craft(
+    userId,
     `preview:${trigger}`,
     samples.situation,
     {

@@ -12,15 +12,19 @@ import { AppState, Platform } from "react-native";
 import { useEffect } from "react";
 
 import {
+  dismissNativeNotification,
   getDeviceUsageStats,
   isNativeAppBlockerSupported,
   isScheduledBlockingSupported,
+  playNativeCompletionAlarm,
   setScheduledBlocks,
+  showNativeNotification,
   startNativeSession,
   stopNativeSession,
   type ScheduledBlockWindow,
 } from "../modules/hadaf-native/src";
 import { focusSessionState } from "./focusSessionState";
+import { isSocialOrGameApp } from "./usageStats";
 
 // expo-notifications may be missing from an older binary - never crash the app over it.
 let Notifications: any = null;
@@ -126,7 +130,8 @@ const SOCIAL_APPS: Record<string, string[]> = {
   Discord: ["com.discord"],
   Pinterest: ["com.pinterest"],
 };
-const DEFAULT_TOP_APPS = ["Instagram", "YouTube", "TikTok"];
+const DEFAULT_TOP_APPS = ["Instagram", "YouTube"];
+const MOST_USED_CACHE_KEY = "hadaf_most_used_apps_v3";
 
 const PACKAGE_TO_APP: Record<string, string> = {};
 for (const [name, pkgs] of Object.entries(SOCIAL_APPS)) for (const p of pkgs) PACKAGE_TO_APP[p] = name;
@@ -137,7 +142,7 @@ function canonicalAppName(raw: string): string | null {
   const key = raw.trim().toLowerCase();
   if (ALIASES[key]) return ALIASES[key];
   const hit = Object.keys(SOCIAL_APPS).find((n) => n.toLowerCase() === key);
-  return hit ?? null;
+  return hit ?? (raw.trim() || null);
 }
 
 export interface TopSocialApps {
@@ -147,35 +152,93 @@ export interface TopSocialApps {
 
 let topCache: { at: number; value: TopSocialApps } | null = null;
 
-/** The 3 social apps with the most screen time (device stats -> server summary -> sensible defaults). */
+/**
+ * The top 3 apps from the user's actual Most Used Apps list (device usage -> cached most used apps -> server summary).
+ * NEVER pads with uninstalled apps like TikTok when actual device usage data exists!
+ */
 export async function getTopSocialApps(force = false): Promise<TopSocialApps> {
-  if (!force && topCache && Date.now() - topCache.at < 10 * 60_000) return topCache.value;
+  if (!force && topCache && Date.now() - topCache.at < 2 * 60_000) return topCache.value;
 
-  const minutesByApp = new Map<string, number>();
-  const add = (name: string | null, minutes: number) => {
-    if (!name || !(minutes > 0)) return;
-    minutesByApp.set(name, (minutesByApp.get(name) ?? 0) + minutes);
+  const minutesByApp = new Map<string, { minutes: number; pkg?: string; isSocialOrGame: boolean }>();
+  const add = (
+    rawName: string | null | undefined,
+    minutes: number,
+    pkg?: string | null,
+    category?: string | null
+  ) => {
+    if (!rawName || !(minutes > 0)) return;
+    const name = (pkg && PACKAGE_TO_APP[pkg]) || canonicalAppName(rawName) || rawName.trim();
+    const prev = minutesByApp.get(name);
+    const socialOrGame = isSocialOrGameApp(name, category, pkg);
+    minutesByApp.set(name, {
+      minutes: Math.max(prev?.minutes ?? 0, minutes),
+      pkg: pkg || prev?.pkg,
+      isSocialOrGame: Boolean(prev?.isSocialOrGame || socialOrGame),
+    });
   };
 
   try {
-    const stats = await getDeviceUsageStats(7);
-    for (const s of stats) add(PACKAGE_TO_APP[s.packageName] ?? canonicalAppName(s.appName), s.totalMinutes);
+    const dailyStats = await getDeviceUsageStats(1);
+    for (const s of dailyStats) {
+      add(s.appName, s.totalMinutes * 10, s.packageName, s.category);
+    }
+    const weeklyStats = await getDeviceUsageStats(7);
+    for (const s of weeklyStats) {
+      if (!minutesByApp.has((s.packageName && PACKAGE_TO_APP[s.packageName]) || canonicalAppName(s.appName) || s.appName)) {
+        add(s.appName, s.totalMinutes, s.packageName, s.category);
+      }
+    }
   } catch {
-    /* fall through to the server summary */
+    /* fall through to cached most used apps */
   }
 
   if (minutesByApp.size === 0) {
     try {
-      const summary = await customFetch<{ appName: string; totalMinutes: number }[]>("/api/app-usage/summary");
-      if (Array.isArray(summary)) for (const s of summary) add(canonicalAppName(s.appName), s.totalMinutes);
+      const cachedRaw = await AsyncStorage.getItem(MOST_USED_CACHE_KEY);
+      if (cachedRaw) {
+        const parsed = JSON.parse(cachedRaw);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            const mins = (Number(item.dailyMinutes) || 0) * 10 + (Number(item.totalMinutes) || 0);
+            add(item.appName, mins, item.packageName, item.category);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (minutesByApp.size === 0) {
+    try {
+      const summary = await customFetch<{ appName: string; totalMinutes: number; category?: string }[]>(
+        "/api/app-usage/summary"
+      );
+      if (Array.isArray(summary)) {
+        for (const s of summary) add(s.appName, s.totalMinutes, undefined, s.category);
+      }
     } catch {
       /* fall through to defaults */
     }
   }
 
-  const ranked = [...minutesByApp.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
-  const names = [...ranked, ...DEFAULT_TOP_APPS.filter((n) => !ranked.includes(n))].slice(0, 3);
-  const value: TopSocialApps = { names, packages: names.flatMap((n) => SOCIAL_APPS[n] ?? []) };
+  // Sort: prioritize social media & games from the user's actual used apps, then other used apps by minutes
+  const entries = [...minutesByApp.entries()].sort((a, b) => {
+    if (a[1].isSocialOrGame !== b[1].isSocialOrGame) {
+      return a[1].isSocialOrGame ? -1 : 1;
+    }
+    return b[1].minutes - a[1].minutes;
+  });
+
+  const ranked = entries.map(([name]) => name);
+  // Only fall back to DEFAULT_TOP_APPS if the user has 0 usage stats on their device
+  const names = (ranked.length > 0 ? ranked : DEFAULT_TOP_APPS).slice(0, 3);
+  const pkgSet = new Set<string>();
+  for (const n of names) {
+    const knownPkgs = SOCIAL_APPS[n] ?? [];
+    for (const kp of knownPkgs) pkgSet.add(kp);
+    const dynamicPkg = minutesByApp.get(n)?.pkg;
+    if (dynamicPkg) pkgSet.add(dynamicPkg);
+  }
+  const value: TopSocialApps = { names, packages: Array.from(pkgSet) };
   topCache = { at: Date.now(), value };
   return value;
 }
@@ -260,44 +323,113 @@ export async function notifyRealityCheck(title: string, body: string) {
   }
 }
 
-/** Rebuilds every reminder: 15-minutes-before + start-time, for all pending goals. */
+/**
+ * Rebuilds every reminder for all pending goals based on priority:
+ *  - critical: many reminders (-60m, -45m, -30m) + 3 times in the last 15 minutes (-15m, -10m, -5m) + start (0m) + mid-goal + end alarm
+ *  - high: -30m + 2 times in the last 15 minutes (-15m, -5m) + start (0m) + end alarm
+ *  - medium: 1 time in the last 15 minutes (-15m) + start (0m) + end alarm
+ *  - low: 1 light heads-up (-5m) + start (0m) + end alarm
+ */
 async function rescheduleReminders(goals: Goal[]) {
   if (!(await notificationsAllowed())) return;
   await cancelByPrefix(PREFIX);
   const T = triggerTypes();
   const now = Date.now();
 
+  const priorityLeadOffsets: Record<string, number[]> = {
+    critical: [60, 45, 30, 15, 10, 5],
+    high: [30, 15, 5],
+    medium: [15],
+    low: [5],
+  };
+
   for (const g of goals) {
     if (!isPending(g)) continue;
     const clock = parseClockTime(g.startTime);
     if (!clock) continue;
     const blocking = wantsBlocking(g);
+    const prio = (g.priority || "medium").toLowerCase();
+    const offsets = priorityLeadOffsets[prio] ?? priorityLeadOffsets.medium;
+    const prioTag =
+      prio === "critical"
+        ? "🚨 CRITICAL GOAL"
+        : prio === "high"
+          ? "🔥 HIGH PRIORITY"
+          : prio === "medium"
+            ? "⏰ GOAL REMINDER"
+            : "📌 GOAL HEADS-UP";
+
     const startBody = blocking
-      ? `"${g.title}" starts now. Your top social apps are blocked for ${g.durationMinutes} min — stay on it.`
-      : `"${g.title}" starts now. ${g.durationMinutes} minutes of focus — let's go.`;
-    const remindBody = `"${g.title}" starts in ${REMINDER_LEAD_MIN} minutes. Wrap up what you're doing${blocking ? " — social apps will lock when it begins" : ""}.`;
+      ? `"${g.title}" starts NOW (${g.durationMinutes} min). Your top social apps are locked — zero excuses, execute now.`
+      : `"${g.title}" starts NOW (${g.durationMinutes} min). Lock in and execute.`;
+
+    const endBody = `Time is up for "${g.title}" (${g.durationMinutes} min). Open Hadaf and verify honestly if you truly completed it.`;
 
     if (g.type === "daily") {
-      const remindTotal = (clock.hour * 60 + clock.minute - REMINDER_LEAD_MIN + 1440) % 1440;
-      await scheduleAt(`${PREFIX}${g.id}-remind`, "Goal starting soon ⏰", remindBody, {
-        type: T.daily,
-        hour: Math.floor(remindTotal / 60),
-        minute: remindTotal % 60,
-      });
-      await scheduleAt(`${PREFIX}${g.id}-start`, "Time to start 🎯", startBody, {
+      for (const leadMin of offsets) {
+        const remindTotal = (clock.hour * 60 + clock.minute - leadMin + 1440) % 1440;
+        const remindBody =
+          prio === "critical" && leadMin <= 15
+            ? `URGENT (${leadMin}m left): "${g.title}" starts in ${leadMin} minutes! Drop everything and prepare${blocking ? " — social apps lock at start" : ""}.`
+            : `"${g.title}" starts in ${leadMin} minutes. Wrap up what you're doing${blocking ? " — social apps will lock when it begins" : ""}.`;
+        await scheduleAt(`${PREFIX}${g.id}-remind-${leadMin}m`, `${prioTag} · ${leadMin}m`, remindBody, {
+          type: T.daily,
+          hour: Math.floor(remindTotal / 60),
+          minute: remindTotal % 60,
+        });
+      }
+      await scheduleAt(`${PREFIX}${g.id}-start`, `${prioTag} STARTING 🎯`, startBody, {
         type: T.daily,
         hour: clock.hour,
         minute: clock.minute,
       });
+      const endTotal = (clock.hour * 60 + clock.minute + Math.max(1, g.durationMinutes || 30)) % 1440;
+      await scheduleAt(`${PREFIX}${g.id}-end`, "Goal Duration Complete ⏰", endBody, {
+        type: T.daily,
+        hour: Math.floor(endTotal / 60),
+        minute: endTotal % 60,
+      });
     } else {
       const w = goalWindows(g, now)[0];
       if (!w) continue;
-      const remindAt = w.startMs - REMINDER_LEAD_MIN * 60_000;
-      if (remindAt > now + 5_000) {
-        await scheduleAt(`${PREFIX}${g.id}-remind`, "Goal starting soon ⏰", remindBody, { type: T.date, date: new Date(remindAt) });
+      for (const leadMin of offsets) {
+        const remindAt = w.startMs - leadMin * 60_000;
+        if (remindAt > now + 3_000) {
+          const remindBody =
+            prio === "critical" && leadMin <= 15
+              ? `URGENT (${leadMin}m left): "${g.title}" starts in ${leadMin} minutes! Drop everything and prepare${blocking ? " — social apps lock at start" : ""}.`
+              : `"${g.title}" starts in ${leadMin} minutes. Wrap up what you're doing${blocking ? " — social apps will lock when it begins" : ""}.`;
+          await scheduleAt(
+            `${PREFIX}${g.id}-remind-${leadMin}m`,
+            `${prioTag} · ${leadMin}m`,
+            remindBody,
+            { type: T.date, date: new Date(remindAt) }
+          );
+        }
       }
-      if (w.startMs > now + 5_000) {
-        await scheduleAt(`${PREFIX}${g.id}-start`, "Time to start 🎯", startBody, { type: T.date, date: new Date(w.startMs) });
+      if (w.startMs > now + 3_000) {
+        await scheduleAt(`${PREFIX}${g.id}-start`, `${prioTag} STARTING 🎯`, startBody, {
+          type: T.date,
+          date: new Date(w.startMs),
+        });
+      }
+      // For critical goals, also schedule a mid-session accountability check-in
+      if (prio === "critical" && g.durationMinutes >= 20) {
+        const midAt = w.startMs + Math.round((g.durationMinutes * 60_000) / 2);
+        if (midAt > now + 5_000) {
+          await scheduleAt(
+            `${PREFIX}${g.id}-mid`,
+            "🚨 CRITICAL GOAL CHECK-IN",
+            `Halfway through "${g.title}". Stay locked in — don't you dare quit now.`,
+            { type: T.date, date: new Date(midAt) }
+          );
+        }
+      }
+      if (w.endMs > now + 3_000) {
+        await scheduleAt(`${PREFIX}${g.id}-end`, "Goal Duration Complete ⏰", endBody, {
+          type: T.date,
+          date: new Date(w.endMs),
+        });
       }
     }
   }
@@ -357,6 +489,25 @@ export function activeBlockingGoal(goals: Goal[], nowMs = Date.now()): GoalWindo
   }
   return null;
 }
+
+/** Returns the currently active pending goal and its window (whether app blocking is on or off). */
+export function findActiveGoalSession(
+  goals: Goal[],
+  nowMs = Date.now()
+): { goal: Goal; window: GoalWindow; remainingSeconds: number; totalSeconds: number } | null {
+  for (const g of goals) {
+    if (!isPending(g)) continue;
+    const w = goalWindows(g, nowMs).find((x) => x.startMs <= nowMs && nowMs < x.endMs);
+    if (w) {
+      const remainingSeconds = Math.max(0, Math.ceil((w.endMs - nowMs) / 1000));
+      const totalSeconds = Math.max(60, (g.durationMinutes || 30) * 60);
+      return { goal: g, window: w, remainingSeconds, totalSeconds };
+    }
+  }
+  return null;
+}
+
+export { showNativeNotification, dismissNativeNotification, playNativeCompletionAlarm };
 
 // ───────────────────────── orchestration ─────────────────────────
 

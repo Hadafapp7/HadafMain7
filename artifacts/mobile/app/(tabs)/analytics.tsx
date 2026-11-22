@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -8,6 +9,7 @@ import {
   Dimensions,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -438,10 +440,12 @@ function HealthIndexBlock({
     ...intervals.map((it) => (it.focusCompleted || 0) + (it.focusForfeited || 0))
   );
 
-  // Calculations for Goals Bar Chart
+  // Calculations for Goals Bar Chart (Done + Missed + Forfeited)
   const maxGoals = Math.max(
     1,
-    ...intervals.map((it) => (it.goalsCompleted || 0) + (it.goalsMissed || 0))
+    ...intervals.map(
+      (it) => (it.goalsCompleted || 0) + (it.goalsMissed || 0) + (it.goalsForfeited || 0)
+    )
   );
 
   return (
@@ -679,12 +683,13 @@ function HealthIndexBlock({
               {intervals.map((it) => {
                 const completed = it.goalsCompleted || 0;
                 const missed = it.goalsMissed || 0;
-                const total = completed + missed;
+                const forfeited = it.goalsForfeited || 0;
+                const total = completed + missed + forfeited;
                 const chartH = 48;
                 const barH = total > 0 ? Math.max(12, Math.round((total / maxGoals) * chartH)) : 4;
-                const compRatio = total > 0 ? completed / total : 1;
-                const compH = Math.round(barH * compRatio);
-                const missH = barH - compH;
+                const compH = total > 0 ? Math.round((completed / total) * barH) : 0;
+                const forfH = total > 0 ? Math.round((forfeited / total) * barH) : 0;
+                const missH = Math.max(0, barH - compH - forfH);
 
                 return (
                   <View key={it.key} style={styles.healthBarCol}>
@@ -694,11 +699,14 @@ function HealthIndexBlock({
                         <View style={styles.zeroBarDot} />
                       ) : (
                         <View style={[styles.stackedBarWrap, { height: barH }]}>
+                          {forfeited > 0 && (
+                            <View style={[styles.stackedForfeited, { height: Math.max(3, forfH) }]} />
+                          )}
                           {missed > 0 && (
-                            <View style={[styles.stackedMissed, { height: missH }]} />
+                            <View style={[styles.stackedMissed, { height: Math.max(3, missH) }]} />
                           )}
                           {completed > 0 && (
-                            <View style={[styles.stackedCompleted, { height: compH }]} />
+                            <View style={[styles.stackedCompleted, { height: Math.max(3, compH) }]} />
                           )}
                         </View>
                       )}
@@ -829,35 +837,68 @@ function GoalTrackerBlock({
         </View>
       </View>
 
-      {/* Simple Summary Box */}
+      {/* Simple Summary Box: Daily Screen Time vs Target (Above target = Bad) */}
       <View style={[styles.trackerSummaryBox, { backgroundColor: colors.surfaceContainerHigh || "#fafafa" }]}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.summaryBoxLabel, { color: colors.outline }]}>PERIOD TOTAL</Text>
-          <Text style={[styles.summaryBoxValue, { color: colors.onSurface }]}>
-            {fmtMin(tracker.totalUsedMinutes)} / {fmtMin(tracker.totalTargetMinutes)}
+          <Text style={[styles.summaryBoxLabel, { color: colors.outline }]}>
+            DAILY SCREEN TIME VS TARGET
+          </Text>
+          <Text style={[styles.summaryBoxValue, { color: tracker.isOverallOver ? "#ef4444" : colors.onSurface }]}>
+            {fmtMin(tracker.todayUsedMinutes > 0 ? tracker.todayUsedMinutes : tracker.dailyAvgUsedMinutes)} / {fmtMin(tracker.targetPerDay)}
+          </Text>
+          <Text style={{ fontSize: 10, fontFamily: "Inter_500Medium", color: colors.outline, marginTop: 2 }}>
+            Period total: {fmtMin(tracker.totalUsedMinutes)} · {tracker.daysExceeded}d exceeded target
           </Text>
         </View>
 
         <View
           style={[
             styles.summaryStatusBadge,
-            { backgroundColor: tracker.isOverallOver ? "#fdeceb" : "#e8f7ee" },
+            {
+              backgroundColor:
+                tracker.totalUsedMinutes === 0
+                  ? "#f4f4f5"
+                  : tracker.isOverallOver
+                    ? "#fdeceb"
+                    : "#e8f7ee",
+            },
           ]}
         >
           <MaterialIcons
-            name={tracker.isOverallOver ? "error-outline" : "check-circle"}
+            name={
+              tracker.totalUsedMinutes === 0
+                ? "remove-circle-outline"
+                : tracker.isOverallOver
+                  ? "warning"
+                  : "check-circle"
+            }
             size={14}
-            color={tracker.isOverallOver ? "#ef4444" : "#15803d"}
+            color={
+              tracker.totalUsedMinutes === 0
+                ? "#71717a"
+                : tracker.isOverallOver
+                  ? "#ef4444"
+                  : "#15803d"
+            }
           />
           <Text
             style={[
               styles.summaryStatusText,
-              { color: tracker.isOverallOver ? "#ef4444" : "#15803d" },
+              {
+                color:
+                  tracker.totalUsedMinutes === 0
+                    ? "#71717a"
+                    : tracker.isOverallOver
+                      ? "#ef4444"
+                      : "#15803d",
+              },
             ]}
           >
-            {tracker.isOverallOver
-              ? `+${fmtMin(tracker.diffMinutes)} over goal`
-              : `-${fmtMin(tracker.diffMinutes)} under goal`}
+            {tracker.totalUsedMinutes === 0
+              ? "No usage yet"
+              : tracker.isOverallOver
+                ? `BAD · +${fmtMin(tracker.diffMinutes)} over`
+                : `GOOD · -${fmtMin(tracker.diffMinutes)} under`}
           </Text>
         </View>
       </View>
@@ -1045,10 +1086,49 @@ export default function AnalyticsScreen() {
   const summary = Array.isArray(rawSummary) ? rawSummary : [];
 
   const [targetMin, setTargetMin] = useTargetMinutes();
-  const { data: rawSessions } = useListFocusSessions();
+  const { data: rawSessions, refetch: refetchSessions } = useListFocusSessions();
   const sessions = Array.isArray(rawSessions) ? rawSessions : [];
-  const { data: rawGoals } = useListGoals();
-  const goals = Array.isArray(rawGoals) ? rawGoals : [];
+  const { data: rawGoals, refetch: refetchGoals } = useListGoals();
+  const [localGoalsBackup, setLocalGoalsBackup] = useState<Goal[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadLocalGoalsBackup = React.useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem("@hadaf/local_goals_backup_v1");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setLocalGoalsBackup(parsed);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    void loadLocalGoalsBackup();
+  }, [loadLocalGoalsBackup]);
+
+  // Merge server goals + locally cached goals (so completed & forfeited goals update on Analytics immediately!)
+  const goals = useMemo(() => {
+    const serverList = Array.isArray(rawGoals) ? rawGoals : [];
+    const byId = new Map<string, Goal>();
+    for (const g of serverList) byId.set(g.id, g);
+    for (const lg of localGoalsBackup) {
+      const matched = serverList.find(
+        (s) => s.id === lg.id || (s.title === lg.title && s.startTime === lg.startTime)
+      );
+      if (matched) {
+        // Prefer latest status if local goal was just completed/forfeited
+        const localUpdated = new Date(lg.updatedAt || 0).getTime();
+        const serverUpdated = new Date(matched.updatedAt || 0).getTime();
+        byId.set(
+          matched.id,
+          localUpdated >= serverUpdated ? { ...matched, status: lg.status, updatedAt: lg.updatedAt } : matched
+        );
+      } else {
+        byId.set(lg.id, lg);
+      }
+    }
+    return Array.from(byId.values());
+  }, [rawGoals, localGoalsBackup]);
 
   const insights = useMemo(
     () => computePeriodInsights(entries, sessions, goals, targetMin, activeRange),
@@ -1059,8 +1139,8 @@ export default function AnalyticsScreen() {
   const [loadingDiagnostic, setLoadingDiagnostic] = useState(false);
 
   const fetchBedrockDiagnostic = React.useCallback(
-    async (r: PeriodRange) => {
-      setLoadingDiagnostic(true);
+    async (r: PeriodRange, silent = false) => {
+      if (!silent) setLoadingDiagnostic(true);
       try {
         const res = await customFetch<any>("/api/analytics/diagnostic", {
           method: "POST",
@@ -1072,14 +1152,19 @@ export default function AnalyticsScreen() {
       } catch (err) {
         console.warn("[Analytics] Diagnostic fetch error:", err);
       } finally {
-        setLoadingDiagnostic(false);
+        if (!silent) setLoadingDiagnostic(false);
       }
     },
     [targetMin]
   );
 
+  // Fetch diagnostic on mount/range change + 1-minute automatic refresh
   useEffect(() => {
-    fetchBedrockDiagnostic(activeRange);
+    fetchBedrockDiagnostic(activeRange, false);
+    const interval = setInterval(() => {
+      fetchBedrockDiagnostic(activeRange, true);
+    }, 60_000);
+    return () => clearInterval(interval);
   }, [activeRange, fetchBedrockDiagnostic]);
 
   const syncStats = React.useCallback(async () => {
@@ -1131,9 +1216,41 @@ export default function AnalyticsScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      syncStats();
-    }, [])
+      void loadLocalGoalsBackup();
+      void refetchGoals();
+      void refetchSessions();
+      void refetchEntries();
+      void refetchSummary();
+      void syncStats();
+    }, [loadLocalGoalsBackup, refetchGoals, refetchSessions, refetchEntries, refetchSummary, syncStats])
   );
+
+  const handlePullRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    Haptics.selectionAsync();
+    try {
+      await Promise.allSettled([
+        loadLocalGoalsBackup(),
+        syncStats(),
+        refetchEntries(),
+        refetchSummary(),
+        refetchSessions(),
+        refetchGoals(),
+        fetchBedrockDiagnostic(activeRange, false),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [
+    loadLocalGoalsBackup,
+    syncStats,
+    refetchEntries,
+    refetchSummary,
+    refetchSessions,
+    refetchGoals,
+    fetchBedrockDiagnostic,
+    activeRange,
+  ]);
 
   const isLoading = loadingEntries || loadingSummary;
   const hasData   = entries.length > 0;
@@ -1166,6 +1283,14 @@ export default function AnalyticsScreen() {
           { paddingTop: topPad + 16, paddingBottom: isWeb ? 34 + 84 : 90 },
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         {/* Header */}
         <Animated.View entering={isWeb ? undefined : FadeInDown.delay(0).springify()} style={styles.headerRow}>

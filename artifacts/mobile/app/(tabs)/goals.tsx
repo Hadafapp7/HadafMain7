@@ -11,20 +11,27 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  RefreshControl,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  Vibration,
   View,
 } from "react-native";
 import { router } from "expo-router";
 
 import { useSubscription } from "@/hooks/useSubscription";
 import {
+  dismissNativeNotification,
+  findActiveGoalSession,
   getTopSocialApps,
+  goalWindows,
   notifyGoalAdded,
+  playNativeCompletionAlarm,
+  showNativeNotification,
   syncGoalAutomation,
   useGoalAutomation,
 } from "@/lib/goalAutomation";
@@ -33,6 +40,7 @@ import {
   getPermissionStatus,
   isNativeAppBlockerSupported,
   openAccessibilitySettings,
+  stopNativeCompletionAlarm,
 } from "../../modules/hadaf-native/src";
 import Animated, {
   FadeInDown,
@@ -140,30 +148,49 @@ function durationLabel(mins: number) {
   return `${(h + m / 60).toFixed(1)} Hours`;
 }
 
-// ── Drum picker constants ──────────────────────────────────────────────────────
+// ── Drum picker constants (Scrollable alarm/timer wheel) ───────────────────────
 const HOURS_12 = ["1","2","3","4","5","6","7","8","9","10","11","12"];
-const MINUTES  = ["00","05","10","15","20","25","30","35","40","45","50","55"];
+const MINUTES  = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 const PERIODS  = ["AM","PM"];
-const DUR_HRS  = ["0","1","2","3","4","5","6","7","8"];
-const DUR_MINS = ["00","15","30","45"];
-const ITEM_H   = 46;
+const DUR_HRS  = ["0","1","2","3","4","5","6","7","8","9","10","11","12"];
+const DUR_MINS = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
+const ITEM_H   = 44;
 
-// ── DrumColumn ─────────────────────────────────────────────────────────────────
-function DrumColumn({ items, selected, onSelect, width = 54 }: {
+function formatCountdown(secs: number): string {
+  const s = Math.max(0, Math.floor(secs));
+  const hrs = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const remSecs = s % 60;
+  if (hrs > 0) {
+    return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(remSecs).padStart(2, "0")}`;
+  }
+  return `${String(mins).padStart(2, "0")}:${String(remSecs).padStart(2, "0")}`;
+}
+
+// ── DrumColumn (Scrollable Wheel Column with nestedScrollEnabled) ──────────────
+function DrumColumn({ items, selected, onSelect, width = 56 }: {
   items: string[]; selected: string; onSelect: (v: string) => void; width?: number;
 }) {
   const scrollRef = useRef<Animated.ScrollView>(null);
+  const lastIdxRef = useRef<number>(-1);
 
   useEffect(() => {
     const idx = items.indexOf(selected);
-    if (idx >= 0) setTimeout(() => (scrollRef.current as any)?.scrollTo({ y: idx * ITEM_H, animated: false }), 60);
+    if (idx >= 0) {
+      lastIdxRef.current = idx;
+      setTimeout(() => (scrollRef.current as any)?.scrollTo({ y: idx * ITEM_H, animated: false }), 60);
+    }
   }, []);
 
-  const handleEnd = useCallback((e: any) => {
-    const idx     = Math.round(e.nativeEvent.contentOffset.y / ITEM_H);
+  const handleScrollChange = useCallback((e: any) => {
+    const offsetY = e.nativeEvent.contentOffset.y;
+    const idx = Math.round(offsetY / ITEM_H);
     const clamped = Math.max(0, Math.min(items.length - 1, idx));
-    Haptics.selectionAsync();
-    onSelect(items[clamped]);
+    if (clamped !== lastIdxRef.current) {
+      lastIdxRef.current = clamped;
+      Haptics.selectionAsync();
+      onSelect(items[clamped]);
+    }
   }, [items, onSelect]);
 
   return (
@@ -172,18 +199,23 @@ function DrumColumn({ items, selected, onSelect, width = 54 }: {
         pointerEvents="none"
         style={{
           position: "absolute", top: ITEM_H, left: 4, right: 4, height: ITEM_H,
-          borderTopWidth: 1, borderBottomWidth: 1,
-          borderColor: "rgba(0,0,0,0.12)", borderRadius: 8,
+          backgroundColor: "rgba(0,0,0,0.06)",
+          borderTopWidth: 1.5, borderBottomWidth: 1.5,
+          borderColor: "rgba(0,0,0,0.18)", borderRadius: 10,
         }}
       />
       <Animated.ScrollView
         ref={scrollRef as any}
+        nestedScrollEnabled={true}
         snapToInterval={ITEM_H}
+        snapToAlignment="start"
         decelerationRate="fast"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingVertical: ITEM_H }}
-        onMomentumScrollEnd={handleEnd}
-        onScrollEndDrag={handleEnd}
+        onScroll={handleScrollChange}
+        onMomentumScrollEnd={handleScrollChange}
+        onScrollEndDrag={handleScrollChange}
+        scrollEventThrottle={16}
       >
         {items.map((item, i) => {
           const isSel = item === selected;
@@ -192,16 +224,17 @@ function DrumColumn({ items, selected, onSelect, width = 54 }: {
               key={i}
               style={{ height: ITEM_H, alignItems: "center", justifyContent: "center" }}
               onPress={() => {
+                lastIdxRef.current = i;
                 (scrollRef.current as any)?.scrollTo({ y: i * ITEM_H, animated: true });
                 Haptics.selectionAsync();
                 onSelect(item);
               }}
-              activeOpacity={0.6}
+              activeOpacity={0.7}
             >
               <Text style={{
-                fontSize: isSel ? 18 : 14,
-                fontFamily: isSel ? "Inter_700Bold" : "Inter_400Regular",
-                color: isSel ? "#000" : "#aaa",
+                fontSize: isSel ? 19 : 14,
+                fontFamily: isSel ? "Inter_700Bold" : "Inter_500Medium",
+                color: isSel ? "#000" : "#9ca3af",
               }}>
                 {item}
               </Text>
@@ -217,16 +250,16 @@ function DrumColumn({ items, selected, onSelect, width = 54 }: {
 function DrumTimePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const parsed  = value.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
   const [hour,   setHour]   = useState(parsed ? parsed[1] : "10");
-  const [minute, setMinute] = useState(parsed ? parsed[2] : "00");
+  const [minute, setMinute] = useState(parsed ? parsed[2].padStart(2, "0") : "00");
   const [period, setPeriod] = useState(parsed ? parsed[3]?.toUpperCase() ?? "AM" : "AM");
   useEffect(() => { onChange(`${hour}:${minute} ${period}`); }, [hour, minute, period]);
   return (
     <View style={styles.drumContainer}>
       <DrumColumn items={HOURS_12} selected={hour}   onSelect={setHour}   width={52} />
       <Text style={styles.drumColon}>:</Text>
-      <DrumColumn items={MINUTES}  selected={minute} onSelect={setMinute} width={44} />
-      <View style={{ width: 12 }} />
-      <DrumColumn items={PERIODS}  selected={period} onSelect={setPeriod} width={48} />
+      <DrumColumn items={MINUTES}  selected={minute} onSelect={setMinute} width={52} />
+      <View style={{ width: 6 }} />
+      <DrumColumn items={PERIODS}  selected={period} onSelect={setPeriod} width={52} />
     </View>
   );
 }
@@ -234,17 +267,21 @@ function DrumTimePicker({ value, onChange }: { value: string; onChange: (v: stri
 // ── Inline drum duration picker ────────────────────────────────────────────────
 function DrumDurationPicker({ minutes, onChange }: { minutes: number; onChange: (v: number) => void }) {
   const hrs0  = String(Math.floor(minutes / 60));
-  const mins0 = String(minutes % 60).padStart(2, "0");
+  const rawMin = minutes % 60;
+  const snappedMin = String(Math.round(rawMin / 5) * 5 % 60).padStart(2, "0");
   const [hrs,  setHrs]  = useState(DUR_HRS.includes(hrs0) ? hrs0 : "1");
-  const [mins, setMins] = useState(DUR_MINS.includes(mins0) ? mins0 : "30");
-  useEffect(() => { onChange(parseInt(hrs, 10) * 60 + parseInt(mins, 10)); }, [hrs, mins]);
+  const [mins, setMins] = useState(DUR_MINS.includes(snappedMin) ? snappedMin : "30");
+  useEffect(() => {
+    const total = Math.max(5, parseInt(hrs, 10) * 60 + parseInt(mins, 10));
+    onChange(total);
+  }, [hrs, mins]);
   return (
     <View style={styles.drumContainer}>
-      <DrumColumn items={DUR_HRS}  selected={hrs}  onSelect={setHrs}  width={52} />
-      <Text style={[styles.drumColon, { fontSize: 13, color: "#777" }]}>hr</Text>
-      <View style={{ width: 10 }} />
-      <DrumColumn items={DUR_MINS} selected={mins} onSelect={setMins} width={44} />
-      <Text style={[styles.drumColon, { fontSize: 13, color: "#777" }]}>min</Text>
+      <DrumColumn items={DUR_HRS}  selected={hrs}  onSelect={setHrs}  width={48} />
+      <Text style={[styles.drumColon, { fontSize: 12, color: "#555" }]}>hr</Text>
+      <View style={{ width: 6 }} />
+      <DrumColumn items={DUR_MINS} selected={mins} onSelect={setMins} width={48} />
+      <Text style={[styles.drumColon, { fontSize: 12, color: "#555" }]}>min</Text>
     </View>
   );
 }
@@ -266,13 +303,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   const [duration,  setDuration]  = useState(90);
   const [startTime, setStartTime] = useState(() => defaultStartTime15MinAhead());
   const [blockApps, setBlockApps] = useState(true);
-  const [topSocialApps, setTopSocialApps] = useState<string[]>([
-    "Instagram",
-    "YouTube",
-    "TikTok",
-  ]);
-  const [showDrumDur,  setShowDrumDur]  = useState(false);
-  const [showDrumFrom, setShowDrumFrom] = useState(false);
+  const [topSocialApps, setTopSocialApps] = useState<string[]>([]);
   const [focusedField, setFocusedField] = useState<"title" | "intent" | null>(null);
 
   const detailsInputRef = useRef<TextInput>(null);
@@ -280,10 +311,10 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   const scale   = useSharedValue(0.88);
   const opacity = useSharedValue(0);
 
-  // Load top 3 social media apps by screen time when modal opens
+  // Load top 3 most-used apps by screen time when modal opens (never hardcoding uninstalled apps like TikTok)
   useEffect(() => {
     if (visible) {
-      getTopSocialApps()
+      getTopSocialApps(true)
         .then((apps) => {
           if (apps.names.length > 0) setTopSocialApps(apps.names.slice(0, 3));
         })
@@ -331,8 +362,6 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
     setDuration(90);
     setStartTime(defaultStartTime15MinAhead());
     setBlockApps(true);
-    setShowDrumDur(false);
-    setShowDrumFrom(false);
     setFocusedField(null);
   }, []);
 
@@ -418,6 +447,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
           contentContainerStyle={styles.addModalScrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
         >
           <Animated.View style={[styles.addModalCard, modalAnim]}>
 
@@ -588,53 +618,48 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
               ))}
             </View>
 
-            {/* Scheduling Window */}
-            <Text style={[styles.formLabel, { marginTop: 4 }]}>SCHEDULING WINDOW</Text>
+            {/* Scheduling Window — Always-Scrollable Alarm/Timer Wheel Pickers */}
+            <Text style={[styles.formLabel, { marginTop: 4 }]}>
+              SCHEDULING WINDOW (SCROLL TO SET)
+            </Text>
 
-            <View style={styles.schedCols}>
-              {/* Start Time */}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.schedColLabel}>START TIME</Text>
-                <TouchableOpacity
-                  style={styles.schedPill}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setShowDrumFrom(v => !v);
-                    setShowDrumDur(false);
-                  }}
-                >
-                  <Text style={styles.schedPillText}>{startTime}</Text>
-                </TouchableOpacity>
+            <View style={{ gap: 12 }}>
+              {/* Start Time Wheel */}
+              <View style={styles.wheelSectionCard}>
+                <View style={styles.wheelHeaderRow}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <MaterialIcons name="alarm" size={16} color="#000" />
+                    <Text style={styles.schedColLabel}>START TIME</Text>
+                  </View>
+                  <View style={styles.wheelValueBadge}>
+                    <Text style={styles.wheelValueBadgeText}>{startTime}</Text>
+                  </View>
+                </View>
+                <DrumTimePicker
+                  key={editingGoal ? `edit-time-${editingGoal.id}` : "new-time"}
+                  value={startTime}
+                  onChange={setStartTime}
+                />
               </View>
-              {/* Duration */}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.schedColLabel}>DURATION</Text>
-                <TouchableOpacity
-                  style={styles.schedPill}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setShowDrumDur(v => !v);
-                    setShowDrumFrom(false);
-                  }}
-                >
-                  <Text style={styles.schedPillText}>{durationLabel(duration)}</Text>
-                </TouchableOpacity>
+
+              {/* Duration Wheel */}
+              <View style={styles.wheelSectionCard}>
+                <View style={styles.wheelHeaderRow}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <MaterialIcons name="timer" size={16} color="#000" />
+                    <Text style={styles.schedColLabel}>DURATION</Text>
+                  </View>
+                  <View style={styles.wheelValueBadge}>
+                    <Text style={styles.wheelValueBadgeText}>{durationLabel(duration)}</Text>
+                  </View>
+                </View>
+                <DrumDurationPicker
+                  key={editingGoal ? `edit-dur-${editingGoal.id}` : "new-dur"}
+                  minutes={duration}
+                  onChange={setDuration}
+                />
               </View>
             </View>
-
-            {/* Inline drum pickers */}
-            {showDrumDur && (
-              <Animated.View style={styles.drumBox}>
-                <DrumDurationPicker minutes={duration} onChange={setDuration} />
-              </Animated.View>
-            )}
-            {showDrumFrom && (
-              <Animated.View style={styles.drumBox}>
-                <DrumTimePicker value={startTime} onChange={setStartTime} />
-              </Animated.View>
-            )}
 
             {/* Submit */}
             <TouchableOpacity
@@ -795,13 +820,223 @@ function GoalDetailSheet({ goal, onClose, onDone, onForfeit }: {
   );
 }
 
+// ── Strict Honesty & Regret Goal Completion Verification Modal ─────────────────
+function GoalCompletionVerifyModal({
+  goal,
+  onConfirmTrulyDone,
+  onAdmitNotCompleted,
+  onClose,
+}: {
+  goal: Goal | null;
+  onConfirmTrulyDone: (goal: Goal) => void;
+  onAdmitNotCompleted: (goal: Goal) => void;
+  onClose: () => void;
+}) {
+  if (!goal) return null;
+  return (
+    <Modal visible={!!goal} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.verifyOverlay}>
+        <BlurView intensity={45} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={styles.verifyCard}>
+          <View style={styles.verifyWarningIconWrap}>
+            <MaterialIcons name="gpp-maybe" size={32} color="#ef4444" />
+          </View>
+
+          <View style={styles.verifyStrictPill}>
+            <MaterialIcons name="warning" size={12} color="#ef4444" />
+            <Text style={styles.verifyStrictPillText}>STRICT ACCOUNTABILITY CHECK</Text>
+          </View>
+
+          <Text style={styles.verifyTitle}>
+            Did You Actually Complete "{goal.title}"?
+          </Text>
+
+          <View style={styles.verifyRegretBox}>
+            <Text style={styles.verifyRegretText}>
+              Think twice before you tap. Falsely claiming a goal you didn't truly finish is lying to your own future.
+              {"\n\n"}
+              A fake green checkmark won't build your life — it only hides your weakness and guarantees deep regret when your dreams stay out of reach. Did you genuinely put in the work for the full {durationLabel(goal.durationMinutes)}, or did you cheat yourself?
+            </Text>
+          </View>
+
+          <View style={{ width: "100%", gap: 10, marginTop: 4 }}>
+            <TouchableOpacity
+              style={styles.verifyConfirmBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                onConfirmTrulyDone(goal);
+              }}
+            >
+              <MaterialIcons name="verified" size={18} color="#fff" />
+              <Text style={styles.verifyConfirmBtnText}>
+                YES, I TRULY COMPLETED IT (100% HONEST)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.verifyForfeitBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                onAdmitNotCompleted(goal);
+              }}
+            >
+              <MaterialIcons name="cancel" size={18} color="#ef4444" />
+              <Text style={styles.verifyForfeitBtnText}>
+                NO, I DID NOT FINISH IT (FORFEIT)
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Active Goal Focus-Style Live Timer Banner ─────────────────────────────────
+function ActiveGoalTimerCard({
+  goal,
+  remainingSeconds,
+  totalSeconds,
+  onComplete,
+  onForfeit,
+}: {
+  goal: Goal;
+  remainingSeconds: number;
+  totalSeconds: number;
+  onComplete: () => void;
+  onForfeit: () => void;
+}) {
+  const progressPct =
+    totalSeconds > 0
+      ? Math.min(100, Math.max(2, Math.round(((totalSeconds - remainingSeconds) / totalSeconds) * 100)))
+      : 0;
+
+  return (
+    <View style={styles.activeTimerCard}>
+      <View style={styles.activeTimerTopRow}>
+        <View style={styles.activeTimerLiveBadge}>
+          <View style={styles.activeTimerPulseDot} />
+          <Text style={styles.activeTimerLiveText}>GOAL IN PROGRESS</Text>
+        </View>
+        <View
+          style={[
+            styles.activeTimerPrioBadge,
+            { backgroundColor: PRIORITY_COLOR[goal.priority] + "28" },
+          ]}
+        >
+          <Text
+            style={[
+              styles.activeTimerPrioText,
+              { color: PRIORITY_COLOR[goal.priority] },
+            ]}
+          >
+            {PRIORITY_LABEL[goal.priority].toUpperCase()}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.activeTimerGoalTitle} numberOfLines={2}>
+        {goal.title}
+      </Text>
+
+      <View style={styles.activeTimerClockWrap}>
+        <Text style={styles.activeTimerDigits}>{formatCountdown(remainingSeconds)}</Text>
+        <Text style={styles.activeTimerSubLabel}>REMAINING IN GOAL SESSION</Text>
+      </View>
+
+      <View style={styles.activeTimerProgressTrack}>
+        <View style={[styles.activeTimerProgressFill, { width: `${progressPct}%` }]} />
+      </View>
+
+      {goal.blockApps !== false && (
+        <View style={styles.activeTimerLockRow}>
+          <MaterialIcons name="lock" size={14} color="#a1a1aa" />
+          <Text style={styles.activeTimerLockText}>
+            Top social apps locked · Mini timer active on notification bar
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.activeTimerBtnRow}>
+        <TouchableOpacity
+          style={styles.activeTimerForfeitBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onForfeit();
+          }}
+          activeOpacity={0.85}
+        >
+          <MaterialIcons name="flag" size={18} color="#ef4444" />
+          <Text style={styles.activeTimerForfeitText}>Forfeit</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.activeTimerDoneBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onComplete();
+          }}
+          activeOpacity={0.85}
+        >
+          <MaterialIcons name="check-circle" size={18} color="#000" />
+          <Text style={styles.activeTimerDoneText}>Complete Goal</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // ── Goal card ──────────────────────────────────────────────────────────────────
-function GoalCard({ goal, delay = 0, onDelete, onPress, onEdit }: {
-  goal: Goal; delay?: number; onDelete: () => void; onPress: () => void; onEdit: () => void;
+function GoalCard({ goal, delay = 0, isActiveNow, remainingSeconds, onDelete, onPress, onEdit, onStartNow }: {
+  goal: Goal;
+  delay?: number;
+  isActiveNow?: boolean;
+  remainingSeconds?: number;
+  onDelete: () => void;
+  onPress: () => void;
+  onEdit: () => void;
+  onStartNow?: () => void;
 }) {
   const colors = useColors();
   const activeTo = addMinutesToTimeStr(goal.startTime, goal.durationMinutes);
+  const isDone = goal.status === "done";
   const isForfeited = (goal.status as string) === "forfeited";
+  const isScheduled = goal.type === "scheduled";
+
+  // Check if goal's scheduled end time has already passed while still pending
+  const isOverdue = useMemo(() => {
+    if (isDone || isForfeited) return false;
+    const wins = goalWindows(goal, 0);
+    if (wins.length === 0) return false;
+    const latestWin = wins[wins.length - 1];
+    return latestWin.endMs < Date.now();
+  }, [goal, isDone, isForfeited]);
+
+  // Point 1e: Scheduled goal completed -> green highlighted; not completed -> red highlighted!
+  // Also highlight completed daily goals green and forfeited/overdue daily goals red.
+  const showGreenHighlight = isDone;
+  const showRedHighlight =
+    !isDone && (isForfeited || isOverdue || isScheduled);
+
+  const cardBgColor = showGreenHighlight
+    ? "#ecfdf5"
+    : showRedHighlight
+      ? "#fef2f2"
+      : colors.card;
+
+  const cardBorderColor = showGreenHighlight
+    ? "#16a34a"
+    : showRedHighlight
+      ? "#ef4444"
+      : "transparent";
+
+  const accentColor = showGreenHighlight
+    ? "#16a34a"
+    : showRedHighlight
+      ? "#ef4444"
+      : PRIORITY_COLOR[goal.priority];
 
   return (
     <Animated.View
@@ -810,12 +1045,15 @@ function GoalCard({ goal, delay = 0, onDelete, onPress, onEdit }: {
       layout={isWeb ? undefined : LinearTransition.springify()}
       style={[
         styles.goalCard,
-        { backgroundColor: colors.card },
-        (goal.status === "done" || isForfeited) && { opacity: 0.62 },
+        {
+          backgroundColor: cardBgColor,
+          borderWidth: showGreenHighlight || showRedHighlight ? 1.5 : 0,
+          borderColor: cardBorderColor,
+        },
       ]}
     >
       <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={{ flex: 1, flexDirection: "row" }}>
-        <View style={[styles.goalCardAccent, { backgroundColor: PRIORITY_COLOR[goal.priority] }]} />
+        <View style={[styles.goalCardAccent, { backgroundColor: accentColor }]} />
         <View style={styles.goalCardInner}>
           {/* Action buttons row */}
           <View style={styles.cardActions}>
@@ -856,6 +1094,30 @@ function GoalCard({ goal, delay = 0, onDelete, onPress, onEdit }: {
                 {PRIORITY_LABEL[goal.priority].toUpperCase()}
               </Text>
             </View>
+            {isDone && (
+              <View style={[styles.typeBadge, { backgroundColor: "#dcfce7" }]}>
+                <MaterialIcons name="check-circle" size={12} color="#15803d" />
+                <Text style={[styles.typeBadgeText, { color: "#15803d" }]}>
+                  COMPLETED
+                </Text>
+              </View>
+            )}
+            {isForfeited && (
+              <View style={[styles.typeBadge, { backgroundColor: "#fee2e2" }]}>
+                <MaterialIcons name="cancel" size={12} color="#dc2626" />
+                <Text style={[styles.typeBadgeText, { color: "#dc2626" }]}>
+                  FORFEITED
+                </Text>
+              </View>
+            )}
+            {!isDone && !isForfeited && (isOverdue || isScheduled) && (
+              <View style={[styles.typeBadge, { backgroundColor: "#fee2e2" }]}>
+                <MaterialIcons name="error-outline" size={12} color="#dc2626" />
+                <Text style={[styles.typeBadgeText, { color: "#dc2626" }]}>
+                  {isOverdue ? "MISSED · NOT COMPLETED" : "NOT COMPLETED"}
+                </Text>
+              </View>
+            )}
             {goal.blockApps !== false && goal.status === "pending" && (
               <View style={[styles.typeBadge, { backgroundColor: colors.surfaceContainerHigh }]}>
                 <MaterialIcons name="shield" size={11} color={colors.onSurface} />
@@ -864,27 +1126,47 @@ function GoalCard({ goal, delay = 0, onDelete, onPress, onEdit }: {
                 </Text>
               </View>
             )}
-            {isForfeited && (
-              <View style={[styles.typeBadge, { backgroundColor: "#fee2e2" }]}>
-                <Text style={[styles.typeBadgeText, { color: "#ef4444" }]}>
-                  FORFEITED
-                </Text>
-              </View>
-            )}
           </View>
 
           <Text style={[styles.goalName,   { color: colors.onSurface }]}>{goal.title}</Text>
           {!!goal.intent && <Text style={[styles.goalIntent, { color: colors.outline }]}>{goal.intent}</Text>}
 
-          <View style={[styles.timeChip, { backgroundColor: colors.surfaceContainerHigh }]}>
-            <MaterialIcons name="schedule" size={15} color={colors.onSurface} />
-            <Text style={[styles.timeChipText, { color: colors.onSurface }]}>
-              {goal.type === "daily"
-                ? `${goal.startTime} – ${activeTo}`
-                : goal.scheduledDate
-                  ? `${goal.scheduledDate}  ·  ${goal.startTime} – ${activeTo}`
-                  : `${goal.startTime} – ${activeTo}`}
-            </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <View style={[styles.timeChip, { backgroundColor: colors.surfaceContainerHigh }]}>
+              <MaterialIcons name="schedule" size={15} color={colors.onSurface} />
+              <Text style={[styles.timeChipText, { color: colors.onSurface }]}>
+                {goal.type === "daily"
+                  ? `${goal.startTime} – ${activeTo}`
+                  : goal.scheduledDate
+                    ? `${goal.scheduledDate}  ·  ${goal.startTime} – ${activeTo}`
+                    : `${goal.startTime} – ${activeTo}`}
+              </Text>
+            </View>
+
+            {isActiveNow && remainingSeconds !== undefined && remainingSeconds > 0 ? (
+              <View style={[styles.timeChip, { backgroundColor: "#000" }]}>
+                <MaterialIcons name="timer" size={15} color="#22c55e" />
+                <Text style={[styles.timeChipText, { color: "#fff" }]}>
+                  {formatCountdown(remainingSeconds)}
+                </Text>
+              </View>
+            ) : (
+              goal.status === "pending" &&
+              onStartNow && (
+                <TouchableOpacity
+                  style={[styles.timeChip, { backgroundColor: "#000" }]}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    onStartNow();
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <MaterialIcons name="play-arrow" size={15} color="#fff" />
+                  <Text style={[styles.timeChipText, { color: "#fff" }]}>Start Timer Now</Text>
+                </TouchableOpacity>
+              )
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -1043,8 +1325,12 @@ export default function GoalsScreen() {
           (s.title === lg.title && s.startTime === lg.startTime),
       );
       if (matchedServer) {
+        const localUpdated = new Date(lg.updatedAt || 0).getTime();
+        const serverUpdated = new Date(matchedServer.updatedAt || 0).getTime();
         byId.set(matchedServer.id, {
           ...matchedServer,
+          status: localUpdated > serverUpdated ? lg.status : matchedServer.status,
+          updatedAt: localUpdated > serverUpdated ? lg.updatedAt : matchedServer.updatedAt,
           blockApps: matchedServer.blockApps ?? lg.blockApps ?? true,
         });
       } else {
@@ -1070,8 +1356,128 @@ export default function GoalsScreen() {
   const [editingGoal,  setEditingGoal]  = useState<Goal | null>(null);
   const [detailGoal,   setDetailGoal]   = useState<Goal | null>(null);
   const [forfeitingGoal, setForfeitingGoal] = useState<Goal | null>(null);
+  const [verifyingGoal, setVerifyingGoal] = useState<Goal | null>(null);
+  const [refreshing,   setRefreshing]   = useState(false);
   const [showFilters,  setShowFilters]  = useState(false);
   const [filters,      setFilters]      = useState<Filters>(DEFAULT_FILTERS);
+
+  // Live Goal Timer state (activates automatically when a goal's startTime window begins, or when user taps "Start Timer Now")
+  const [activeGoalSession, setActiveGoalSession] = useState<{
+    goal: Goal;
+    windowId: string;
+    remainingSeconds: number;
+    totalSeconds: number;
+  } | null>(null);
+  const promptedWindowIdsRef = useRef<Set<string>>(new Set());
+  const prevActiveGoalRef = useRef<{ goal: Goal; windowId: string } | null>(null);
+
+  // Start a goal's timer immediately right now (updates startTime to current clock time so the window is live)
+  const handleStartGoalNow = useCallback(
+    (goal: Goal) => {
+      const now = new Date();
+      const h24 = now.getHours();
+      const m = now.getMinutes();
+      const period = h24 >= 12 ? "PM" : "AM";
+      const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+      const nowTimeStr = `${h12}:${String(m).padStart(2, "0")} ${period}`;
+      const todayStr = todayDateStr();
+
+      const updatedGoal: Goal = {
+        ...goal,
+        startTime: nowTimeStr,
+        scheduledDate: goal.type === "scheduled" ? todayStr : goal.scheduledDate,
+        updatedAt: now.toISOString(),
+      };
+
+      const nextGoals = goals.map((g) => (g.id === goal.id ? updatedGoal : g));
+      saveLocalGoals(nextGoals);
+      queryClient.setQueryData(getListGoalsQueryKey(), nextGoals);
+      void syncGoalAutomation(nextGoals, true);
+
+      if (!goal.id.startsWith("local-")) {
+        updateGoal.mutate(
+          {
+            id: goal.id,
+            data: {
+              startTime: nowTimeStr,
+              ...(goal.type === "scheduled" ? { scheduledDate: todayStr } : {}),
+            } as any,
+          },
+          { onSuccess: () => refetch() }
+        );
+      }
+    },
+    [goals, saveLocalGoals, queryClient, updateGoal, refetch]
+  );
+
+  // 1-second tick loop for active goal countdown + notification bar mini timer + completion alarm & strict regret popup
+  useEffect(() => {
+    const tick = () => {
+      const nowMs = Date.now();
+      const found = findActiveGoalSession(goals, nowMs);
+
+      if (found) {
+        const nextState = {
+          goal: found.goal,
+          windowId: found.window.id,
+          remainingSeconds: found.remainingSeconds,
+          totalSeconds: found.totalSeconds,
+        };
+        setActiveGoalSession(nextState);
+        prevActiveGoalRef.current = { goal: found.goal, windowId: found.window.id };
+
+        // Display live mini timer on notification bar throughout the goal session (Point 3)
+        if (found.remainingSeconds > 0) {
+          try {
+            showNativeNotification(
+              `Goal: ${found.goal.title}`,
+              found.goal.blockApps !== false
+                ? "Stay focused · Top social apps locked"
+                : "Stay focused · Goal timer running",
+              true,
+              found.remainingSeconds
+            );
+          } catch {}
+        }
+      } else {
+        // Check if an active goal just finished its duration window!
+        const prev = prevActiveGoalRef.current;
+        if (prev && !promptedWindowIdsRef.current.has(prev.windowId)) {
+          const latestGoal = goals.find((g) => g.id === prev.goal.id) ?? prev.goal;
+          if (latestGoal.status === "pending") {
+            promptedWindowIdsRef.current.add(prev.windowId);
+            try {
+              dismissNativeNotification();
+            } catch {}
+            // Play default system alarm sound on goal duration completion (Point 2)
+            try {
+              playNativeCompletionAlarm(
+                "Goal Duration Complete ⏰",
+                `Time is up for "${latestGoal.title}". Verify honestly if you completed it!`
+              );
+            } catch {}
+            Vibration.vibrate([0, 600, 200, 600, 200, 600, 200, 1000]);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            // Pop up strict honesty & regret modal (Point 1a)
+            setVerifyingGoal(latestGoal);
+          }
+        }
+        prevActiveGoalRef.current = null;
+        setActiveGoalSession((cur) => {
+          if (cur) {
+            try {
+              dismissNativeNotification();
+            } catch {}
+          }
+          return null;
+        });
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [goals]);
 
   const filtersActive = filters.type !== "all" || filters.priority !== "all" || filters.status !== "all";
 
@@ -1145,6 +1551,16 @@ export default function GoalsScreen() {
     saveLocalGoals(nextLocal);
     queryClient.setQueryData(getListGoalsQueryKey(), nextLocal);
 
+    // If active goal is being forfeited, dismiss the notification bar timer
+    if (activeGoalSession?.goal.id === targetId) {
+      try {
+        dismissNativeNotification();
+        stopNativeCompletionAlarm();
+      } catch {}
+      prevActiveGoalRef.current = null;
+      setActiveGoalSession(null);
+    }
+
     try {
       if (!targetId.startsWith("local-")) {
         await updateGoal.mutateAsync({
@@ -1155,7 +1571,37 @@ export default function GoalsScreen() {
             forfeitRoast: roast,
           } as any,
         });
+        await queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
         refetch();
+      } else {
+        // Goal was still local: create on server and immediately mark forfeited so Analytics records it!
+        const localTarget = goals.find((g) => g.id === targetId);
+        if (localTarget) {
+          const created: any = await createGoal.mutateAsync({
+            data: {
+              title: localTarget.title,
+              intent: localTarget.intent || undefined,
+              type: localTarget.type,
+              priority: localTarget.priority,
+              startTime: localTarget.startTime,
+              durationMinutes: localTarget.durationMinutes,
+              scheduledDate: localTarget.scheduledDate || undefined,
+              blockApps: localTarget.blockApps ?? true,
+            },
+          });
+          if (created?.id) {
+            await updateGoal.mutateAsync({
+              id: created.id,
+              data: {
+                status: "forfeited" as any,
+                forfeitReason: reason,
+                forfeitRoast: roast,
+              } as any,
+            });
+            await queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
+            refetch();
+          }
+        }
       }
       void syncGuiltNotifications(true);
       void syncGoalAutomation(nextLocal);
@@ -1268,31 +1714,87 @@ export default function GoalsScreen() {
     setEditingGoal(null);
   };
 
-  const handleToggleDone = (goal: Goal) => {
-    const nextStatus: GoalStatusValue =
-      goal.status === "done" ? "pending" : "done";
+  // Step 1 when user claims a goal is done: open the strict regret verification modal!
+  const handleRequestCompleteGoal = (goal: Goal) => {
+    setDetailGoal(null);
+    if (goal.status === "done") return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    setVerifyingGoal(goal);
+  };
+
+  // Step 2: user confirms in GoalCompletionVerifyModal that they truly completed the goal
+  const handleConfirmTrulyDone = async (goal: Goal) => {
+    try {
+      stopNativeCompletionAlarm();
+      if (activeGoalSession?.goal.id === goal.id) {
+        dismissNativeNotification();
+        prevActiveGoalRef.current = null;
+        setActiveGoalSession(null);
+      }
+    } catch {}
+
+    setVerifyingGoal(null);
+    setDetailGoal(null);
+
+    const nowIso = new Date().toISOString();
     const nextGoals = goals.map((g) =>
       g.id === goal.id
-        ? { ...g, status: nextStatus, updatedAt: new Date().toISOString() }
+        ? { ...g, status: "done" as GoalStatusValue, updatedAt: nowIso }
         : g,
     );
     saveLocalGoals(nextGoals);
     queryClient.setQueryData(getListGoalsQueryKey(), nextGoals);
     void syncGoalAutomation(nextGoals);
 
-    if (!goal.id.startsWith("local-")) {
-      updateGoal.mutate(
-        { id: goal.id, data: { status: nextStatus } },
-        {
-          onSuccess: () => {
-            refetch();
-            void syncGuiltNotifications(true);
+    try {
+      if (!goal.id.startsWith("local-")) {
+        await updateGoal.mutateAsync({ id: goal.id, data: { status: "done" } });
+        await queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
+        refetch();
+        void syncGuiltNotifications(true);
+      } else {
+        // Goal had a local-* id; persist to server and mark done so Analytics sees it!
+        const created: any = await createGoal.mutateAsync({
+          data: {
+            title: goal.title,
+            intent: goal.intent || undefined,
+            type: goal.type,
+            priority: goal.priority,
+            startTime: goal.startTime,
+            durationMinutes: goal.durationMinutes,
+            scheduledDate: goal.scheduledDate || undefined,
+            blockApps: goal.blockApps ?? true,
           },
-        },
-      );
+        });
+        if (created?.id) {
+          await updateGoal.mutateAsync({ id: created.id, data: { status: "done" } });
+          await queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
+          refetch();
+        }
+      }
+    } catch (e) {
+      console.warn("Saved goal completion locally:", e);
     }
-    setDetailGoal(null);
   };
+
+  const handleAdmitNotCompleted = (goal: Goal) => {
+    try {
+      stopNativeCompletionAlarm();
+    } catch {}
+    setVerifyingGoal(null);
+    setDetailGoal(null);
+    setForfeitingGoal(goal);
+  };
+
+  const handlePullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    Haptics.selectionAsync();
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -1307,6 +1809,14 @@ export default function GoalsScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         <Animated.View
           entering={isWeb ? undefined : FadeInDown.delay(0).springify()}
@@ -1344,6 +1854,17 @@ export default function GoalsScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Active Goal Focus-Style Timer Banner (appears when a goal duration starts) */}
+        {activeGoalSession && (
+          <ActiveGoalTimerCard
+            goal={activeGoalSession.goal}
+            remainingSeconds={activeGoalSession.remainingSeconds}
+            totalSeconds={activeGoalSession.totalSeconds}
+            onComplete={() => handleRequestCompleteGoal(activeGoalSession.goal)}
+            onForfeit={() => setForfeitingGoal(activeGoalSession.goal)}
+          />
+        )}
+
         {isLoading && visibleGoals.length === 0 && (
           <HadafInlineLoader message="Loading your goals..." />
         )}
@@ -1365,9 +1886,16 @@ export default function GoalsScreen() {
             key={g.id}
             goal={g}
             delay={60 + i * 80}
+            isActiveNow={activeGoalSession?.goal.id === g.id}
+            remainingSeconds={
+              activeGoalSession?.goal.id === g.id
+                ? activeGoalSession.remainingSeconds
+                : undefined
+            }
             onDelete={() => handleDeleteGoal(g)}
             onPress={() => { Haptics.selectionAsync(); setDetailGoal(g); }}
             onEdit={() => handleEditGoal(g)}
+            onStartNow={() => handleStartGoalNow(g)}
           />
         ))}
       </Animated.ScrollView>
@@ -1407,13 +1935,26 @@ export default function GoalsScreen() {
       <GoalDetailSheet
         goal={detailGoal}
         onClose={() => setDetailGoal(null)}
-        onDone={() => detailGoal && handleToggleDone(detailGoal)}
+        onDone={() => detailGoal && handleRequestCompleteGoal(detailGoal)}
         onForfeit={() => {
           if (detailGoal) {
             const g = detailGoal;
             setDetailGoal(null);
             setForfeitingGoal(g);
           }
+        }}
+      />
+
+      {/* Modal 2b — Strict Honesty & Regret Verification Popup */}
+      <GoalCompletionVerifyModal
+        goal={verifyingGoal}
+        onConfirmTrulyDone={handleConfirmTrulyDone}
+        onAdmitNotCompleted={handleAdmitNotCompleted}
+        onClose={() => {
+          try {
+            stopNativeCompletionAlarm();
+          } catch {}
+          setVerifyingGoal(null);
         }}
       />
 
@@ -1464,8 +2005,258 @@ const styles = StyleSheet.create({
   timeChipText:   { fontSize: 13, fontFamily: "Inter_600SemiBold" },
 
   // Drum picker
-  drumContainer: { flexDirection: "row", alignItems: "center", borderRadius: 16, paddingHorizontal: 8, backgroundColor: "#f0f0f0" },
-  drumColon:     { fontSize: 22, fontFamily: "Inter_700Bold", color: "#555", marginBottom: 2 },
+  drumContainer: { flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 16, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e4e4e7" },
+  drumColon:     { fontSize: 22, fontFamily: "Inter_700Bold", color: "#111", marginBottom: 2, marginHorizontal: 4 },
+  wheelSectionCard: {
+    backgroundColor: "#f4f4f5",
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e4e4e7",
+    gap: 8,
+  },
+  wheelHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+  },
+  wheelValueBadge: {
+    backgroundColor: "#000",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  wheelValueBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+  },
+
+  // Active Goal Focus-Style Timer Banner
+  activeTimerCard: {
+    backgroundColor: "#0a0a0c",
+    borderRadius: 26,
+    padding: 20,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  activeTimerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  activeTimerLiveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(34, 197, 94, 0.14)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  activeTimerPulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#22c55e",
+  },
+  activeTimerLiveText: {
+    color: "#22c55e",
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.2,
+  },
+  activeTimerPrioBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  activeTimerPrioText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1,
+  },
+  activeTimerGoalTitle: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.3,
+  },
+  activeTimerClockWrap: {
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  activeTimerDigits: {
+    color: "#ffffff",
+    fontSize: 48,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -1.5,
+  },
+  activeTimerSubLabel: {
+    color: "#a1a1aa",
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  activeTimerProgressTrack: {
+    height: 6,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  activeTimerProgressFill: {
+    height: "100%",
+    backgroundColor: "#22c55e",
+    borderRadius: 3,
+  },
+  activeTimerLockRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  activeTimerLockText: {
+    color: "#a1a1aa",
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+  activeTimerBtnRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 2,
+  },
+  activeTimerForfeitBtn: {
+    flex: 0.44,
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: "#ef4444",
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  activeTimerForfeitText: {
+    color: "#ef4444",
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+  },
+  activeTimerDoneBtn: {
+    flex: 0.56,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  activeTimerDoneText: {
+    color: "#000000",
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+  },
+
+  // Strict Honesty & Regret Goal Completion Verification Modal
+  verifyOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    backgroundColor: "rgba(0,0,0,0.65)",
+  },
+  verifyCard: {
+    width: "100%",
+    backgroundColor: "#ffffff",
+    borderRadius: 28,
+    padding: 24,
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1.5,
+    borderColor: "#ef4444",
+  },
+  verifyWarningIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#fef2f2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  verifyStrictPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#fef2f2",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  verifyStrictPillText: {
+    color: "#dc2626",
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.1,
+  },
+  verifyTitle: {
+    fontSize: 20,
+    fontFamily: "Inter_700Bold",
+    color: "#0a0a0a",
+    textAlign: "center",
+    letterSpacing: -0.3,
+  },
+  verifyRegretBox: {
+    backgroundColor: "#fff1f2",
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#fecdd3",
+  },
+  verifyRegretText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    color: "#881337",
+    lineHeight: 19,
+    textAlign: "center",
+  },
+  verifyConfirmBtn: {
+    width: "100%",
+    height: 52,
+    borderRadius: 999,
+    backgroundColor: "#16a34a",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  verifyConfirmBtnText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.8,
+  },
+  verifyForfeitBtn: {
+    width: "100%",
+    height: 50,
+    borderRadius: 999,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1.5,
+    borderColor: "#ef4444",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  verifyForfeitBtnText: {
+    color: "#dc2626",
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.8,
+  },
 
   // FAB
   floatingBtn:    { position: "absolute", right: FAB_RIGHT, height: FAB_SIZE },

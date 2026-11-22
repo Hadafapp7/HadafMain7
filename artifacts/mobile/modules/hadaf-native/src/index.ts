@@ -281,6 +281,31 @@ export function dismissNativeNotification(): void {
   }
 }
 
+export function playNativeCompletionAlarm(title = "Session Complete ⏰", body = "Your timer has finished!"): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    if (typeof AppBlockerNative.playCompletionAlarm === "function") {
+      AppBlockerNative.playCompletionAlarm(title, body);
+      return;
+    }
+    // Fallback for older binaries: trigger a non-sticky high-priority notification
+    AppBlockerNative.showNotification(title, body, false, 0);
+  } catch (e) {
+    console.warn("[HadafNative] playCompletionAlarm failed:", e);
+  }
+}
+
+export function stopNativeCompletionAlarm(): void {
+  if (!isNative || !AppBlockerNative) return;
+  try {
+    if (typeof AppBlockerNative.stopCompletionAlarm === "function") {
+      AppBlockerNative.stopCompletionAlarm();
+    }
+  } catch (e) {
+    console.warn("[HadafNative] stopCompletionAlarm failed:", e);
+  }
+}
+
 export function getDevicePhoneNumber(): string {
   if (!isNative || !AppBlockerNative) return "";
   try {

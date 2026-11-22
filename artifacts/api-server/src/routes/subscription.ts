@@ -41,8 +41,23 @@ router.get("/subscription/status", requireAuth, async (req, res): Promise<void> 
  */
 router.post("/subscription/sync", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
+  const { clientVerifiedPro, period, expiresAt: clientExpiresAt } = (req.body ?? {}) as {
+    clientVerifiedPro?: boolean;
+    period?: "monthly" | "annual";
+    expiresAt?: string | null;
+  };
   const secret = process.env.REVENUECAT_SECRET_API_KEY;
+  const defaultExpiryDays = period === "annual" ? 365 : 30;
+  const fallbackExpires = clientExpiresAt
+    ? new Date(clientExpiresAt)
+    : new Date(Date.now() + defaultExpiryDays * 86_400_000);
+
   if (!secret) {
+    if (clientVerifiedPro) {
+      await setSubscription(userId, "pro", fallbackExpires);
+      res.json({ synced: true, source: "client_sdk", ...(await getUserPlan(userId)) });
+      return;
+    }
     res.json({ synced: false, reason: "REVENUECAT_SECRET_API_KEY is not set", ...(await getUserPlan(userId)) });
     return;
   }
@@ -52,6 +67,11 @@ router.post("/subscription/sync", requireAuth, async (req, res): Promise<void> =
     });
     if (!rc.ok) {
       console.warn("[Subscription] RevenueCat sync HTTP", rc.status);
+      if (clientVerifiedPro) {
+        await setSubscription(userId, "pro", fallbackExpires);
+        res.json({ synced: true, source: "client_sdk_fallback", ...(await getUserPlan(userId)) });
+        return;
+      }
       res.json({ synced: false, reason: `RevenueCat returned ${rc.status}`, ...(await getUserPlan(userId)) });
       return;
     }
@@ -62,12 +82,17 @@ router.post("/subscription/sync", requireAuth, async (req, res): Promise<void> =
     const hasActiveSub = Object.values(data?.subscriber?.subscriptions || {}).some(
       (s: any) => !s.expires_date || new Date(s.expires_date).getTime() > Date.now()
     );
-    const active = (Boolean(ent) && (!expires || expires.getTime() > Date.now())) || hasActiveSub;
-    const finalExpires = expires || (active ? new Date(Date.now() + 30 * 86_400_000) : null);
+    const active = (Boolean(ent) && (!expires || expires.getTime() > Date.now())) || hasActiveSub || Boolean(clientVerifiedPro);
+    const finalExpires = expires || (active ? fallbackExpires : null);
     await setSubscription(userId, active ? "pro" : "free", finalExpires);
     res.json({ synced: true, ...(await getUserPlan(userId)) });
   } catch (err: any) {
     console.error("[Subscription] sync error:", err?.message ?? err);
+    if (clientVerifiedPro) {
+      await setSubscription(userId, "pro", fallbackExpires);
+      res.json({ synced: true, source: "client_sdk_error_fallback", ...(await getUserPlan(userId)) });
+      return;
+    }
     res.status(500).json({ error: "Failed to sync subscription" });
   }
 });

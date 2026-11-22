@@ -45,6 +45,113 @@ export interface ChartIntervalStat {
   focusMinutes: number;
   goalsCompleted: number;
   goalsMissed: number;
+  goalsForfeited: number;
+}
+
+const SOCIAL_AND_GAME_KEYWORDS = [
+  // Social media
+  "instagram",
+  "tiktok",
+  "musically",
+  "youtube",
+  "snapchat",
+  "facebook",
+  "twitter",
+  "x (twitter)",
+  "reddit",
+  "discord",
+  "twitch",
+  "pinterest",
+  "threads",
+  "whatsapp",
+  "telegram",
+  "linkedin",
+  "bereal",
+  "tumblr",
+  // Games
+  "game",
+  "games",
+  "gaming",
+  "pubg",
+  "bgmi",
+  "free fire",
+  "freefire",
+  "call of duty",
+  "cod",
+  "activision",
+  "roblox",
+  "minecraft",
+  "genshin",
+  "candy crush",
+  "candycrush",
+  "clash of clans",
+  "clash royale",
+  "brawl stars",
+  "brawlstars",
+  "supercell",
+  "ludo",
+  "subway surfers",
+  "subwaysurf",
+  "8 ball",
+  "miniclip",
+  "asphalt",
+  "gameloft",
+  "mobile legends",
+  "moonton",
+  "fifa",
+  "ea sports",
+  "efootball",
+  "angry birds",
+  "rovio",
+  "zynga",
+  "valorant",
+  "fortnite",
+  "pokemon",
+];
+
+/**
+ * Returns true if the app belongs to Social Media or Games.
+ * DoomScore and Total Screen Time are calculated exclusively from Social Media and Games.
+ */
+export function isSocialOrGameApp(
+  appName?: string | null,
+  category?: string | null,
+  packageName?: string | null
+): boolean {
+  const n = (appName || "").trim().toLowerCase();
+  const c = (category || "").trim().toLowerCase();
+  const p = (packageName || "").trim().toLowerCase();
+
+  if (
+    c === "social" ||
+    c === "games" ||
+    c === "game" ||
+    c === "gaming" ||
+    c === "video" ||
+    c === "entertainment"
+  ) {
+    // Exclude non-social music/TV apps from entertainment if needed, or check keywords
+    if (c === "social" || c === "games" || c === "game" || c === "gaming") {
+      return true;
+    }
+  }
+  if (n === "x") return true;
+  return SOCIAL_AND_GAME_KEYWORDS.some(
+    (kw) => n.includes(kw) || p.includes(kw) || c.includes(kw)
+  );
+}
+
+function parseClock12Or24(value?: string | null): { hh: number; mm: number } {
+  const m = String(value || "00:00")
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return { hh: 0, mm: 0 };
+  let hh = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (m[3]) {
+    hh = (hh % 12) + (m[3].toUpperCase() === "PM" ? 12 : 0);
+  }
+  return { hh: hh > 23 ? 0 : hh, mm: mm > 59 ? 0 : mm };
 }
 
 export interface HealthStats {
@@ -64,6 +171,8 @@ export interface PeriodGoalTracker {
   intervals: ChartIntervalStat[];
   totalUsedMinutes: number;
   totalTargetMinutes: number;
+  todayUsedMinutes: number;
+  dailyAvgUsedMinutes: number;
   isOverallOver: boolean;
   diffMinutes: number;
   daysExceeded: number;
@@ -136,24 +245,38 @@ export function computePeriodInsights(
   let goalsMissed = 0;
   let goalsForfeited = 0;
 
-  for (const g of goals) {
-    const created = new Date(g.createdAt).getTime();
-    if (created >= rangeStartMs) {
-      if (g.status === "done") {
-        goalsCompleted++;
-      } else {
-        const [hh, mm] = (g.startTime || "00:00").split(":").map(Number);
-        const dateStr = g.scheduledDate || now.toISOString().slice(0, 10);
-        const [y, m, d] = dateStr.split("-").map(Number);
-        const endMs =
-          new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime() +
-          (g.durationMinutes || 30) * 60_000;
+  const getGoalTimestamp = (g: Goal): number => {
+    const statusStr = g.status as string;
+    if ((statusStr === "done" || statusStr === "forfeited") && g.updatedAt) {
+      const u = new Date(g.updatedAt).getTime();
+      if (Number.isFinite(u)) return u;
+    }
+    const c = new Date(g.createdAt).getTime();
+    return Number.isFinite(c) ? c : nowMs;
+  };
 
-        if (endMs < nowMs) {
-          goalsMissed++;
-        } else {
-          goalsForfeited++;
-        }
+  const isGoalMissed = (g: Goal): boolean => {
+    const statusStr = g.status as string;
+    if (statusStr === "done" || statusStr === "forfeited") return false;
+    const { hh, mm } = parseClock12Or24(g.startTime);
+    const dateStr = g.scheduledDate || localDayKey(now);
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const endMs =
+      new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime() +
+      (g.durationMinutes || 30) * 60_000;
+    return endMs < nowMs;
+  };
+
+  for (const g of goals) {
+    const ts = getGoalTimestamp(g);
+    if (ts >= rangeStartMs) {
+      const statusStr = g.status as string;
+      if (statusStr === "done") {
+        goalsCompleted++;
+      } else if (statusStr === "forfeited") {
+        goalsForfeited++;
+      } else if (isGoalMissed(g)) {
+        goalsMissed++;
       }
     }
   }
@@ -162,10 +285,24 @@ export function computePeriodInsights(
   const goalSuccessRate =
     totalGoals > 0 ? Math.round((goalsCompleted / totalGoals) * 100) : 0;
 
-  // ── 3. Screen Time & Intervals ──
-  const entriesInRange = entries.filter(
-    (e) => new Date(e.loggedAt).getTime() >= rangeStartMs
+  // ── 3. Screen Time & Intervals (Social Media & Games only, deduplicated per app per day) ──
+  const rawEntriesInRange = entries.filter(
+    (e) =>
+      new Date(e.loggedAt).getTime() >= rangeStartMs &&
+      isSocialOrGameApp(e.appName, e.category)
   );
+
+  // Deduplicate cumulative daily sync entries by taking the max duration per (day, appName)
+  const dedupedByDayApp = new Map<string, AppUsageEntry>();
+  for (const e of rawEntriesInRange) {
+    const dayK = localDayKey(new Date(e.loggedAt));
+    const mapKey = `${dayK}|${e.appName.toLowerCase()}`;
+    const prev = dedupedByDayApp.get(mapKey);
+    if (!prev || e.durationMinutes >= prev.durationMinutes) {
+      dedupedByDayApp.set(mapKey, e);
+    }
+  }
+  const entriesInRange = Array.from(dedupedByDayApp.values());
 
   let intervals: ChartIntervalStat[] = [];
   let totalTargetMinutes = 0;
@@ -204,11 +341,12 @@ export function computePeriodInsights(
       }, 0);
 
       const dayGoals = goals.filter((g) => {
-        const t = new Date(g.createdAt).getTime();
+        const t = getGoalTimestamp(g);
         return t >= dayStartMs && t < dayEndMs;
       });
       const intervalGoalsCompleted = dayGoals.filter((g) => g.status === "done").length;
-      const intervalGoalsMissed = dayGoals.length - intervalGoalsCompleted;
+      const intervalGoalsForfeited = dayGoals.filter((g) => (g.status as string) === "forfeited").length;
+      const intervalGoalsMissed = dayGoals.filter((g) => isGoalMissed(g)).length;
 
       const isOver = dayMinutes > dailyTargetMin;
       intervals.push({
@@ -224,6 +362,7 @@ export function computePeriodInsights(
         focusMinutes: intervalFocusMinutes,
         goalsCompleted: intervalGoalsCompleted,
         goalsMissed: intervalGoalsMissed,
+        goalsForfeited: intervalGoalsForfeited,
       });
     }
   } else if (range === "MONTH") {
@@ -236,12 +375,19 @@ export function computePeriodInsights(
       const wStartMs = nowMs - startOffset * 86_400_000;
       const wEndMs = nowMs - endOffset * 86_400_000;
 
-      const wMinutes = entriesInRange
-        .filter((e) => {
-          const t = new Date(e.loggedAt).getTime();
-          return t >= wStartMs && t < wEndMs;
-        })
-        .reduce((sum, e) => sum + e.durationMinutes, 0);
+      const wEntries = entriesInRange.filter((e) => {
+        const t = new Date(e.loggedAt).getTime();
+        return t >= wStartMs && t < wEndMs;
+      });
+      const wMinutes = wEntries.reduce((sum, e) => sum + e.durationMinutes, 0);
+      const activeDaysInWeek = Math.max(
+        1,
+        new Set(wEntries.map((e) => localDayKey(new Date(e.loggedAt)))).size
+      );
+      const effectiveWeekTarget =
+        wEntries.length > 0 && activeDaysInWeek < 7
+          ? dailyTargetMin * activeDaysInWeek
+          : weekTarget;
 
       const wFocus = sessions.filter((s) => {
         const t = new Date(s.startedAt).getTime();
@@ -259,26 +405,28 @@ export function computePeriodInsights(
       }, 0);
 
       const wGoals = goals.filter((g) => {
-        const t = new Date(g.createdAt).getTime();
+        const t = getGoalTimestamp(g);
         return t >= wStartMs && t < wEndMs;
       });
       const intervalGoalsCompleted = wGoals.filter((g) => g.status === "done").length;
-      const intervalGoalsMissed = wGoals.length - intervalGoalsCompleted;
+      const intervalGoalsForfeited = wGoals.filter((g) => (g.status as string) === "forfeited").length;
+      const intervalGoalsMissed = wGoals.filter((g) => isGoalMissed(g)).length;
 
-      const isOver = wMinutes > weekTarget;
+      const isOver = wMinutes > effectiveWeekTarget;
       intervals.push({
         key: `week-${4 - w}`,
         label: `Wk ${4 - w}`,
         minutes: wMinutes,
         targetMinutes: weekTarget,
         isOver,
-        overMinutes: isOver ? wMinutes - weekTarget : 0,
+        overMinutes: isOver ? wMinutes - effectiveWeekTarget : 0,
         isCurrent: w === 0,
         focusCompleted: intervalFocusCompleted,
         focusForfeited: intervalFocusForfeited,
         focusMinutes: intervalFocusMinutes,
         goalsCompleted: intervalGoalsCompleted,
         goalsMissed: intervalGoalsMissed,
+        goalsForfeited: intervalGoalsForfeited,
       });
     }
   } else {
@@ -297,12 +445,19 @@ export function computePeriodInsights(
       const mStart = new Date(yVal, mIdx, 1).getTime();
       const mEnd = new Date(yVal, mIdx + 1, 1).getTime();
 
-      const mMinutes = entriesInRange
-        .filter((e) => {
-          const ed = new Date(e.loggedAt);
-          return ed.getFullYear() === yVal && ed.getMonth() === mIdx;
-        })
-        .reduce((sum, e) => sum + e.durationMinutes, 0);
+      const mEntries = entriesInRange.filter((e) => {
+        const ed = new Date(e.loggedAt);
+        return ed.getFullYear() === yVal && ed.getMonth() === mIdx;
+      });
+      const mMinutes = mEntries.reduce((sum, e) => sum + e.durationMinutes, 0);
+      const activeDaysInMonth = Math.max(
+        1,
+        new Set(mEntries.map((e) => localDayKey(new Date(e.loggedAt)))).size
+      );
+      const effectiveMonthTarget =
+        mEntries.length > 0 && activeDaysInMonth < 30
+          ? dailyTargetMin * activeDaysInMonth
+          : monthTarget;
 
       const mFocus = sessions.filter((s) => {
         const t = new Date(s.startedAt).getTime();
@@ -320,34 +475,61 @@ export function computePeriodInsights(
       }, 0);
 
       const mGoals = goals.filter((g) => {
-        const t = new Date(g.createdAt).getTime();
+        const t = getGoalTimestamp(g);
         return t >= mStart && t < mEnd;
       });
       const intervalGoalsCompleted = mGoals.filter((g) => g.status === "done").length;
-      const intervalGoalsMissed = mGoals.length - intervalGoalsCompleted;
+      const intervalGoalsForfeited = mGoals.filter((g) => (g.status as string) === "forfeited").length;
+      const intervalGoalsMissed = mGoals.filter((g) => isGoalMissed(g)).length;
 
-      const isOver = mMinutes > monthTarget;
+      const isOver = mMinutes > effectiveMonthTarget;
       intervals.push({
         key: `${yVal}-${mIdx}`,
         label,
         minutes: mMinutes,
         targetMinutes: monthTarget,
         isOver,
-        overMinutes: isOver ? mMinutes - monthTarget : 0,
+        overMinutes: isOver ? mMinutes - effectiveMonthTarget : 0,
         isCurrent: i === 0,
         focusCompleted: intervalFocusCompleted,
         focusForfeited: intervalFocusForfeited,
         focusMinutes: intervalFocusMinutes,
         goalsCompleted: intervalGoalsCompleted,
         goalsMissed: intervalGoalsMissed,
+        goalsForfeited: intervalGoalsForfeited,
       });
     }
   }
 
   const totalUsedMinutes = intervals.reduce((s, it) => s + it.minutes, 0);
+  const todayKeyStr = localDayKey(now);
+  const todayUsedMinutes = entriesInRange
+    .filter((e) => localDayKey(new Date(e.loggedAt)) === todayKeyStr)
+    .reduce((sum, e) => sum + e.durationMinutes, 0);
+  const activeLoggedDays = Math.max(
+    1,
+    new Set(entriesInRange.map((e) => localDayKey(new Date(e.loggedAt)))).size
+  );
+  const dailyAvgUsedMinutes = Math.round(totalUsedMinutes / activeLoggedDays);
+
   const daysExceeded = intervals.filter((it) => it.isOver).length;
-  const isOverallOver = totalUsedMinutes > totalTargetMinutes;
-  const diffMinutes = Math.abs(totalUsedMinutes - totalTargetMinutes);
+  // Compare actual daily screen time (today or daily average across active logged days) against dailyTargetMin
+  // so going above the daily target is ALWAYS flagged as OVER / BAD!
+  const effectivePeriodTarget = dailyTargetMin * activeLoggedDays;
+  const isOverallOver =
+    todayUsedMinutes > dailyTargetMin ||
+    dailyAvgUsedMinutes > dailyTargetMin ||
+    daysExceeded > 0 ||
+    totalUsedMinutes > effectivePeriodTarget;
+
+  const primaryDailyUsed = todayUsedMinutes > 0 ? todayUsedMinutes : dailyAvgUsedMinutes;
+  const diffMinutes = isOverallOver
+    ? Math.max(
+        primaryDailyUsed - dailyTargetMin,
+        totalUsedMinutes - effectivePeriodTarget,
+        intervals.reduce((max, it) => Math.max(max, it.overMinutes), 0)
+      )
+    : Math.max(0, dailyTargetMin - primaryDailyUsed);
 
   // ── 4. Focus Score (0-100) ──
   const isNewUser = totalFocusSessions === 0 && totalGoals === 0;
@@ -415,6 +597,8 @@ export function computePeriodInsights(
       intervals,
       totalUsedMinutes,
       totalTargetMinutes,
+      todayUsedMinutes,
+      dailyAvgUsedMinutes,
       isOverallOver,
       diffMinutes,
       daysExceeded,

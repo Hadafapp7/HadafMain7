@@ -141,15 +141,20 @@ router.post("/analytics/diagnostic", requireAuth, async (req, res): Promise<void
     for (const g of goals) {
       if (g.status === "done") {
         goalsCompleted++;
-      } else if (g.status === "forfeited") {
+      } else if ((g.status as string) === "forfeited") {
         goalsForfeited++;
       } else {
-        // Goal is pending or was not marked done
-        const [hh, mm] = (g.startTime || "00:00").split(":").map(Number);
+        // Parse 12h ("10:00 AM") or 24h ("14:30") clock string accurately
+        const m = String(g.startTime || "00:00").trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+        let hh = m ? parseInt(m[1], 10) : 0;
+        const mm = m ? parseInt(m[2], 10) : 0;
+        if (m && m[3]) {
+          hh = (hh % 12) + (m[3].toUpperCase() === "PM" ? 12 : 0);
+        }
         const goalDateStr = g.scheduledDate || now.toISOString().slice(0, 10);
-        const [y, m, d] = goalDateStr.split("-").map(Number);
+        const [y, mo, d] = goalDateStr.split("-").map(Number);
         const endMs =
-          new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime() +
+          new Date(y, (mo || 1) - 1, d || 1, hh || 0, mm || 0).getTime() +
           (g.durationMinutes || 30) * 60_000;
 
         if (endMs < now.getTime()) {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hadaf",
     "slug": "mobile",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
@@ -18,7 +18,7 @@
       "bundleIdentifier": "in.co.hadaf.app"
     },
     "android": {
-      "versionCode": 25,
+      "versionCode": 30,
       "softwareKeyboardLayoutMode": "resize",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {

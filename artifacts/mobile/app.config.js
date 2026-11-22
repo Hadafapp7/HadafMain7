@@ -2,7 +2,7 @@ module.exports = ({ config }) => ({
   ...config,
   name: "Hadaf",
   slug: "mobile",
-  version: "1.0.3",
+  version: "1.0.4",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "mobile",
@@ -27,7 +27,7 @@ module.exports = ({ config }) => ({
     },
   },
   android: {
-    versionCode: config.android?.versionCode || 25,
+    versionCode: config.android?.versionCode || 30,
     softwareKeyboardLayoutMode: "resize",
     usesCleartextTraffic: true,
     adaptiveIcon: {

@@ -17,8 +17,13 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 
+import android.media.AudioAttributes
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -45,6 +50,7 @@ class AppBlockerModule : Module() {
     // JSON array of upcoming blocking windows, e.g. [{"start":1700000000000,"end":1700003600000,"pkgs":["com.instagram.android"]}]
     // Written by JS (goal schedules) and enforced by HadafAccessibilityService even if the app process is dead.
     const val KEY_SCHEDULED   = "scheduledBlocks"
+    private var activeAlarmRingtone: Ringtone? = null
   }
 
   private fun prefs(ctx: Context) =
@@ -194,20 +200,33 @@ class AppBlockerModule : Module() {
 
         val safeSeconds = if (secondsRemaining > 0) secondsRemaining else 0
         val endMs = System.currentTimeMillis() + (safeSeconds * 1000L)
-        val mins = safeSeconds / 60
+        val hrs = safeSeconds / 3600
+        val mins = (safeSeconds % 3600) / 60
         val secs = safeSeconds % 60
-        val timeStr = String.format("%02d:%02d", mins, secs)
+        val timeStr = if (hrs > 0) {
+          String.format("%d:%02d:%02d", hrs, mins, secs)
+        } else {
+          String.format("%02d:%02d", mins, secs)
+        }
 
-        val notifTitle = if (title.isNotEmpty()) title else "Focus Session Active ⏳"
-        val notifText = "⏳ $timeStr remaining · $body"
+        val notifTitle = if (sticky && safeSeconds > 0) {
+          "⏳ $timeStr · ${if (title.isNotEmpty()) title else "Hadaf Timer"}"
+        } else {
+          if (title.isNotEmpty()) title else "Focus Session Active ⏳"
+        }
+        val notifText = if (sticky && safeSeconds > 0) {
+          "$body ($timeStr remaining)"
+        } else {
+          body
+        }
 
         val builder = NotificationCompat.Builder(ctx, channelId)
           .setSmallIcon(smallIcon)
           .setContentTitle(notifTitle)
           .setContentText(notifText)
-          .setSubText("Hadaf Focus")
+          .setSubText(if (sticky && safeSeconds > 0) "$timeStr left" else "Hadaf Focus")
           .setPriority(NotificationCompat.PRIORITY_HIGH)
-          .setCategory("stopwatch")
+          .setCategory(NotificationCompat.CATEGORY_PROGRESS)
           .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
           .setOngoing(sticky)
           .setContentIntent(pendingIntent)
@@ -225,6 +244,100 @@ class AppBlockerModule : Module() {
           
         manager.notify(999, builder.build())
       }
+      Unit
+    }
+
+    Function("playCompletionAlarm") { title: String, body: String ->
+      val ctx = appContext.reactContext
+      if (ctx != null) {
+        try {
+          activeAlarmRingtone?.stop()
+        } catch (_: Exception) {}
+
+        val alarmUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+          ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+          ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+
+        try {
+          val ringtone = RingtoneManager.getRingtone(ctx, alarmUri)
+          if (ringtone != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+              ringtone.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            }
+            activeAlarmRingtone = ringtone
+            ringtone.play()
+            // Automatically stop the alarm sound after 6 seconds so it doesn't ring forever
+            Handler(Looper.getMainLooper()).postDelayed({
+              try {
+                if (activeAlarmRingtone == ringtone && ringtone.isPlaying) {
+                  ringtone.stop()
+                }
+              } catch (_: Exception) {}
+            }, 6000L)
+          }
+        } catch (_: Exception) {}
+
+        // Also post a high-priority alarm notification with the default alarm sound
+        try {
+          val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+          val alarmChannelId = "hadaf_alarm_channel_v1"
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+              alarmChannelId,
+              "Hadaf Session Complete Alarm",
+              NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+              description = "Plays default alarm sound when a Focus or Goal session completes"
+              enableVibration(true)
+              vibrationPattern = longArrayOf(0, 600, 200, 600, 200, 800)
+              val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+              setSound(alarmUri, attrs)
+              lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            manager.createNotificationChannel(channel)
+          }
+
+          val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+          }
+          val pendingIntent = PendingIntent.getActivity(
+            ctx,
+            1,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+          )
+          val appIcon = ctx.applicationInfo.icon
+          val smallIcon = if (appIcon != 0) appIcon else android.R.drawable.ic_lock_idle_alarm
+
+          val notif = NotificationCompat.Builder(ctx, alarmChannelId)
+            .setSmallIcon(smallIcon)
+            .setContentTitle(if (title.isNotEmpty()) title else "Session Completed ⏰")
+            .setContentText(if (body.isNotEmpty()) body else "Your timer is complete!")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setSound(alarmUri)
+            .setVibrate(longArrayOf(0, 600, 200, 600, 200, 800))
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+          manager.notify(1001, notif)
+        } catch (_: Exception) {}
+      }
+      Unit
+    }
+
+    Function("stopCompletionAlarm") {
+      try {
+        activeAlarmRingtone?.stop()
+        activeAlarmRingtone = null
+      } catch (_: Exception) {}
       Unit
     }
 

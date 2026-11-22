@@ -33,13 +33,19 @@ const DEFAULT_COACH: CoachData = {
   source: "fallback",
 };
 
-export default function AiCoachWidget({ firstName }: { firstName: string }) {
+export default function AiCoachWidget({
+  firstName,
+  refreshTrigger = 0,
+}: {
+  firstName: string;
+  refreshTrigger?: number;
+}) {
   const [data, setData] = useState<CoachData>(DEFAULT_COACH);
   const [loading, setLoading] = useState(false);
 
-  // Load cached message immediately on mount
+  // Load cached message immediately on mount (scoped to current firstName)
   useEffect(() => {
-    AsyncStorage.getItem(COACH_CACHE_KEY).then((raw) => {
+    AsyncStorage.getItem(`${COACH_CACHE_KEY}:${firstName || "user"}`).then((raw) => {
       if (raw) {
         try {
           const parsed = JSON.parse(raw);
@@ -47,32 +53,49 @@ export default function AiCoachWidget({ firstName }: { firstName: string }) {
         } catch {}
       }
     });
-  }, []);
+  }, [firstName]);
 
-  const fetchCoachMessage = useCallback(async (refresh = false) => {
-    setLoading(true);
-    try {
-      const res = await customFetch<CoachData>(
-        `/api/coach/reality-check${refresh ? "?refresh=true" : ""}`
-      );
-      if (res?.isNull || !res?.message) {
-        setData({ tag: "REALITY CHECK", title: null, message: null, isNull: true });
-        AsyncStorage.removeItem(COACH_CACHE_KEY).catch(() => {});
-      } else {
-        setData(res);
-        AsyncStorage.setItem(COACH_CACHE_KEY, JSON.stringify(res)).catch(() => {});
+  const fetchCoachMessage = useCallback(
+    async (refresh = false, silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const res = await customFetch<CoachData>(
+          `/api/coach/reality-check${refresh ? "?refresh=true" : ""}`
+        );
+        if (res?.isNull || !res?.message) {
+          setData({ tag: "REALITY CHECK", title: null, message: null, isNull: true });
+          AsyncStorage.removeItem(`${COACH_CACHE_KEY}:${firstName || "user"}`).catch(() => {});
+        } else {
+          setData(res);
+          AsyncStorage.setItem(
+            `${COACH_CACHE_KEY}:${firstName || "user"}`,
+            JSON.stringify(res)
+          ).catch(() => {});
+        }
+      } catch (err) {
+        console.warn("[AiCoachWidget] Fetch failed:", err);
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } catch (err) {
-      console.warn("[AiCoachWidget] Fetch failed:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [firstName]
+  );
 
-  // Fetch fresh message in background on mount
+  // Fetch fresh message on mount + automatic 1-minute live refresh
   useEffect(() => {
     fetchCoachMessage(false);
+    const interval = setInterval(() => {
+      fetchCoachMessage(true, true);
+    }, 60_000);
+    return () => clearInterval(interval);
   }, [fetchCoachMessage]);
+
+  // Trigger refresh when parent pull-to-refresh runs
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      fetchCoachMessage(true, false);
+    }
+  }, [refreshTrigger, fetchCoachMessage]);
 
   const onRefreshPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

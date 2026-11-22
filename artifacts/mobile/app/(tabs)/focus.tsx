@@ -6,6 +6,7 @@ try {
   console.warn("expo-notifications is not linked in this binary build");
 }
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -47,6 +48,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { focusSessionState } from "@/lib/focusSessionState";
+import { isSocialOrGameApp } from "@/lib/usageStats";
 import ForfeitModal from "@/components/ForfeitModal";
 import KeyboardFloatingPreview from "@/components/KeyboardFloatingPreview";
 import { useColors } from "@/hooks/useColors";
@@ -63,7 +65,9 @@ import {
 } from "@workspace/api-client-react";
 import {
   KNOWN_APPS,
+  getDeviceUsageStats,
   getPermissionStatus,
+  hasUsagePermission,
   openAccessibilitySettings,
   openOverlaySettings,
   startNativeSession,
@@ -71,6 +75,8 @@ import {
   isNativeAppBlockerSupported,
   showNativeNotification,
   dismissNativeNotification,
+  playNativeCompletionAlarm,
+  stopNativeCompletionAlarm,
   requestNotificationPermission,
 } from "../../modules/hadaf-native/src";
 
@@ -93,20 +99,32 @@ type AppEntry = {
   name: string;
   icon: React.ComponentProps<typeof MaterialIcons>["name"];
   category: string;
+  packageName?: string;
+  dailyMinutes?: number;
 };
 
 const ALL_APPS: AppEntry[] = [
   { name: "Instagram", icon: "photo-camera",       category: "Social"        },
-  { name: "TikTok",    icon: "music-video",         category: "Entertainment" },
   { name: "YouTube",   icon: "play-circle-filled",  category: "Video"         },
+  { name: "Snapchat",  icon: "camera-alt",          category: "Social"        },
+  { name: "WhatsApp",  icon: "chat",                category: "Social"        },
   { name: "Twitter",   icon: "alternate-email",     category: "Social"        },
   { name: "Reddit",    icon: "forum",               category: "Social"        },
   { name: "Facebook",  icon: "people",              category: "Social"        },
-  { name: "Snapchat",  icon: "camera-alt",          category: "Social"        },
   { name: "Netflix",   icon: "tv",                  category: "Video"         },
   { name: "Discord",   icon: "headset",             category: "Chat"          },
   { name: "Twitch",    icon: "videogame-asset",     category: "Gaming"        },
 ];
+
+function iconForApp(name: string, category?: string | null): React.ComponentProps<typeof MaterialIcons>["name"] {
+  const found = ALL_APPS.find((a) => a.name.toLowerCase() === name.toLowerCase());
+  if (found) return found.icon;
+  const c = (category || "").toLowerCase();
+  if (c.includes("game")) return "sports-esports";
+  if (c.includes("social")) return "group";
+  if (c.includes("video") || c.includes("entertainment")) return "play-circle-filled";
+  return "apps";
+}
 
 // ── Ring constants ─────────────────────────────────────────────────────────────
 const RING_SIZE     = 240;
@@ -194,9 +212,9 @@ function TimerRing({
 
 // ── App picker modal ───────────────────────────────────────────────────────────
 function AppPickerModal({
-  visible, blockedApps, onToggle, onClose,
+  visible, blockedApps, availableApps, onToggle, onClose,
 }: {
-  visible: boolean; blockedApps: string[];
+  visible: boolean; blockedApps: string[]; availableApps: AppEntry[];
   onToggle: (name: string) => void; onClose: () => void;
 }) {
   const colors = useColors();
@@ -212,16 +230,18 @@ function AppPickerModal({
             <MaterialIcons name="close" size={22} color={colors.outline} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.modalSub, { color: colors.outline }]}>Block distracting apps during your session</Text>
+        <Text style={[styles.modalSub, { color: colors.outline }]}>
+          Sorted by your actual Most Used Apps on this device
+        </Text>
         <ScrollView scrollEventThrottle={16} decelerationRate="normal"  style={{ marginTop: 12 }} showsVerticalScrollIndicator={false}>
-          {ALL_APPS.map((app, i) => {
+          {availableApps.map((app, i) => {
             const isBlocked = blockedApps.includes(app.name);
             return (
               <TouchableOpacity
                 key={app.name}
                 style={[
                   styles.appPickerRow,
-                  i < ALL_APPS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
+                  i < availableApps.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
                 ]}
                 onPress={() => { Haptics.selectionAsync(); onToggle(app.name); }}
                 activeOpacity={0.7}
@@ -231,7 +251,10 @@ function AppPickerModal({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.appPickerName,     { color: colors.onSurface }]}>{app.name}</Text>
-                  <Text style={[styles.appPickerCategory, { color: colors.outline }]}>{app.category}</Text>
+                  <Text style={[styles.appPickerCategory, { color: colors.outline }]}>
+                    {app.category}
+                    {app.dailyMinutes && app.dailyMinutes > 0 ? ` · ${fmtMinutes(app.dailyMinutes)} today` : ""}
+                  </Text>
                 </View>
                 <View style={[styles.appPickerToggle, { backgroundColor: isBlocked ? colors.primary : colors.surfaceContainerHigh }]}>
                   <MaterialIcons name={isBlocked ? "check" : "add"} size={14} color={isBlocked ? "#fff" : colors.outline} />
@@ -599,20 +622,107 @@ export default function FocusScreen() {
     hasOverlayPermission: false,
   });
 
-  const top3Suggested = React.useMemo(() => {
-    const knownNames = new Set(ALL_APPS.map(a => a.name));
-    return appUsage
-      .filter(a => knownNames.has(a.appName))
+  const [deviceUsedApps, setDeviceUsedApps] = useState<AppEntry[]>([]);
+  const [deviceAppsLoaded, setDeviceAppsLoaded] = useState(false);
+
+  // Load real Most Used Apps from the phone (Digital Wellbeing / UsageStats + Home screen cache)
+  const loadDeviceMostUsedApps = useCallback(async () => {
+    const map = new Map<string, AppEntry>();
+    try {
+      if (Platform.OS !== "web" && hasUsagePermission()) {
+        const daily = await getDeviceUsageStats(1);
+        const weekly = await getDeviceUsageStats(7);
+        for (const d of daily) {
+          if (!d.appName) continue;
+          map.set(d.appName, {
+            name: d.appName,
+            icon: iconForApp(d.appName, d.category),
+            category: d.category || "App",
+            packageName: d.packageName,
+            dailyMinutes: d.totalMinutes,
+          });
+        }
+        for (const w of weekly) {
+          if (!w.appName || map.has(w.appName)) continue;
+          map.set(w.appName, {
+            name: w.appName,
+            icon: iconForApp(w.appName, w.category),
+            category: w.category || "App",
+            packageName: w.packageName,
+            dailyMinutes: 0,
+          });
+        }
+      }
+    } catch {}
+
+    if (map.size === 0) {
+      try {
+        const cached = await AsyncStorage.getItem("hadaf_most_used_apps_v3");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              if (!item?.appName) continue;
+              map.set(item.appName, {
+                name: item.appName,
+                icon: iconForApp(item.appName, item.category),
+                category: item.category || "App",
+                packageName: item.packageName,
+                dailyMinutes: Number(item.dailyMinutes) || 0,
+              });
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const list = Array.from(map.values()).sort(
+      (a, b) => (b.dailyMinutes ?? 0) - (a.dailyMinutes ?? 0)
+    );
+    setDeviceUsedApps(list);
+    setDeviceAppsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    void loadDeviceMostUsedApps();
+  }, [loadDeviceMostUsedApps]);
+
+  // Build available apps pool: device's actual Most Used Apps first, then remaining known apps
+  const availableApps = React.useMemo<AppEntry[]>(() => {
+    const byName = new Map<string, AppEntry>();
+    for (const d of deviceUsedApps) {
+      byName.set(d.name, d);
+    }
+    for (const a of ALL_APPS) {
+      if (!byName.has(a.name)) {
+        byName.set(a.name, a);
+      }
+    }
+    return Array.from(byName.values());
+  }, [deviceUsedApps]);
+
+  // Top 3 suggested apps to block: strictly from the user's Most Used Apps list (never suggesting uninstalled apps like TikTok)
+  const top3Suggested = React.useMemo<AppEntry[]>(() => {
+    if (deviceUsedApps.length > 0) {
+      const socialOrGames = deviceUsedApps.filter((a) =>
+        isSocialOrGameApp(a.name, a.category, a.packageName)
+      );
+      const others = deviceUsedApps.filter(
+        (a) => !isSocialOrGameApp(a.name, a.category, a.packageName)
+      );
+      return [...socialOrGames, ...others].slice(0, 3);
+    }
+    // Fallback to server appUsage ONLY if not TikTok (unless user logged it)
+    const fromServer = appUsage
+      .filter((a) => a.appName.toLowerCase() !== "tiktok")
       .slice(0, 3)
-      .map(a => {
-        const matchingEntry = ALL_APPS.find(x => x.name === a.appName);
-        return {
-          name: a.appName,
-          icon: matchingEntry?.icon ?? "apps",
-          category: matchingEntry?.category ?? "App"
-        };
-      });
-  }, [appUsage]);
+      .map((a) => ({
+        name: a.appName,
+        icon: iconForApp(a.appName, a.category),
+        category: a.category ?? "App",
+      }));
+    return fromServer.length > 0 ? fromServer : ALL_APPS.slice(0, 3);
+  }, [deviceUsedApps, appUsage]);
 
   const checkPerms = useCallback(() => {
     const status = getPermissionStatus();
@@ -630,26 +740,33 @@ export default function FocusScreen() {
   // Keep sessionStateRef in sync so the AppState listener never has a stale closure
   useEffect(() => { sessionStateRef.current = sessionState; }, [sessionState]);
 
-  // Auto-populate blocked apps: use persisted list, fall back to top 3 from usage, then defaults
+  // Auto-populate blocked apps from the user's actual Most Used Apps (never forcing uninstalled apps like TikTok)
   useEffect(() => {
     if (hasHydratedBlockedApps.current) return;
-    if (persistedBlockedApps === undefined || appUsageLoading) return;
+    if (!deviceAppsLoaded || persistedBlockedApps === undefined || appUsageLoading) return;
 
-    if (persistedBlockedApps.length > 0) {
-      setBlockedApps(persistedBlockedApps.map((a) => a.appName));
-    } else if (appUsage.length > 0) {
-      const knownNames = new Set(ALL_APPS.map(a => a.name));
-      const top3 = appUsage
-        .filter(a => knownNames.has(a.appName))
-        .slice(0, 3)
-        .map(a => a.appName);
-      setBlockedApps(top3.length > 0 ? top3 : ["Instagram", "TikTok", "YouTube"]);
+    const installedNames = new Set(deviceUsedApps.map((a) => a.name.toLowerCase()));
+    if (deviceUsedApps.length > 0) {
+      // Filter persisted blocked apps to ones actually present or selected, or use top3Suggested from Most Used Apps
+      const validPersisted = persistedBlockedApps
+        .map((a) => a.appName)
+        .filter((name) => installedNames.has(name.toLowerCase()));
+      if (validPersisted.length > 0) {
+        setBlockedApps(validPersisted);
+      } else {
+        setBlockedApps(top3Suggested.map((a) => a.name));
+      }
+    } else if (persistedBlockedApps.length > 0) {
+      setBlockedApps(
+        persistedBlockedApps
+          .map((a) => a.appName)
+          .filter((n) => n.toLowerCase() !== "tiktok")
+      );
     } else {
-      // No usage logged yet — use the 3 most common distracting apps as smart defaults
-      setBlockedApps(["Instagram", "TikTok", "YouTube"]);
+      setBlockedApps(top3Suggested.map((a) => a.name));
     }
     hasHydratedBlockedApps.current = true;
-  }, [persistedBlockedApps, appUsage, appUsageLoading]);
+  }, [deviceAppsLoaded, deviceUsedApps, persistedBlockedApps, appUsageLoading, top3Suggested]);
 
   // Monitor permissions and background-to-foreground transitions (for timer sync and overlay)
   useEffect(() => {
@@ -709,11 +826,11 @@ export default function FocusScreen() {
       const rem = Math.max(0, limit - totalElapsed);
       setRemaining(rem);
 
-      // Periodically update native notification so drawer always shows live status
-      if (rem > 0 && rem % 10 === 0) {
+      // Update native notification every second so notification bar always shows live mini timer
+      if (rem > 0) {
         try {
           showNativeNotification(
-            "Focus Session Active ⏳",
+            "Focus Session",
             intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
             true,
             rem
@@ -724,7 +841,7 @@ export default function FocusScreen() {
       if (rem <= 0) {
         clearTimer();
         setSessionState("done");
-        console.log("[FocusTimer] Focus session timer completed! Triggering vibration and notifications.");
+        console.log("[FocusTimer] Focus session timer completed! Triggering default alarm sound, vibration and notifications.");
         
         try {
           dismissNativeNotification();
@@ -732,32 +849,33 @@ export default function FocusScreen() {
           console.warn("[FocusTimer] Native dismiss failed:", e);
         }
 
+        // Play default system alarm sound on session completion
+        try {
+          playNativeCompletionAlarm(
+            "Focus Session Complete ⏰",
+            `You stayed focused for ${duration} minutes${intention ? ` on "${intention}"` : ""}!`
+          );
+        } catch (e) {
+          console.warn("[FocusTimer] playNativeCompletionAlarm failed:", e);
+        }
+
         // Schedule immediate local notification using expo-notifications
         if (Notifications) {
-          console.log("[FocusTimer] Scheduling immediate completion notification via expo-notifications...");
           try {
             Notifications.scheduleNotificationAsync({
               content: {
-                title: "Focus Session Ended 🎯",
-                body: "Your focus session is over. Great job staying focused!",
-                sound: true,
-                vibrate: [0, 500, 250, 500, 250, 1000],
+                title: "Focus Session Complete ⏰",
+                body: `Your ${duration}-minute focus session is over. Great job staying focused!`,
+                sound: "default",
+                vibrate: [0, 600, 200, 600, 200, 1000],
                 priority: "max",
               },
               trigger: null,
-            }).then((id: string) => {
-              console.log("[FocusTimer] Completion notification scheduled successfully. Id:", id);
-            }).catch((err: any) => {
-              console.warn("[FocusTimer] Failed to schedule completion notification:", err);
-            });
-          } catch (err) {
-            console.warn("[FocusTimer] Error scheduling notification:", err);
-          }
-        } else {
-          console.warn("[FocusTimer] Notifications module is not available.");
+            }).catch(() => {});
+          } catch {}
         }
 
-        Vibration.vibrate([0, 500, 200, 500, 200, 800]);
+        Vibration.vibrate([0, 600, 200, 600, 200, 600, 200, 1000]);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         const currentId = activeSessionIdRef.current;
         setSessionId(null);
@@ -813,10 +931,18 @@ export default function FocusScreen() {
       console.warn("Failed to schedule notifications on start:", e);
     }
 
-    const nativeIdentifiers = blockedApps.flatMap(name =>
-      Object.entries(KNOWN_APPS)
-        .filter(([, v]) => v.name === name)
-        .map(([pkg]) => pkg)
+    const nativeIdentifiers = Array.from(
+      new Set(
+        blockedApps.flatMap((name) => {
+          const fromKnown = Object.entries(KNOWN_APPS)
+            .filter(([, v]) => v.name.toLowerCase() === name.toLowerCase())
+            .map(([pkg]) => pkg);
+          const fromDevice = availableApps
+            .filter((a) => a.name.toLowerCase() === name.toLowerCase() && a.packageName)
+            .map((a) => a.packageName!);
+          return [...fromKnown, ...fromDevice];
+        })
+      )
     );
 
     // Start native OS-level blocking (no-op on web / Expo Go)
@@ -974,6 +1100,9 @@ export default function FocusScreen() {
   };
 
   const handleDone   = () => {
+    try {
+      stopNativeCompletionAlarm();
+    } catch {}
     setStartTime(null);
     setAccumulatedTime(0);
     setSessionState("idle");
@@ -1008,7 +1137,7 @@ export default function FocusScreen() {
   const cardW    = (SCREEN_W - 40 - 9 * 3) / 4;
 
   const toggleApp = (name: string) => {
-    const entry = ALL_APPS.find((a) => a.name === name);
+    const entry = availableApps.find((a) => a.name === name);
     setBlockedApps((prev) => {
       const isBlocked = prev.includes(name);
       const next = isBlocked ? prev.filter((a) => a !== name) : [...prev, name];
@@ -1314,7 +1443,7 @@ export default function FocusScreen() {
                     </TouchableOpacity>
                   ) : (
                     <View style={[styles.appsCard, { backgroundColor: colors.card }]}>
-                      {ALL_APPS.filter((a) => blockedApps.includes(a.name)).map((app, i, arr) => (
+                      {availableApps.filter((a) => blockedApps.includes(a.name)).map((app, i, arr) => (
                         <View
                           key={app.name}
                           style={[
@@ -1565,6 +1694,7 @@ export default function FocusScreen() {
       <AppPickerModal
         visible={showPicker}
         blockedApps={blockedApps}
+        availableApps={availableApps}
         onToggle={toggleApp}
         onClose={() => setShowPicker(false)}
       />
