@@ -349,7 +349,8 @@ class AppBlockerModule : Module() {
               .setAutoCancel(false)
               .setShowWhen(false)
               .setOnlyAlertOnce(true)
-              .setSilent(true)
+              .setSound(null)
+              .setDefaults(0)
               .setContentIntent(pendingIntent)
 
             manager.notify(999, builder.build())
