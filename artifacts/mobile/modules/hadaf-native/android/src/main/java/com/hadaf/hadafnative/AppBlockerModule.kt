@@ -17,6 +17,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -27,6 +32,9 @@ import android.os.Looper
 import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * AppBlockerModule — manages the list of blocked package names and controls
@@ -51,6 +59,75 @@ class AppBlockerModule : Module() {
     // Written by JS (goal schedules) and enforced by HadafAccessibilityService even if the app process is dead.
     const val KEY_SCHEDULED   = "scheduledBlocks"
     private var activeAlarmRingtone: Ringtone? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var timerRunnable: Runnable? = null
+    private var timerEndMs: Long = 0L
+    private var timerTotalDurationLabel: String = ""
+    private var cachedHourglassBitmap: Bitmap? = null
+
+    fun getHourglassBitmap(): Bitmap {
+      cachedHourglassBitmap?.let { return it }
+      val size = 128
+      val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(bmp)
+
+      // Rounded purple-indigo circle background matching the screenshot
+      val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF5B5CEB.toInt()
+        style = Paint.Style.FILL
+      }
+      canvas.drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), 44f, 44f, bgPaint)
+
+      // White hourglass icon in the center
+      val fgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        style = Paint.Style.FILL
+      }
+      val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        style = Paint.Style.STROKE
+        strokeWidth = 7f
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+      }
+
+      // Top and bottom horizontal bars
+      canvas.drawLine(36f, 28f, 92f, 28f, strokePaint)
+      canvas.drawLine(36f, 100f, 92f, 100f, strokePaint)
+
+      // Upper triangle of hourglass
+      val topPath = Path().apply {
+        moveTo(40f, 32f)
+        lineTo(88f, 32f)
+        lineTo(64f, 64f)
+        close()
+      }
+      canvas.drawPath(topPath, fgPaint)
+
+      // Lower triangle of hourglass
+      val botPath = Path().apply {
+        moveTo(64f, 64f)
+        lineTo(88f, 96f)
+        lineTo(40f, 96f)
+        close()
+      }
+      canvas.drawPath(botPath, fgPaint)
+
+      cachedHourglassBitmap = bmp
+      return bmp
+    }
+
+    fun formatDurationShort(totalSecs: Int): String {
+      val h = totalSecs / 3600
+      val m = (totalSecs % 3600) / 60
+      val s = totalSecs % 60
+      return when {
+        h > 0 && m > 0 -> "${h} h ${m} m"
+        h > 0 -> "${h} h"
+        m > 0 -> "${m} m"
+        else -> "${s} s"
+      }
+    }
   }
 
   private fun prefs(ctx: Context) =
@@ -170,16 +247,18 @@ class AppBlockerModule : Module() {
       val ctx = appContext.reactContext
       if (ctx != null) {
         val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "hadaf_focus_channel_v2"
+        val channelId = "hadaf_live_timer_channel_v3"
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
           val channel = NotificationChannel(
             channelId,
-            "Hadaf Focus Session",
-            NotificationManager.IMPORTANCE_DEFAULT
+            "Hadaf Live Timer",
+            NotificationManager.IMPORTANCE_LOW
           ).apply {
-            description = "Shows remaining focus countdown and blocked apps status"
-            setShowBadge(true)
+            description = "Displays the live countdown timer for Focus and Goal sessions"
+            setShowBadge(false)
+            setSound(null, null)
+            enableVibration(false)
             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
           }
           manager.createNotificationChannel(channel)
@@ -195,54 +274,90 @@ class AppBlockerModule : Module() {
           PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val appIcon = ctx.applicationInfo.icon
-        val smallIcon = if (appIcon != 0) appIcon else android.R.drawable.ic_dialog_info
-
         val safeSeconds = if (secondsRemaining > 0) secondsRemaining else 0
-        val endMs = System.currentTimeMillis() + (safeSeconds * 1000L)
-        val hrs = safeSeconds / 3600
-        val mins = (safeSeconds % 3600) / 60
-        val secs = safeSeconds % 60
-        val timeStr = if (hrs > 0) {
-          String.format("%d:%02d:%02d", hrs, mins, secs)
-        } else {
-          String.format("%02d:%02d", mins, secs)
+
+        if (!sticky || safeSeconds <= 0) {
+          val alertChannelId = "hadaf_focus_channel_v2"
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val alertChannel = NotificationChannel(
+              alertChannelId,
+              "Hadaf Alerts",
+              NotificationManager.IMPORTANCE_HIGH
+            )
+            manager.createNotificationChannel(alertChannel)
+          }
+          val appIcon = ctx.applicationInfo.icon
+          val smallIcon = if (appIcon != 0) appIcon else android.R.drawable.ic_dialog_info
+          val builder = NotificationCompat.Builder(ctx, alertChannelId)
+            .setSmallIcon(smallIcon)
+            .setContentTitle(if (title.isNotEmpty()) title else "Hadaf")
+            .setContentText(body)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+          manager.notify(998, builder.build())
+          return@Function Unit
         }
 
-        val notifTitle = if (sticky && safeSeconds > 0) {
-          "⏳ $timeStr · ${if (title.isNotEmpty()) title else "Hadaf Timer"}"
-        } else {
-          if (title.isNotEmpty()) title else "Focus Session Active ⏳"
-        }
-        val notifText = if (sticky && safeSeconds > 0) {
-          "$body ($timeStr remaining)"
-        } else {
-          body
-        }
-
-        val builder = NotificationCompat.Builder(ctx, channelId)
-          .setSmallIcon(smallIcon)
-          .setContentTitle(notifTitle)
-          .setContentText(notifText)
-          .setSubText(if (sticky && safeSeconds > 0) "$timeStr left" else "Hadaf Focus")
-          .setPriority(NotificationCompat.PRIORITY_HIGH)
-          .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-          .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-          .setOngoing(sticky)
-          .setContentIntent(pendingIntent)
-          .setAutoCancel(!sticky)
-          .setOnlyAlertOnce(true)
-
-        if (sticky && safeSeconds > 0) {
-          builder.setShowWhen(true)
-          builder.setWhen(endMs)
-          builder.setUsesChronometer(true)
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            builder.setChronometerCountDown(true)
+        // Sticky Live Timer Notification matching the exact screenshot:
+        // Title = "MM:SS" (or "HH:MM:SS"), Subtitle = "<totalDuration> / <endClockTime HH:mm>",
+        // Purple Hourglass Icon on the left, NO Cancel/Pause/Dismiss buttons!
+        val candidateEndMs = System.currentTimeMillis() + (safeSeconds * 1000L)
+        if (timerEndMs == 0L || kotlin.math.abs(candidateEndMs - timerEndMs) > 3500L) {
+          timerEndMs = candidateEndMs
+          timerTotalDurationLabel = if (body.matches(Regex("^\\d+\\s*(h|hr|hrs|m|min|mins|s|sec).*"))) {
+            body
+          } else {
+            formatDurationShort(safeSeconds)
           }
         }
-          
-        manager.notify(999, builder.build())
+
+        timerRunnable?.let { mainHandler.removeCallbacks(it) }
+
+        val tickRunnable = object : Runnable {
+          override fun run() {
+            val now = System.currentTimeMillis()
+            val remSecs = ((timerEndMs - now + 500L) / 1000L).toInt()
+            if (remSecs <= 0) {
+              manager.cancel(999)
+              timerEndMs = 0L
+              return
+            }
+            val hrs = remSecs / 3600
+            val mins = (remSecs % 3600) / 60
+            val secs = remSecs % 60
+            val timeStr = if (hrs > 0) {
+              String.format("%02d:%02d:%02d", hrs, mins, secs)
+            } else {
+              String.format("%02d:%02d", mins, secs)
+            }
+
+            val endClockStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timerEndMs))
+            val subLine = "$timerTotalDurationLabel / $endClockStr"
+
+            val builder = NotificationCompat.Builder(ctx, channelId)
+              .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+              .setLargeIcon(getHourglassBitmap())
+              .setColor(0xFF5B5CEB.toInt())
+              .setContentTitle(timeStr)
+              .setContentText(subLine)
+              .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+              .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+              .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+              .setOngoing(true)
+              .setAutoCancel(false)
+              .setShowWhen(false)
+              .setOnlyAlertOnce(true)
+              .setSilent(true)
+              .setContentIntent(pendingIntent)
+
+            manager.notify(999, builder.build())
+            mainHandler.postDelayed(this, 1000L)
+          }
+        }
+        timerRunnable = tickRunnable
+        tickRunnable.run()
       }
       Unit
     }
@@ -342,6 +457,9 @@ class AppBlockerModule : Module() {
     }
 
     Function("dismissNotification") {
+      timerRunnable?.let { mainHandler.removeCallbacks(it) }
+      timerRunnable = null
+      timerEndMs = 0L
       val ctx = appContext.reactContext
       if (ctx != null) {
         val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

@@ -35,13 +35,10 @@ const DEFAULT_COACH: CoachData = {
 
 export default function AiCoachWidget({
   firstName,
-  refreshTrigger = 0,
 }: {
   firstName: string;
-  refreshTrigger?: number;
 }) {
   const [data, setData] = useState<CoachData>(DEFAULT_COACH);
-  const [loading, setLoading] = useState(false);
 
   // Load cached message immediately on mount (scoped to current firstName)
   useEffect(() => {
@@ -56,8 +53,7 @@ export default function AiCoachWidget({
   }, [firstName]);
 
   const fetchCoachMessage = useCallback(
-    async (refresh = false, silent = false) => {
-      if (!silent) setLoading(true);
+    async (refresh = false) => {
       try {
         const res = await customFetch<CoachData>(
           `/api/coach/reality-check${refresh ? "?refresh=true" : ""}`
@@ -74,33 +70,19 @@ export default function AiCoachWidget({
         }
       } catch (err) {
         console.warn("[AiCoachWidget] Fetch failed:", err);
-      } finally {
-        if (!silent) setLoading(false);
       }
     },
     [firstName]
   );
 
-  // Fetch fresh message on mount + automatic 1-minute live refresh
+  // Fetch fresh message on mount + automatic 1-minute live refresh (no manual refresh button)
   useEffect(() => {
     fetchCoachMessage(false);
     const interval = setInterval(() => {
-      fetchCoachMessage(true, true);
+      fetchCoachMessage(true);
     }, 60_000);
     return () => clearInterval(interval);
   }, [fetchCoachMessage]);
-
-  // Trigger refresh when parent pull-to-refresh runs
-  useEffect(() => {
-    if (refreshTrigger > 0) {
-      fetchCoachMessage(true, false);
-    }
-  }, [refreshTrigger, fetchCoachMessage]);
-
-  const onRefreshPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    fetchCoachMessage(true);
-  };
 
   const onStartFocusPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -113,25 +95,12 @@ export default function AiCoachWidget({
 
   return (
     <Animated.View entering={FadeInDown.delay(20).springify()} style={styles.card}>
-      {/* Top row */}
+      {/* Top row (no manual refresh button — refreshes automatically once every minute) */}
       <View style={styles.topRow}>
         <View style={styles.tagWrap}>
           <MaterialIcons name="bolt" size={13} color="#f59e0b" />
           <Text style={styles.tagText}>REALITY CHECK</Text>
         </View>
-
-        <TouchableOpacity
-          onPress={onRefreshPress}
-          hitSlop={8}
-          disabled={loading}
-          style={styles.refreshBtn}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#999" />
-          ) : (
-            <MaterialIcons name="refresh" size={16} color="#888" />
-          )}
-        </TouchableOpacity>
       </View>
 
       {/* Main message */}

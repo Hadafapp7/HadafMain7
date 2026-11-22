@@ -830,8 +830,8 @@ export default function FocusScreen() {
       if (rem > 0) {
         try {
           showNativeNotification(
-            "Focus Session",
-            intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
+            `${duration} m`,
+            `${duration} m`,
             true,
             rem
           );
@@ -922,8 +922,8 @@ export default function FocusScreen() {
     // Schedule active focus session notifications with total seconds
     try {
       showNativeNotification(
-        "Focus Session Active ⏳",
-        intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
+        `${duration} m`,
+        `${duration} m`,
         true,
         duration * 60
       );
@@ -1002,8 +1002,8 @@ export default function FocusScreen() {
 
     try {
       showNativeNotification(
-        "Focus Session Active ⏳",
-        intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
+        `${duration} m`,
+        `${duration} m`,
         true,
         remaining || (duration * 60)
       );
@@ -1050,8 +1050,8 @@ export default function FocusScreen() {
 
     try {
       showNativeNotification(
-        "Focus Session Active ⏳",
-        intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
+        `${duration} m`,
+        `${duration} m`,
         true,
         remaining || (duration * 60)
       );
@@ -1119,8 +1119,8 @@ export default function FocusScreen() {
         try {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
           showNativeNotification(
-            "Focus Session Active ⏳",
-            intention ? `"${intention}" · Apps locked` : "Stay focused · Apps locked",
+            `${duration} m`,
+            `${duration} m`,
             true,
             remaining
           );

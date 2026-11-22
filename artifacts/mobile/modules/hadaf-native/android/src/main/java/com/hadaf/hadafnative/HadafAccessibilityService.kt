@@ -71,7 +71,15 @@ class HadafAccessibilityService : AccessibilityService() {
     val now = System.currentTimeMillis()
     var shouldBlock = false
 
-    // 1) Live focus session
+    // Always sync from SharedPreferences if in-memory session state is not loaded or was updated
+    val prefActive = prefs.getBoolean(AppBlockerModule.KEY_ACTIVE, false)
+    val prefEndMs = prefs.getLong(AppBlockerModule.KEY_SESSION_END, 0L)
+    if (prefActive && prefEndMs > now) {
+      sessionEndMs = prefEndMs
+      blockedPackages = prefs.getStringSet(AppBlockerModule.KEY_BLOCKED, emptySet()) ?: emptySet()
+    }
+
+    // 1) Live focus or goal session
     if (sessionEndMs > 0L) {
       if (now > sessionEndMs) {
         // Auto-expire sessions

@@ -109,6 +109,20 @@ const SOCIAL_AND_GAME_KEYWORDS = [
   "pokemon",
 ];
 
+const BROWSER_OR_SYSTEM_KEYWORDS = [
+  "chrome",
+  "brave",
+  "firefox",
+  "safari",
+  "sbrowser",
+  "opera",
+  "duckduckgo",
+  "browser",
+  "incallui",
+  "dialer",
+  "telecom",
+];
+
 /**
  * Returns true if the app belongs to Social Media or Games.
  * DoomScore and Total Screen Time are calculated exclusively from Social Media and Games.
@@ -122,18 +136,18 @@ export function isSocialOrGameApp(
   const c = (category || "").trim().toLowerCase();
   const p = (packageName || "").trim().toLowerCase();
 
+  // Never classify web browsers or phone call UI as Social Media or Games
   if (
-    c === "social" ||
-    c === "games" ||
-    c === "game" ||
-    c === "gaming" ||
-    c === "video" ||
-    c === "entertainment"
+    n === "call" ||
+    n === "phone" ||
+    c === "browser" ||
+    BROWSER_OR_SYSTEM_KEYWORDS.some((bw) => n.includes(bw) || p.includes(bw))
   ) {
-    // Exclude non-social music/TV apps from entertainment if needed, or check keywords
-    if (c === "social" || c === "games" || c === "game" || c === "gaming") {
-      return true;
-    }
+    return false;
+  }
+
+  if (c === "social" || c === "games" || c === "game" || c === "gaming") {
+    return true;
   }
   if (n === "x") return true;
   return SOCIAL_AND_GAME_KEYWORDS.some(

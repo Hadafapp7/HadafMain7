@@ -27,7 +27,7 @@ module.exports = ({ config }) => ({
     },
   },
   android: {
-    versionCode: config.android?.versionCode || 30,
+    versionCode: config.android?.versionCode || 35,
     softwareKeyboardLayoutMode: "resize",
     usesCleartextTraffic: true,
     adaptiveIcon: {

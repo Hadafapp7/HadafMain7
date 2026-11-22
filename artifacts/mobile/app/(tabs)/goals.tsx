@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  BackHandler,
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
@@ -23,6 +24,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 
+import { focusSessionState } from "@/lib/focusSessionState";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
   dismissNativeNotification,
@@ -989,7 +991,7 @@ function ActiveGoalTimerCard({
 }
 
 // ── Goal card ──────────────────────────────────────────────────────────────────
-function GoalCard({ goal, delay = 0, isActiveNow, remainingSeconds, onDelete, onPress, onEdit, onStartNow }: {
+function GoalCard({ goal, delay = 0, isActiveNow, remainingSeconds, onDelete, onPress, onEdit }: {
   goal: Goal;
   delay?: number;
   isActiveNow?: boolean;
@@ -997,7 +999,6 @@ function GoalCard({ goal, delay = 0, isActiveNow, remainingSeconds, onDelete, on
   onDelete: () => void;
   onPress: () => void;
   onEdit: () => void;
-  onStartNow?: () => void;
 }) {
   const colors = useColors();
   const activeTo = addMinutesToTimeStr(goal.startTime, goal.durationMinutes);
@@ -1150,23 +1151,7 @@ function GoalCard({ goal, delay = 0, isActiveNow, remainingSeconds, onDelete, on
                   {formatCountdown(remainingSeconds)}
                 </Text>
               </View>
-            ) : (
-              goal.status === "pending" &&
-              onStartNow && (
-                <TouchableOpacity
-                  style={[styles.timeChip, { backgroundColor: "#000" }]}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    onStartNow();
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <MaterialIcons name="play-arrow" size={15} color="#fff" />
-                  <Text style={[styles.timeChipText, { color: "#fff" }]}>Start Timer Now</Text>
-                </TouchableOpacity>
-              )
-            )}
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -1361,7 +1346,7 @@ export default function GoalsScreen() {
   const [showFilters,  setShowFilters]  = useState(false);
   const [filters,      setFilters]      = useState<Filters>(DEFAULT_FILTERS);
 
-  // Live Goal Timer state (activates automatically when a goal's startTime window begins, or when user taps "Start Timer Now")
+  // Live Goal Timer state (activates automatically when a goal's startTime window begins)
   const [activeGoalSession, setActiveGoalSession] = useState<{
     goal: Goal;
     windowId: string;
@@ -1370,47 +1355,31 @@ export default function GoalsScreen() {
   } | null>(null);
   const promptedWindowIdsRef = useRef<Set<string>>(new Set());
   const prevActiveGoalRef = useRef<{ goal: Goal; windowId: string } | null>(null);
+  const enforcedWindowIdRef = useRef<string | null>(null);
 
-  // Start a goal's timer immediately right now (updates startTime to current clock time so the window is live)
-  const handleStartGoalNow = useCallback(
-    (goal: Goal) => {
-      const now = new Date();
-      const h24 = now.getHours();
-      const m = now.getMinutes();
-      const period = h24 >= 12 ? "PM" : "AM";
-      const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-      const nowTimeStr = `${h12}:${String(m).padStart(2, "0")} ${period}`;
-      const todayStr = todayDateStr();
+  // Hide bottom tab bar when a goal session is active (full-screen black Zen mode, just like Focus Session)
+  useEffect(() => {
+    const active = Boolean(activeGoalSession);
+    focusSessionState.setActive(active);
+    return () => {
+      focusSessionState.setActive(false);
+    };
+  }, [activeGoalSession]);
 
-      const updatedGoal: Goal = {
-        ...goal,
-        startTime: nowTimeStr,
-        scheduledDate: goal.type === "scheduled" ? todayStr : goal.scheduledDate,
-        updatedAt: now.toISOString(),
-      };
-
-      const nextGoals = goals.map((g) => (g.id === goal.id ? updatedGoal : g));
-      saveLocalGoals(nextGoals);
-      queryClient.setQueryData(getListGoalsQueryKey(), nextGoals);
-      void syncGoalAutomation(nextGoals, true);
-
-      if (!goal.id.startsWith("local-")) {
-        updateGoal.mutate(
-          {
-            id: goal.id,
-            data: {
-              startTime: nowTimeStr,
-              ...(goal.type === "scheduled" ? { scheduledDate: todayStr } : {}),
-            } as any,
-          },
-          { onSuccess: () => refetch() }
-        );
+  // Intercept Android hardware back button during active goal session -> open ForfeitModal
+  useEffect(() => {
+    const backAction = () => {
+      if (activeGoalSession) {
+        setForfeitingGoal(activeGoalSession.goal);
+        return true;
       }
-    },
-    [goals, saveLocalGoals, queryClient, updateGoal, refetch]
-  );
+      return false;
+    };
+    const subBack = BackHandler.addEventListener("hardwareBackPress", backAction);
+    return () => subBack.remove();
+  }, [activeGoalSession]);
 
-  // 1-second tick loop for active goal countdown + notification bar mini timer + completion alarm & strict regret popup
+  // 1-second tick loop for active goal countdown + notification bar mini timer + app blocking + completion alarm & strict regret popup
   useEffect(() => {
     const tick = () => {
       const nowMs = Date.now();
@@ -1426,20 +1395,25 @@ export default function GoalsScreen() {
         setActiveGoalSession(nextState);
         prevActiveGoalRef.current = { goal: found.goal, windowId: found.window.id };
 
-        // Display live mini timer on notification bar throughout the goal session (Point 3)
+        // Enforce native app blocking immediately when the goal window starts
+        if (enforcedWindowIdRef.current !== found.window.id) {
+          enforcedWindowIdRef.current = found.window.id;
+          void syncGoalAutomation(goals, true);
+        }
+
+        // Display live mini timer on notification bar throughout the goal session (Point 2)
         if (found.remainingSeconds > 0) {
           try {
             showNativeNotification(
-              `Goal: ${found.goal.title}`,
-              found.goal.blockApps !== false
-                ? "Stay focused · Top social apps locked"
-                : "Stay focused · Goal timer running",
+              `${found.goal.durationMinutes} m`,
+              `${found.goal.durationMinutes} m`,
               true,
               found.remainingSeconds
             );
           } catch {}
         }
       } else {
+        enforcedWindowIdRef.current = null;
         // Check if an active goal just finished its duration window!
         const prev = prevActiveGoalRef.current;
         if (prev && !promptedWindowIdsRef.current.has(prev.windowId)) {
@@ -1449,7 +1423,7 @@ export default function GoalsScreen() {
             try {
               dismissNativeNotification();
             } catch {}
-            // Play default system alarm sound on goal duration completion (Point 2)
+            // Play default system alarm sound on goal duration completion
             try {
               playNativeCompletionAlarm(
                 "Goal Duration Complete ⏰",
@@ -1458,7 +1432,7 @@ export default function GoalsScreen() {
             } catch {}
             Vibration.vibrate([0, 600, 200, 600, 200, 600, 200, 1000]);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            // Pop up strict honesty & regret modal (Point 1a)
+            // Pop up strict honesty & regret modal
             setVerifyingGoal(latestGoal);
           }
         }
@@ -1854,17 +1828,6 @@ export default function GoalsScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Active Goal Focus-Style Timer Banner (appears when a goal duration starts) */}
-        {activeGoalSession && (
-          <ActiveGoalTimerCard
-            goal={activeGoalSession.goal}
-            remainingSeconds={activeGoalSession.remainingSeconds}
-            totalSeconds={activeGoalSession.totalSeconds}
-            onComplete={() => handleRequestCompleteGoal(activeGoalSession.goal)}
-            onForfeit={() => setForfeitingGoal(activeGoalSession.goal)}
-          />
-        )}
-
         {isLoading && visibleGoals.length === 0 && (
           <HadafInlineLoader message="Loading your goals..." />
         )}
@@ -1895,32 +1858,82 @@ export default function GoalsScreen() {
             onDelete={() => handleDeleteGoal(g)}
             onPress={() => { Haptics.selectionAsync(); setDetailGoal(g); }}
             onEdit={() => handleEditGoal(g)}
-            onStartNow={() => handleStartGoalNow(g)}
           />
         ))}
       </Animated.ScrollView>
 
       {/* FAB */}
-      <Animated.View style={[styles.floatingBtn, { bottom: tabBarH + 16, right: FAB_RIGHT }, fabContainerStyle]}>
-        <TouchableOpacity
-          style={[styles.addGoalBtn, { backgroundColor: colors.primary }]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            if (sub.isLimited) {
-              router.push("/subscription" as any);
-              return;
-            }
-            setEditingGoal(null);
-            setShowAddModal(true);
-          }}
-          activeOpacity={0.85}
+      {!activeGoalSession && (
+        <Animated.View style={[styles.floatingBtn, { bottom: tabBarH + 16, right: FAB_RIGHT }, fabContainerStyle]}>
+          <TouchableOpacity
+            style={[styles.addGoalBtn, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              if (sub.isLimited) {
+                router.push("/subscription" as any);
+                return;
+              }
+              setEditingGoal(null);
+              setShowAddModal(true);
+            }}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="add" size={22} color="#fff" />
+            <Animated.View style={fabLabelStyle}>
+              <Text style={styles.addGoalBtnText} numberOfLines={1}>Add Goal</Text>
+            </Animated.View>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* ── Zen Black Goal Screen (Automatically active during Goal Duration, only ONE Forfeit button) ── */}
+      {activeGoalSession && (
+        <View
+          style={[
+            styles.zenBlackScreen,
+            { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 36 },
+          ]}
         >
-          <MaterialIcons name="add" size={22} color="#fff" />
-          <Animated.View style={fabLabelStyle}>
-            <Text style={styles.addGoalBtnText} numberOfLines={1}>Add Goal</Text>
-          </Animated.View>
-        </TouchableOpacity>
-      </Animated.View>
+          {/* Top subtle bar */}
+          <View style={styles.zenTopRow}>
+            <View style={styles.zenBadge}>
+              <View style={[styles.zenDot, { backgroundColor: "#22c55e" }]} />
+              <Text style={styles.zenBadgeText}>GOAL ACTIVE</Text>
+            </View>
+            {activeGoalSession.goal.blockApps !== false && (
+              <View style={styles.zenLockBadge}>
+                <MaterialIcons name="lock" size={13} color="#737373" />
+                <Text style={styles.zenLockText}>Top apps locked</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Center countdown timer and goal title */}
+          <View style={styles.zenCenter}>
+            <Text style={styles.zenTimerDigits}>
+              {formatCountdown(activeGoalSession.remainingSeconds)}
+            </Text>
+            <Text style={styles.zenIntention}>
+              {activeGoalSession.goal.title.toUpperCase()}
+            </Text>
+          </View>
+
+          {/* Bottom: ONLY ONE Forfeit button to forfeit the goal */}
+          <View style={styles.zenBottomActions}>
+            <TouchableOpacity
+              style={styles.zenForfeitSingleBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setForfeitingGoal(activeGoalSession.goal);
+              }}
+              activeOpacity={0.75}
+            >
+              <MaterialIcons name="stop" size={20} color="#ef4444" />
+              <Text style={styles.zenEndBtnText}>Forfeit</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Modal 1 — Add / Edit Task */}
       <AddTaskModal
@@ -2031,6 +2044,98 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 12,
     fontFamily: "Inter_700Bold",
+  },
+
+  // Zen Black Goal Screen (identical to Focus Session black screen with single Forfeit button)
+  zenBlackScreen: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#000000",
+    zIndex: 999,
+    paddingHorizontal: 28,
+    justifyContent: "space-between",
+  },
+  zenTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  zenBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(34, 197, 94, 0.25)",
+  },
+  zenDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  zenBadgeText: {
+    color: "#22c55e",
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.5,
+  },
+  zenLockBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#141414",
+  },
+  zenLockText: {
+    color: "#737373",
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+  zenCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+  },
+  zenTimerDigits: {
+    color: "#ffffff",
+    fontSize: 72,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -3,
+  },
+  zenIntention: {
+    color: "#737373",
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 3,
+    textAlign: "center",
+    paddingHorizontal: 20,
+  },
+  zenBottomActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  zenForfeitSingleBtn: {
+    height: 56,
+    paddingHorizontal: 36,
+    borderRadius: 999,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1.5,
+    borderColor: "rgba(239, 68, 68, 0.45)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  zenEndBtnText: {
+    color: "#ef4444",
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.5,
   },
 
   // Active Goal Focus-Style Timer Banner

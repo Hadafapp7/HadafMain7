@@ -911,12 +911,10 @@ function GoalTrackerBlock({
 function BedrockDiagnosticBlock({
   diagnostic,
   loading,
-  onRefresh,
   range,
 }: {
   diagnostic: BedrockDiagnosticResult | null;
   loading: boolean;
-  onRefresh: () => void;
   range: PeriodRange;
 }) {
   const colors = useColors();
@@ -983,19 +981,6 @@ function BedrockDiagnosticBlock({
             Diagnostic Board
           </Text>
         </View>
-
-        <TouchableOpacity
-          onPress={onRefresh}
-          hitSlop={8}
-          disabled={loading}
-          style={styles.refreshDiagnosticBtn}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <MaterialIcons name="refresh" size={18} color={colors.outline} />
-          )}
-        </TouchableOpacity>
       </View>
 
       {loading && !diagnostic ? (
@@ -1169,50 +1154,37 @@ export default function AnalyticsScreen() {
 
   const syncStats = React.useCallback(async () => {
     if (Platform.OS === "web") return;
-    console.log("[Analytics] Checking native usage permission for sync...");
     const perm = hasUsagePermission();
-    if (!perm) {
-      console.log("[Analytics] Native permission not granted. Skipping auto-sync.");
-      return;
-    }
+    if (!perm) return;
 
     setSyncing(true);
-    console.log("[Analytics] Syncing real-time device stats to server...");
     try {
       const stats = await getDeviceUsageStats(1); // Today's stats
-      console.log(`[Analytics] Fetched ${stats.length} daily stats from device`);
-      if (stats.length > 0) {
-        for (const app of stats) {
-          if (app.totalMinutes <= 0) {
-            console.log(`[Analytics] Skipping sync for ${app.appName} because usage is 0m`);
-            continue;
-          }
-          try {
-            console.log(`[Analytics] Syncing ${app.appName} (${app.totalMinutes}m)`);
-            await createUsageEntry.mutateAsync({
-              data: {
+      const activeApps = stats.filter((a) => a.totalMinutes > 0).slice(0, 8);
+      if (activeApps.length > 0) {
+        await Promise.allSettled(
+          activeApps.map((app) =>
+            customFetch("/api/app-usage", {
+              method: "POST",
+              body: JSON.stringify({
                 appName: app.appName,
                 category: app.category ?? undefined,
                 durationMinutes: app.totalMinutes,
-              }
-            });
-          } catch (e: any) {
-            console.warn(`[Analytics] Failed to sync ${app.appName}:`, e.message || e);
-          }
-        }
-        console.log("[Analytics] Sync completed. Invalidate and refetching server summary...");
+              }),
+            })
+          )
+        );
         await queryClient.invalidateQueries({ queryKey: getListAppUsageEntriesQueryKey() });
         await queryClient.invalidateQueries({ queryKey: getGetAppUsageSummaryQueryKey() });
-        refetchEntries();
-        refetchSummary();
+        void refetchEntries();
+        void refetchSummary();
       }
     } catch (err: any) {
       console.warn("[Analytics] Error during stats sync:", err.message || err);
     } finally {
       setSyncing(false);
-      console.log("[Analytics] Sync complete.");
     }
-  }, [createUsageEntry, queryClient, refetchEntries, refetchSummary]);
+  }, [queryClient, refetchEntries, refetchSummary]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -1229,14 +1201,14 @@ export default function AnalyticsScreen() {
     setRefreshing(true);
     Haptics.selectionAsync();
     try {
+      // Trigger device stats sync in background and immediately refresh all Analytics charts/cards (EXCEPT AI Diagnostic)
+      void syncStats();
       await Promise.allSettled([
         loadLocalGoalsBackup(),
-        syncStats(),
         refetchEntries(),
         refetchSummary(),
         refetchSessions(),
         refetchGoals(),
-        fetchBedrockDiagnostic(activeRange, false),
       ]);
     } finally {
       setRefreshing(false);
@@ -1248,8 +1220,6 @@ export default function AnalyticsScreen() {
     refetchSummary,
     refetchSessions,
     refetchGoals,
-    fetchBedrockDiagnostic,
-    activeRange,
   ]);
 
   const isLoading = loadingEntries || loadingSummary;
@@ -1347,12 +1317,11 @@ export default function AnalyticsScreen() {
               />
             </Animated.View>
 
-            {/* 3. Diagnostic Block (AWS Bedrock LLM) */}
+            {/* 3. Diagnostic Block (AWS Bedrock LLM — auto-refreshes once every minute) */}
             <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()}>
               <BedrockDiagnosticBlock
                 diagnostic={diagnostic}
                 loading={loadingDiagnostic}
-                onRefresh={() => fetchBedrockDiagnostic(activeRange)}
                 range={activeRange}
               />
             </Animated.View>

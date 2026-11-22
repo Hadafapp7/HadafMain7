@@ -307,8 +307,49 @@ function formatDuration(totalMinutes: number): string {
 
 const APP_ICONS: Record<string, React.ComponentProps<typeof MaterialIcons>["name"]> = {
   social: "photo-camera",
-  entertainment: "music-video",
+  entertainment: "play-circle-filled",
+  games: "sports-esports",
+  gaming: "sports-esports",
+  browser: "public",
+  productivity: "work",
+  other: "apps",
 };
+
+function normalizeAppCategory(appName?: string | null, category?: string | null, pkg?: string | null): string {
+  const n = (appName || "").trim().toLowerCase();
+  const p = (pkg || "").trim().toLowerCase();
+  if (
+    n === "chrome" ||
+    n === "brave" ||
+    n === "firefox" ||
+    n === "opera" ||
+    n === "edge" ||
+    n.includes("browser") ||
+    p.includes("chrome") ||
+    p.includes("brave") ||
+    p.includes("firefox") ||
+    p.includes("sbrowser") ||
+    p.includes("browser")
+  ) {
+    return "Browser";
+  }
+  return category || "Other";
+}
+
+function isCallOrSystemNoise(appName?: string | null, pkg?: string | null): boolean {
+  const n = (appName || "").trim().toLowerCase();
+  const p = (pkg || "").trim().toLowerCase();
+  return (
+    n === "call" ||
+    n === "phone" ||
+    n === "incallui" ||
+    n === "dialer" ||
+    p.includes("incallui") ||
+    p.includes("telephonyui") ||
+    p.endsWith(".dialer") ||
+    p.endsWith(".phone")
+  );
+}
 
 const POPULAR_APPS: { name: string; icon: React.ComponentProps<typeof MaterialIcons>["name"]; category: string }[] = [
   { name: "Instagram", icon: "photo-camera",       category: "social"         },
@@ -740,8 +781,14 @@ export default function HomeScreen() {
         try {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            memoryMostUsedCache = parsed;
-            setDeviceUsage(parsed);
+            const cleaned = parsed
+              .filter((x) => !isCallOrSystemNoise(x?.appName, x?.packageName))
+              .map((x) => ({
+                ...x,
+                category: normalizeAppCategory(x?.appName, x?.category, x?.packageName),
+              }));
+            memoryMostUsedCache = cleaned;
+            setDeviceUsage(cleaned);
           }
         } catch {}
       }
@@ -750,7 +797,6 @@ export default function HomeScreen() {
   const [nativePermGranted, setNativePermGranted] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [coachRefreshTrigger, setCoachRefreshTrigger] = useState(0);
 
   const { data: me, refetch: refetchMe } = useGetMe();
   const { data: rawGoals, refetch: refetchGoals } = useListGoals();
@@ -819,25 +865,29 @@ export default function HomeScreen() {
         // Merge union of today's apps and weekly apps, sorted by today's daily screen time descending
         const pkgMap = new Map<string, MergedAppUsage>();
         for (const d of daily) {
+          if (isCallOrSystemNoise(d.appName, d.packageName)) continue;
           const w = weekly.find((x) => x.packageName === d.packageName || x.appName === d.appName);
           const total7 = w ? Math.max(w.totalMinutes, d.totalMinutes) : d.totalMinutes;
+          const normCat = normalizeAppCategory(d.appName, d.category, d.packageName);
           pkgMap.set(d.packageName || d.appName, {
             appName: d.appName,
             packageName: d.packageName,
-            category: d.category,
+            category: normCat,
             dailyMinutes: d.totalMinutes,
             totalMinutes: total7,
             weeklyAvgMinutes: Math.max(1, Math.round(total7 / 7)),
           });
         }
         for (const w of weekly) {
+          if (isCallOrSystemNoise(w.appName, w.packageName)) continue;
           const key = w.packageName || w.appName;
           if (!pkgMap.has(key)) {
             const d = daily.find((x) => x.packageName === w.packageName || x.appName === w.appName);
+            const normCat = normalizeAppCategory(w.appName, w.category, w.packageName);
             pkgMap.set(key, {
               appName: w.appName,
               packageName: w.packageName,
-              category: w.category,
+              category: normCat,
               dailyMinutes: d ? d.totalMinutes : 0,
               totalMinutes: w.totalMinutes,
               weeklyAvgMinutes: Math.max(1, Math.round(w.totalMinutes / 7)),
@@ -850,32 +900,29 @@ export default function HomeScreen() {
 
         setDeviceUsage(combined);
         memoryMostUsedCache = combined;
+        setLoadingStats(false);
         AsyncStorage.setItem(MOST_USED_CACHE_KEY, JSON.stringify(combined)).catch(() => {});
 
-        // Auto-sync stats with backend database
-        if (combined.length > 0) {
-          console.log(`[Home] checkAndLoadStats: Syncing ${combined.length} app usage stats to backend database...`);
-          // Sync today's usage (dailyMinutes) to the backend database!
-          for (const app of combined) {
-            if (app.dailyMinutes <= 0) {
-              console.log(`[Home] checkAndLoadStats: Skipping sync for ${app.appName} because usage is 0m`);
-              continue;
-            }
+        // Non-blocking background sync to backend database so UI / pull-to-refresh never waits or freezes!
+        const activeTodayApps = combined.filter((a) => a.dailyMinutes > 0).slice(0, 8);
+        if (activeTodayApps.length > 0) {
+          void (async () => {
             try {
-              console.log(`[Home] checkAndLoadStats: Syncing ${app.appName} (${app.dailyMinutes}m)`);
-              await createUsageEntry.mutateAsync({
-                data: {
-                  appName: app.appName,
-                  category: app.category ?? undefined,
-                  durationMinutes: app.dailyMinutes,
-                }
-              });
-            } catch (err: any) {
-              console.error(`[Home] checkAndLoadStats: Failed to sync ${app.appName}:`, err.message || err);
-            }
-          }
-          console.log("[Home] checkAndLoadStats: Sync completed successfully. Refetching app usage summary...");
-          await refetchAppUsage();
+              await Promise.allSettled(
+                activeTodayApps.map((app) =>
+                  customFetch("/api/app-usage", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      appName: app.appName,
+                      category: app.category ?? undefined,
+                      durationMinutes: app.dailyMinutes,
+                    }),
+                  })
+                )
+              );
+              void refetchAppUsage();
+            } catch {}
+          })();
         }
       } catch (err: any) {
         console.error("[Home] checkAndLoadStats: Failed to query native stats:", err.message || err);
@@ -884,7 +931,7 @@ export default function HomeScreen() {
         console.log("[Home] checkAndLoadStats: Loading complete.");
       }
     }
-  }, [createUsageEntry, refetchAppUsage]);
+  }, [refetchAppUsage]);
 
   const checkAndLoadStatsRef = React.useRef(checkAndLoadStats);
   useEffect(() => {
@@ -969,21 +1016,28 @@ export default function HomeScreen() {
 
   const mergedUsage: DisplayAppUsage[] =
     deviceUsage.length > 0
-      ? deviceUsage.map((d) => ({
-          appName: d.appName,
-          packageName: d.packageName,
-          category: d.category,
-          dailyMinutes: d.dailyMinutes,
-          totalMinutes: d.totalMinutes,
-          weeklyAvgMinutes: d.weeklyAvgMinutes || Math.max(1, Math.round((d.totalMinutes || d.dailyMinutes) / 7)),
-        }))
-      : fallbackServerUsage;
+      ? deviceUsage
+          .filter((d) => !isCallOrSystemNoise(d.appName, d.packageName))
+          .map((d) => ({
+            appName: d.appName,
+            packageName: d.packageName,
+            category: normalizeAppCategory(d.appName, d.category, d.packageName),
+            dailyMinutes: d.dailyMinutes,
+            totalMinutes: d.totalMinutes,
+            weeklyAvgMinutes: d.weeklyAvgMinutes || Math.max(1, Math.round((d.totalMinutes || d.dailyMinutes) / 7)),
+          }))
+      : fallbackServerUsage
+          .filter((d) => !isCallOrSystemNoise(d.appName, d.packageName))
+          .map((d) => ({
+            ...d,
+            category: normalizeAppCategory(d.appName, d.category, d.packageName),
+          }));
 
   const handlePullRefresh = React.useCallback(async () => {
     setRefreshing(true);
     Haptics.selectionAsync();
     try {
-      setCoachRefreshTrigger((c) => c + 1);
+      // Refresh all Home cards (screen time, DoomScore, most used apps, goals, mood, streak) EXCEPT AI messages
       await Promise.allSettled([
         checkAndLoadStats(),
         refetchMe(),
@@ -1162,7 +1216,7 @@ export default function HomeScreen() {
       >
 
         {/* ── AI Coach Reality Check & Motivation Widget ── */}
-        <AiCoachWidget firstName={firstName} refreshTrigger={coachRefreshTrigger} />
+        <AiCoachWidget firstName={firstName} />
 
         {/* ── Two stat cards ── */}
         <Animated.View

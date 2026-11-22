@@ -121,6 +121,17 @@ class UsageStatsModule : Module() {
         homeLauncherPkg,
         "com.android.systemui",
         "com.android.settings",
+        "com.android.phone",
+        "com.android.incallui",
+        "com.android.server.telecom",
+        "com.android.dialer",
+        "com.android.contacts",
+        "com.samsung.android.incallui",
+        "com.samsung.android.dialer",
+        "com.samsung.android.contacts",
+        "com.samsung.android.app.telephonyui",
+        "com.google.android.dialer",
+        "com.google.android.contacts",
         "com.google.android.gms",
         "com.google.android.gsf",
         "com.google.android.packageinstaller",
@@ -145,48 +156,93 @@ class UsageStatsModule : Module() {
         return lower.contains(".launcher") ||
           lower.contains("inputmethod") ||
           lower.contains("systemui") ||
-          lower.contains("wallpaper")
+          lower.contains("wallpaper") ||
+          lower.contains("incallui") ||
+          lower.contains("telephonyui") ||
+          lower.contains("server.telecom") ||
+          lower.endsWith(".dialer") ||
+          lower.endsWith(".phone")
       }
 
-      // 1) Primary Digital Wellbeing calculation: sum exact foreground intervals from queryEvents
-      val aggregated = mutableMapOf<String, Long>()
+      // 1) Digital Wellbeing exact foreground calculation from UsageEvents:
+      // Tracks active resumed activities per package and ONLY closes a package when its last resumed
+      // activity pauses, another package enters foreground, or the screen turns off (never on delayed ACTIVITY_STOPPED!).
+      val eventsAggregated = mutableMapOf<String, Long>()
       try {
         val events = usageManager.queryEvents(startTime, endTime)
-        val activeStartByPkg = mutableMapOf<String, Long>()
+        val activeActivitiesByPkg = mutableMapOf<String, MutableSet<String>>()
+        val pkgResumeTime = mutableMapOf<String, Long>()
         val event = UsageEvents.Event()
+
+        fun closePkg(targetPkg: String, timestamp: Long) {
+          val resumedAt = pkgResumeTime.remove(targetPkg)
+          activeActivitiesByPkg.remove(targetPkg)
+          if (resumedAt != null && timestamp > resumedAt) {
+            val delta = (timestamp - resumedAt).coerceAtMost(6 * 3600_000L)
+            eventsAggregated[targetPkg] = (eventsAggregated[targetPkg] ?: 0L) + delta
+          }
+        }
+
+        fun closeAllPkgs(timestamp: Long) {
+          val openPkgs = pkgResumeTime.keys.toList()
+          for (openPkg in openPkgs) {
+            closePkg(openPkg, timestamp)
+          }
+        }
 
         while (events != null && events.hasNextEvent()) {
           events.getNextEvent(event)
-          val pkg = event.packageName ?: continue
-          if (isIgnoredPkg(pkg)) continue
+          val evType = event.eventType
+          val ts = event.timeStamp
 
-          when (event.eventType) {
-            UsageEvents.Event.ACTIVITY_RESUMED -> {
-              activeStartByPkg[pkg] = event.timeStamp
+          // Screen turned off or device shut down -> all foreground activities stop accumulating screen time
+          if (evType == UsageEvents.Event.SCREEN_NON_INTERACTIVE || evType == UsageEvents.Event.DEVICE_SHUTDOWN) {
+            closeAllPkgs(ts)
+            continue
+          }
+
+          val pkg = event.packageName ?: continue
+          if (isIgnoredPkg(pkg)) {
+            if (evType == UsageEvents.Event.ACTIVITY_RESUMED) {
+              // User went to home launcher / system UI -> close any currently open app
+              closeAllPkgs(ts)
             }
-            UsageEvents.Event.ACTIVITY_PAUSED,
-            UsageEvents.Event.ACTIVITY_STOPPED -> {
-              val resumedAt = activeStartByPkg.remove(pkg)
-              if (resumedAt != null && event.timeStamp > resumedAt) {
-                val delta = (event.timeStamp - resumedAt).coerceAtMost(6 * 3600_000L)
-                aggregated[pkg] = (aggregated[pkg] ?: 0L) + delta
+            continue
+          }
+
+          val cls = event.className ?: "__default__"
+
+          when (evType) {
+            UsageEvents.Event.ACTIVITY_RESUMED -> {
+              // Close any OTHER package that was previously in foreground
+              val otherOpen = pkgResumeTime.keys.filter { it != pkg }
+              for (other in otherOpen) {
+                closePkg(other, ts)
+              }
+              val set = activeActivitiesByPkg.getOrPut(pkg) { mutableSetOf() }
+              set.add(cls)
+              if (!pkgResumeTime.containsKey(pkg)) {
+                pkgResumeTime[pkg] = ts
+              }
+            }
+            UsageEvents.Event.ACTIVITY_PAUSED -> {
+              val set = activeActivitiesByPkg[pkg]
+              set?.remove(cls)
+              if (set == null || set.isEmpty()) {
+                closePkg(pkg, ts)
               }
             }
           }
         }
-        // Close any currently open foreground app up to endTime
-        for ((pkg, resumedAt) in activeStartByPkg) {
-          if (endTime > resumedAt) {
-            val delta = (endTime - resumedAt).coerceAtMost(2 * 3600_000L)
-            aggregated[pkg] = (aggregated[pkg] ?: 0L) + delta
-          }
-        }
+        // Close any still-resumed foreground app up to endTime
+        closeAllPkgs(endTime)
       } catch (_: Exception) {
-        // Fallback below if queryEvents fails
+        // Ignore and merge with stats below
       }
 
-      // 2) Fallback to queryUsageStats if queryEvents returned no events (e.g. older OS retention for >7 days)
-      if (aggregated.isEmpty()) {
+      // 2) Also check queryUsageStats buckets strictly within [startTime, endTime]
+      val statsAggregated = mutableMapOf<String, Long>()
+      try {
         val stats = usageManager.queryUsageStats(
           UsageStatsManager.INTERVAL_DAILY,
           startTime,
@@ -195,12 +251,25 @@ class UsageStatsModule : Module() {
         for (stat in stats) {
           if (stat.totalTimeInForeground <= 0) continue
           if (isIgnoredPkg(stat.packageName)) continue
-          // Skip buckets that ended before startTime
           if (stat.lastTimeStamp < startTime) continue
-          // For days == 1, skip yesterday's bucket whose firstTimeStamp is before today's midnight
-          if (days == 1 && stat.firstTimeStamp < startTime - 2 * 3600_000L) continue
-          aggregated[stat.packageName] =
-            (aggregated[stat.packageName] ?: 0L) + stat.totalTimeInForeground
+          // Skip yesterday's daily bucket whose firstTimeStamp started well before startTime
+          if (stat.firstTimeStamp < startTime - 3 * 3600_000L) continue
+          statsAggregated[stat.packageName] =
+            (statsAggregated[stat.packageName] ?: 0L) + stat.totalTimeInForeground
+        }
+      } catch (_: Exception) {}
+
+      // Combine: prefer exact UsageEvents sum; for multi-day queries (>1 day) where Android may prune raw events,
+      // or if queryEvents missed an early-morning session, take the accurate value.
+      val aggregated = mutableMapOf<String, Long>()
+      val allPkgs = eventsAggregated.keys + statsAggregated.keys
+      for (pkg in allPkgs) {
+        val evMs = eventsAggregated[pkg] ?: 0L
+        val stMs = statsAggregated[pkg] ?: 0L
+        aggregated[pkg] = if (days == 1) {
+          if (evMs > 0L) evMs else stMs
+        } else {
+          maxOf(evMs, stMs)
         }
       }
 
@@ -252,6 +321,15 @@ class UsageStatsModule : Module() {
           }
 
           val category = when {
+            // 1. Check Browsers FIRST so browsers like Chrome & Brave are never misclassified as Social
+            lowerPkg.contains("chrome") || lowerPkg.contains("brave") ||
+            lowerPkg.contains("firefox") || lowerPkg.contains("safari") ||
+            lowerPkg.contains("sbrowser") || lowerPkg.contains("opera") ||
+            lowerPkg.contains("emmx") || lowerPkg.contains("duckduckgo") ||
+            lowerPkg.contains("browser") || lowerLabel == "chrome" ||
+            lowerLabel == "brave" -> "Browser"
+
+            // 2. Games
             osCategory == ApplicationInfo.CATEGORY_GAME ||
             lowerPkg.contains("game") || lowerPkg.contains("games") ||
             lowerPkg.contains("pubg") || lowerPkg.contains("bgmi") ||
@@ -265,22 +343,23 @@ class UsageStatsModule : Module() {
             lowerPkg.contains("gameloft") || lowerPkg.contains("rovio") ||
             lowerPkg.contains("moonton") || lowerLabel.contains("game") -> "Games"
 
-            osCategory == ApplicationInfo.CATEGORY_SOCIAL ||
+            // 3. Social Media
             lowerPkg.contains("instagram") || lowerPkg.contains("facebook") ||
             lowerPkg.contains("twitter") || lowerPkg.contains("snapchat") ||
             lowerPkg.contains("tiktok") || lowerPkg.contains("musically") ||
             lowerPkg.contains("trill") || lowerPkg.contains("reddit") ||
             lowerPkg.contains("discord") || lowerPkg.contains("whatsapp") ||
             lowerPkg.contains("telegram") || lowerPkg.contains("pinterest") ||
-            lowerPkg.contains("threads") || lowerPkg.contains("linkedin") ||
-            lowerPkg.contains("youtube") || lowerPkg.contains("twitch") -> "Social"
+            lowerPkg.contains("threads") || lowerPkg.contains("barcelona") ||
+            lowerPkg.contains("linkedin") || lowerPkg.contains("youtube") ||
+            lowerPkg.contains("twitch") ||
+            osCategory == ApplicationInfo.CATEGORY_SOCIAL -> "Social"
 
+            // 4. Entertainment
             lowerPkg.contains("netflix") || lowerPkg.contains("spotify") ||
             lowerPkg.contains("prime") || lowerPkg.contains("hotstar") -> "Entertainment"
 
-            lowerPkg.contains("chrome") || lowerPkg.contains("firefox") ||
-            lowerPkg.contains("safari") || lowerPkg.contains("browser") -> "Browser"
-
+            // 5. Productivity
             osCategory == ApplicationInfo.CATEGORY_PRODUCTIVITY ||
             lowerPkg.contains("gmail") || lowerPkg.contains("outlook") ||
             lowerPkg.contains("slack") || lowerPkg.contains("teams") -> "Productivity"

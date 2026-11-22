@@ -114,21 +114,30 @@ export function goalWindows(goal: Goal, nowMs = Date.now()): GoalWindow[] {
 }
 
 const isPending = (g: Goal): boolean => (g.status as string) === "pending";
-const wantsBlocking = (g: Goal): boolean => (g as any).blockApps === true;
+const wantsBlocking = (g: Goal): boolean => (g as any).blockApps !== false;
 
 // ───────────────────────── top social apps ─────────────────────────
 
-/** Social / feed apps we are willing to block (messaging + productivity apps are intentionally NOT here). */
+/** Known package mappings for blocking apps during goal sessions. */
 const SOCIAL_APPS: Record<string, string[]> = {
-  Instagram: ["com.instagram.android"],
+  Instagram: ["com.instagram.android", "com.instagram.lite"],
   TikTok: ["com.zhiliaoapp.musically", "com.ss.android.ugc.trill"],
   YouTube: ["com.google.android.youtube"],
   Twitter: ["com.twitter.android"],
-  Facebook: ["com.facebook.katana"],
+  Facebook: ["com.facebook.katana", "com.facebook.lite", "com.facebook.orca"],
   Snapchat: ["com.snapchat.android"],
   Reddit: ["com.reddit.frontpage"],
   Discord: ["com.discord"],
   Pinterest: ["com.pinterest"],
+  WhatsApp: ["com.whatsapp", "com.whatsapp.w4b"],
+  Telegram: ["org.telegram.messenger"],
+  Threads: ["com.instagram.barcelona"],
+  LinkedIn: ["com.linkedin.android"],
+  Netflix: ["com.netflix.mediaclient"],
+  Twitch: ["tv.twitch.android.app"],
+  Chrome: ["com.android.chrome"],
+  Brave: ["com.brave.browser"],
+  Spotify: ["com.spotify.music"],
 };
 const DEFAULT_TOP_APPS = ["Instagram", "YouTube"];
 const MOST_USED_CACHE_KEY = "hadaf_most_used_apps_v3";
@@ -167,7 +176,11 @@ export async function getTopSocialApps(force = false): Promise<TopSocialApps> {
     category?: string | null
   ) => {
     if (!rawName || !(minutes > 0)) return;
-    const name = (pkg && PACKAGE_TO_APP[pkg]) || canonicalAppName(rawName) || rawName.trim();
+    const cleanRaw = rawName.trim();
+    const lowerRaw = cleanRaw.toLowerCase();
+    // Never include phone call UI in blocked apps
+    if (lowerRaw === "call" || lowerRaw === "phone" || lowerRaw.includes("incallui")) return;
+    const name = (pkg && PACKAGE_TO_APP[pkg]) || canonicalAppName(cleanRaw) || cleanRaw;
     const prev = minutesByApp.get(name);
     const socialOrGame = isSocialOrGameApp(name, category, pkg);
     minutesByApp.set(name, {
@@ -457,7 +470,7 @@ async function applyBlocking(goals: Goal[]) {
   if (top.packages.length === 0) return;
 
   if (isScheduledBlockingSupported) {
-    // Enforced natively by the accessibility service, even when Hadaf is closed.
+    // 1. Save full schedule to SharedPreferences for background persistence
     const payload: ScheduledBlockWindow[] = windows.map((w) => ({
       id: w.id,
       start: w.startMs,
@@ -465,15 +478,19 @@ async function applyBlocking(goals: Goal[]) {
       pkgs: top.packages,
     }));
     setScheduledBlocks(payload);
-    return;
   }
 
-  // Older binary: only works while the app process is alive.
-  if (!isNativeAppBlockerSupported || focusSessionState.isActive) return;
+  // 2. Also directly activate startNativeSession whenever a goal window is currently active!
+  // This arms HadafAccessibilityService.instance.onSessionStarted(...) in memory using the exact
+  // same code path as Focus Session so blocked apps are immediately locked during the goal duration.
+  if (!isNativeAppBlockerSupported) return;
   const active = windows.find((w) => w.startMs <= now && now < w.endMs);
-  if (active && jsBlockedWindow !== active.id) {
-    jsBlockedWindow = active.id;
-    await startNativeSession(top.packages, Math.max(1, Math.ceil((active.endMs - now) / 60_000)));
+  if (active) {
+    const remainingMins = Math.max(1, Math.ceil((active.endMs - now) / 60_000));
+    if (jsBlockedWindow !== active.id) {
+      jsBlockedWindow = active.id;
+    }
+    await startNativeSession(top.packages, remainingMins);
   } else if (!active && jsBlockedWindow) {
     jsBlockedWindow = null;
     await stopNativeSession();

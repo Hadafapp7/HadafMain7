@@ -36,6 +36,7 @@ function withAndroidAccessibilityService(config) {
 
     const requiredPermissions = [
       "android.permission.PACKAGE_USAGE_STATS",
+      "android.permission.QUERY_ALL_PACKAGES",
       "android.permission.FOREGROUND_SERVICE",
       "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
       "android.permission.SYSTEM_ALERT_WINDOW",
