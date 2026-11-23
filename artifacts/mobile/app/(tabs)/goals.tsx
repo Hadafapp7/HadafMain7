@@ -2031,7 +2031,10 @@ export default function GoalsScreen() {
           entering={isWeb ? undefined : FadeInDown.delay(0).springify()}
           style={styles.headerRow}
         >
-          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>GOALS</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <MaterialIcons name="track-changes" size={24} color={colors.onSurface} />
+            <Text style={[styles.headerTitle, { color: colors.onSurface }]}>GOALS</Text>
+          </View>
           <TouchableOpacity
             style={[
               styles.filterBtn,

@@ -320,8 +320,8 @@ export default function ProfileScreen() {
 
       {/* ── Top App Bar ── */}
       <View style={[styles.topBar, { paddingTop: topPad + 12 }]}>
-        <MaterialIcons name="star-outline" size={22} color="#000" />
-        <Text style={styles.topBarTitle}>ACCOUNT</Text>
+        <MaterialIcons name="badge" size={23} color="#000" />
+        <Text style={styles.topBarTitle}>PROFILE</Text>
       </View>
 
       <ScrollView scrollEventThrottle={16} decelerationRate="normal" 
