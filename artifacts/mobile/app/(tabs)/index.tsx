@@ -1661,11 +1661,7 @@ export default function HomeScreen() {
             icon="checklist"
             label1="DAILY"
             label2="GOALS"
-            badgeText={
-              displayDailyGoals.length === 0
-                ? "VIEW"
-                : `${doneDailyCount}/${displayDailyGoals.length} DONE`
-            }
+            badgeText="VIEW"
             badgeBg="#0284C7"
             onPress={() => {
               Haptics.selectionAsync();
@@ -1677,7 +1673,7 @@ export default function HomeScreen() {
             iconColor={todayMoodData?.logged ? "#2e7d32" : "#d84315"}
             icon="self-improvement"
             label1="MOOD"
-            label2={todayMoodData?.logged ? (todayMoodData.log?.moodLabel || "LOGGED") : "CHECK"}
+            label2={todayMoodData?.logged ? (todayMoodData.log?.moodLabel || "LOGGED").toUpperCase() : "CHECK"}
             badgeText={todayMoodData?.logged ? "LOGGED" : "CHECK IN"}
             badgeBg={todayMoodData?.logged ? "#2e7d32" : "#d84315"}
             onPress={() => {
@@ -2007,7 +2003,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.04)",
   },
-  ovalLabel:     { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.2, textAlign: "center" },
+  ovalLabel:     { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.2, textAlign: "center", textTransform: "uppercase" },
   ovalEmpty:     { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 },
   ovalBadge:     { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
   ovalBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 0.5 },
