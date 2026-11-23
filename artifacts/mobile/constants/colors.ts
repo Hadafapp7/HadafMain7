@@ -1,45 +1,45 @@
 const colors = {
   light: {
-    // Hadaf "Obsidian Chalk" palette
-    text: "#1a1c1c",
+    // Hadaf "Obsidian Chalk" palette (slightly darker background so elevated cards & shadows pop)
+    text: "#141618",
     tint: "#000000",
 
-    background: "#f9f9f9",
-    foreground: "#1a1c1c",
+    background: "#E6E8ED",
+    foreground: "#141618",
 
     card: "#ffffff",
-    cardForeground: "#1a1c1c",
+    cardForeground: "#141618",
 
     primary: "#000000",
     primaryForeground: "#e2e2e2",
 
-    secondary: "#5f5e60",
+    secondary: "#52525b",
     secondaryForeground: "#ffffff",
 
-    muted: "#eeeeee",
-    mutedForeground: "#777777",
+    muted: "#DCE0E6",
+    mutedForeground: "#6b7280",
 
-    accent: "#e8e8e8",
-    accentForeground: "#1a1c1c",
+    accent: "#DCE0E6",
+    accentForeground: "#141618",
 
     destructive: "#ba1a1a",
     destructiveForeground: "#ffffff",
 
-    border: "#c6c6c6",
-    input: "#e2e2e2",
+    border: "#c2c6ce",
+    input: "#DCE0E6",
 
     surfaceContainerLowest: "#ffffff",
-    surfaceContainerLow: "#f3f3f3",
-    surfaceContainer: "#eeeeee",
-    surfaceContainerHigh: "#e8e8e8",
-    surfaceContainerHighest: "#e2e2e2",
-    surfaceVariant: "#e2e2e2",
+    surfaceContainerLow: "#EDEFF3",
+    surfaceContainer: "#E2E5EB",
+    surfaceContainerHigh: "#D9DDE4",
+    surfaceContainerHighest: "#CFD4DC",
+    surfaceVariant: "#D9DDE4",
 
-    onSurface: "#1a1c1c",
-    onSurfaceVariant: "#474747",
+    onSurface: "#141618",
+    onSurfaceVariant: "#3f3f46",
 
-    outline: "#777777",
-    outlineVariant: "#c6c6c6",
+    outline: "#646870",
+    outlineVariant: "#bfc4cd",
   },
 
   dark: {

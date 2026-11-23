@@ -19,6 +19,7 @@ export interface AppUsageStat {
   packageName: string; // Android package / iOS bundle ID
   totalMinutes: number;
   category: string;
+  iconUri?: string; // Base64 PNG data URI rendered in pure Black & White
 }
 
 export interface NativePermissionStatus {
@@ -328,5 +329,65 @@ export function requestPhoneNumberHint(): void {
     AppBlockerNative.requestPhoneNumberHint();
   } catch (e) {
     console.warn("[HadafNative] requestPhoneNumberHint failed:", e);
+  }
+}
+
+export function isNativeNetworkConnected(): boolean | null {
+  if (!isNative || !AppBlockerNative || typeof AppBlockerNative.isNetworkConnected !== "function") {
+    return null;
+  }
+  try {
+    return Boolean(AppBlockerNative.isNetworkConnected());
+  } catch {
+    return null;
+  }
+}
+
+export function startNativeMiniPlayer(
+  doomScore: number,
+  targetScore: number = 0,
+  screenTimeLabel: string = ""
+): boolean {
+  if (!isAndroid || !AppBlockerNative || typeof AppBlockerNative.startMiniPlayer !== "function") {
+    return false;
+  }
+  try {
+    return Boolean(AppBlockerNative.startMiniPlayer(Math.round(doomScore), Math.round(targetScore), screenTimeLabel));
+  } catch (e) {
+    console.warn("[HadafNative] startMiniPlayer failed:", e);
+    return false;
+  }
+}
+
+export function updateNativeMiniPlayer(
+  doomScore: number,
+  targetScore: number = 0,
+  screenTimeLabel: string = ""
+): void {
+  if (!isAndroid || !AppBlockerNative || typeof AppBlockerNative.updateMiniPlayer !== "function") {
+    return;
+  }
+  try {
+    AppBlockerNative.updateMiniPlayer(Math.round(doomScore), Math.round(targetScore), screenTimeLabel);
+  } catch {}
+}
+
+export function stopNativeMiniPlayer(): void {
+  if (!isAndroid || !AppBlockerNative || typeof AppBlockerNative.stopMiniPlayer !== "function") {
+    return;
+  }
+  try {
+    AppBlockerNative.stopMiniPlayer();
+  } catch {}
+}
+
+export function isNativeMiniPlayerActive(): boolean {
+  if (!isAndroid || !AppBlockerNative || typeof AppBlockerNative.isMiniPlayerActive !== "function") {
+    return false;
+  }
+  try {
+    return Boolean(AppBlockerNative.isMiniPlayerActive());
+  } catch {
+    return false;
   }
 }

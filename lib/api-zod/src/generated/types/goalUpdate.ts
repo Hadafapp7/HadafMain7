@@ -25,4 +25,5 @@ export interface GoalUpdate {
   /** @nullable */
   forfeitRoast?: string | null;
   blockApps?: boolean;
+  blockedApps?: string[];
 }

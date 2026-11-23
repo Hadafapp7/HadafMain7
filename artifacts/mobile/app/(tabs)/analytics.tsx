@@ -261,85 +261,304 @@ function ActivityChart({ data, labels }: { data: number[]; labels: string[] }) {
   );
 }
 
-// ─── Top Apps Modal ───────────────────────────────────────────────────────────
+function isNoiseApp(appName?: string | null): boolean {
+  const n = (appName || "").trim().toLowerCase();
+  return n === "call" || n === "phone" || n === "incallui" || n === "dialer";
+}
 
-function TopAppsModal({
-  visible,
-  onClose,
-  apps,
+const TOP5_COLORS = [
+  { main: "#6366f1", bg: "#eef2ff", light: "rgba(99, 102, 241, 0.16)" },  // Indigo
+  { main: "#ec4899", bg: "#fdf2f8", light: "rgba(236, 72, 153, 0.16)" },  // Pink
+  { main: "#f59e0b", bg: "#fffbeb", light: "rgba(245, 158, 11, 0.16)" },  // Amber
+  { main: "#10b981", bg: "#ecfdf5", light: "rgba(16, 185, 129, 0.16)" },  // Emerald
+  { main: "#3b82f6", bg: "#eff6ff", light: "rgba(59, 130, 246, 0.16)" },  // Blue
+];
+
+interface Top5AppStat {
+  appName: string;
+  category: string;
+  totalMinutes: number;
+  sharePct: number;
+  color: string;
+  bgColor: string;
+  lightColor: string;
+}
+
+function buildTop5AppsForRange(
+  entries: AppUsageEntry[],
+  summary: AppUsageSummaryItem[],
+  nativeWeekly: { appName: string; category?: string; totalMinutes: number }[],
+  nativeMonthly: { appName: string; category?: string; totalMinutes: number }[],
+  range: PeriodRange
+): Top5AppStat[] {
+  const now = Date.now();
+  const cutoffMs =
+    range === "WEEK"
+      ? now - 7 * 86_400_000
+      : range === "MONTH"
+        ? now - 30 * 86_400_000
+        : now - 365 * 86_400_000;
+
+  // 1. Aggregate from server entries in the period (deduped by app + day)
+  const perAppDay = new Map<string, { appName: string; category: string; mins: number }>();
+  for (const e of entries) {
+    if (isNoiseApp(e.appName)) continue;
+    const ts = new Date(e.loggedAt).getTime();
+    if (ts < cutoffMs) continue;
+    const dayKey = new Date(e.loggedAt).toISOString().slice(0, 10);
+    const k = `${e.appName.toLowerCase()}|${dayKey}`;
+    const prev = perAppDay.get(k);
+    if (!prev || e.durationMinutes >= prev.mins) {
+      perAppDay.set(k, {
+        appName: e.appName,
+        category: e.category || "Social",
+        mins: e.durationMinutes,
+      });
+    }
+  }
+
+  const totalsByApp = new Map<string, { appName: string; category: string; totalMinutes: number }>();
+  for (const item of perAppDay.values()) {
+    const k = item.appName.toLowerCase();
+    const cur = totalsByApp.get(k) ?? { appName: item.appName, category: item.category, totalMinutes: 0 };
+    cur.totalMinutes += item.mins;
+    totalsByApp.set(k, cur);
+  }
+
+  // 2. Merge with native device stats for WEEK (7d) or MONTH/YEAR (30d) so device data is always reflected
+  const nativeSource = range === "WEEK" ? nativeWeekly : nativeMonthly;
+  for (const n of nativeSource) {
+    if (isNoiseApp(n.appName) || n.totalMinutes <= 0) continue;
+    const k = n.appName.toLowerCase();
+    const cur = totalsByApp.get(k);
+    if (!cur || n.totalMinutes > cur.totalMinutes) {
+      totalsByApp.set(k, {
+        appName: n.appName,
+        category: n.category || cur?.category || "Other",
+        totalMinutes: n.totalMinutes,
+      });
+    }
+  }
+
+  // 3. Fallback to summary if still empty
+  if (totalsByApp.size === 0 && summary.length > 0) {
+    for (const s of summary) {
+      if (isNoiseApp(s.appName) || s.totalMinutes <= 0) continue;
+      totalsByApp.set(s.appName.toLowerCase(), {
+        appName: s.appName,
+        category: s.category || "Other",
+        totalMinutes: s.totalMinutes,
+      });
+    }
+  }
+
+  const top5 = Array.from(totalsByApp.values())
+    .filter((a) => a.totalMinutes > 0)
+    .sort((a, b) => b.totalMinutes - a.totalMinutes)
+    .slice(0, 5);
+
+  const sumTop5 = Math.max(1, top5.reduce((acc, a) => acc + a.totalMinutes, 0));
+
+  return top5.map((a, idx) => {
+    const palette = TOP5_COLORS[idx % TOP5_COLORS.length];
+    return {
+      appName: a.appName,
+      category: a.category,
+      totalMinutes: a.totalMinutes,
+      sharePct: Math.max(1, Math.round((a.totalMinutes / sumTop5) * 100)),
+      color: palette.main,
+      bgColor: palette.bg,
+      lightColor: palette.light,
+    };
+  });
+}
+
+function AnimatedColorfulVerticalBar({
+  item,
+  maxMinutes,
+  index,
+  animKey,
 }: {
-  visible: boolean;
-  onClose: () => void;
-  apps: AppUsageSummaryItem[];
+  item: Top5AppStat;
+  maxMinutes: number;
+  index: number;
+  animKey: number;
 }) {
-  const colors  = useColors();
-  const scale   = useSharedValue(0.88);
-  const opacity = useSharedValue(0);
+  const chartH = 132;
+  const targetH = maxMinutes > 0 ? Math.max(18, Math.round((item.totalMinutes / maxMinutes) * chartH)) : 18;
+  const barH = useSharedValue(0);
 
   useEffect(() => {
-    if (visible) {
-      scale.value   = withSpring(1, { damping: 18, stiffness: 120 });
-      opacity.value = withTiming(1, { duration: 180 });
-    } else {
-      scale.value   = 0.88;
-      opacity.value = 0;
-    }
-  }, [visible]);
+    barH.value = 0;
+    barH.value = withDelay(120 + index * 90, withSpring(targetH, { damping: 16, stiffness: 110 }));
+  }, [targetH, index, animKey]);
 
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
+  const animBarStyle = useAnimatedStyle(() => ({
+    height: barH.value,
   }));
 
-  const appsList = Array.isArray(apps) ? apps : [];
+  const shortName = item.appName.length > 8 ? item.appName.slice(0, 7) + "…" : item.appName;
 
   return (
-    <Modal visible={visible} transparent animationType="none">
-      <View style={styles.modalOuter}>
-        <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFill} />
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <Animated.View
-          style={[styles.modalSheet, { backgroundColor: colors.card }, sheetStyle]}
-          onStartShouldSetResponder={() => true}
-        >
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: colors.onSurface }]}>Top Apps</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={14}>
-              <MaterialIcons name="close" size={20} color={colors.outline} />
-            </TouchableOpacity>
-          </View>
+    <View style={styles.colorBarCol}>
+      <View style={[styles.colorBarTimePill, { backgroundColor: item.lightColor }]}>
+        <Text style={[styles.colorBarTimeText, { color: item.color }]}>
+          {formatMinutes(item.totalMinutes)}
+        </Text>
+      </View>
 
-          {appsList.length === 0 ? (
-            <Text style={[styles.emptyText, { color: colors.outline }]}>
-              No app usage logged yet.
-            </Text>
-          ) : (
-            appsList.map((app, i) => (
-              <View
-                key={app.appName}
-                style={[
-                  styles.topAppRow,
-                  i < appsList.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerHigh },
-                ]}
-              >
-                <View style={[styles.topAppIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-                  <MaterialIcons name={categoryIcon(app.category)} size={20} color={colors.onSurface} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.topAppName, { color: colors.onSurface }]}>{app.appName}</Text>
-                  {app.category ? (
-                    <Text style={[styles.topAppCategory, { color: colors.outline }]}>{app.category}</Text>
-                  ) : null}
-                </View>
-                <Text style={[styles.topAppTime, { color: colors.onSurface }]}>
-                  {formatMinutes(app.totalMinutes)}
-                </Text>
-              </View>
-            ))
-          )}
+      <View style={[styles.colorBarSlot, { height: chartH }]}>
+        <Animated.View
+          style={[
+            styles.colorBarFill,
+            {
+              backgroundColor: item.color,
+              shadowColor: item.color,
+            },
+            animBarStyle,
+          ]}
+        >
+          <View style={styles.colorBarRankCircle}>
+            <Text style={[styles.colorBarRankText, { color: item.color }]}>#{index + 1}</Text>
+          </View>
         </Animated.View>
       </View>
-    </Modal>
+
+      <Text style={styles.colorBarAppName} numberOfLines={1}>
+        {shortName}
+      </Text>
+      <Text style={[styles.colorBarShareText, { color: item.color }]}>
+        {item.sharePct}%
+      </Text>
+    </View>
+  );
+}
+
+function ColorfulTop5AppsChartCard({
+  top5,
+  range,
+  onRangeChange,
+  animKey,
+}: {
+  top5: Top5AppStat[];
+  range: PeriodRange;
+  onRangeChange: (r: PeriodRange) => void;
+  animKey: number;
+}) {
+  const colors = useColors();
+  const maxMinutes = Math.max(1, ...top5.map((a) => a.totalMinutes));
+  const totalTop5Minutes = top5.reduce((s, a) => s + a.totalMinutes, 0);
+
+  return (
+    <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
+      {/* Header + Weekly / Monthly / Yearly switcher */}
+      <View style={styles.chartHeader}>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={[styles.chartSubLabel, { color: colors.outline }]}>
+            TOP 5 MOST USED · {range}
+          </Text>
+          <Text style={[styles.chartTitle, { color: colors.onSurface }]}>
+            App Usage Chart
+          </Text>
+        </View>
+
+        <View style={styles.top5RangePillsWrap}>
+          {DATE_RANGES.map((r) => {
+            const active = range === r;
+            return (
+              <TouchableOpacity
+                key={r}
+                style={[styles.top5RangePill, active && styles.top5RangePillActive]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  onRangeChange(r);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.top5RangePillText, active && { color: "#fff" }]}>
+                  {r === "WEEK" ? "W" : r === "MONTH" ? "M" : "Y"}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      {top5.length === 0 ? (
+        <EmptyChart colors={colors} />
+      ) : (
+        <>
+          {/* Colorful 5-Bar Vertical Chart */}
+          <View style={styles.colorVerticalChartBox}>
+            <View style={styles.colorBarsRow}>
+              {top5.map((item, idx) => (
+                <AnimatedColorfulVerticalBar
+                  key={`${item.appName}-${range}-${animKey}`}
+                  item={item}
+                  maxMinutes={maxMinutes}
+                  index={idx}
+                  animKey={animKey}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Colorful Multi-Segment Share Bar */}
+          <View style={{ gap: 6 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: colors.outline, letterSpacing: 1 }}>
+                {range === "WEEK" ? "WEEKLY" : range === "MONTH" ? "MONTHLY" : "YEARLY"} SHARE DISTRIBUTION
+              </Text>
+              <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: colors.onSurface }}>
+                Total: {formatMinutes(totalTop5Minutes)}
+              </Text>
+            </View>
+            <View style={styles.segmentedShareTrack}>
+              {top5.map((item) => (
+                <View
+                  key={item.appName}
+                  style={{
+                    flex: Math.max(1, item.totalMinutes),
+                    backgroundColor: item.color,
+                    height: "100%",
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Colorful Legend & Breakdown List */}
+          <View style={{ gap: 10, marginTop: 4 }}>
+            {top5.map((item, idx) => (
+              <View
+                key={item.appName}
+                style={[
+                  styles.colorLegendRow,
+                  { backgroundColor: item.bgColor },
+                ]}
+              >
+                <View style={[styles.colorLegendDot, { backgroundColor: item.color }]}>
+                  <Text style={styles.colorLegendRank}>{idx + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.topAppName, { color: "#111827", fontFamily: "Inter_700Bold" }]}>
+                    {item.appName}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: item.color, letterSpacing: 0.6 }}>
+                    {(item.category || "OTHER").toUpperCase()} · {item.sharePct}% OF TOP 5
+                  </Text>
+                </View>
+                <View style={[styles.colorTimeBadge, { backgroundColor: item.color }]}>
+                  <Text style={styles.colorTimeBadgeText}>
+                    {formatMinutes(item.totalMinutes)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+    </View>
   );
 }
 
@@ -1059,8 +1278,10 @@ export default function AnalyticsScreen() {
   const topPad      = isWeb ? 24 : insets.top;
   const sub         = useSubscription();
   const [activeRange, setActiveRange] = useState<PeriodRange>("WEEK");
-  const [showTopApps, setShowTopApps] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [refreshAnimKey, setRefreshAnimKey] = useState(0);
+  const [nativeWeeklyApps, setNativeWeeklyApps] = useState<{ appName: string; category?: string; totalMinutes: number }[]>([]);
+  const [nativeMonthlyApps, setNativeMonthlyApps] = useState<{ appName: string; category?: string; totalMinutes: number }[]>([]);
 
   const queryClient = useQueryClient();
   const createUsageEntry = useCreateAppUsageEntry();
@@ -1159,8 +1380,15 @@ export default function AnalyticsScreen() {
 
     setSyncing(true);
     try {
-      const stats = await getDeviceUsageStats(1); // Today's stats
-      const activeApps = stats.filter((a) => a.totalMinutes > 0).slice(0, 8);
+      const [statsToday, statsWeek, statsMonth] = await Promise.all([
+        getDeviceUsageStats(1),
+        getDeviceUsageStats(7),
+        getDeviceUsageStats(30),
+      ]);
+      setNativeWeeklyApps(statsWeek);
+      setNativeMonthlyApps(statsMonth);
+
+      const activeApps = statsToday.filter((a) => a.totalMinutes > 0).slice(0, 8);
       if (activeApps.length > 0) {
         await Promise.allSettled(
           activeApps.map((app) =>
@@ -1212,6 +1440,7 @@ export default function AnalyticsScreen() {
       ]);
     } finally {
       setRefreshing(false);
+      setRefreshAnimKey((k) => k + 1);
     }
   }, [
     loadLocalGoalsBackup,
@@ -1237,14 +1466,14 @@ export default function AnalyticsScreen() {
     [entries, summary],
   );
 
+  const top5AppsForRange = useMemo(
+    () => buildTop5AppsForRange(entries, summary, nativeWeeklyApps, nativeMonthlyApps, activeRange),
+    [entries, summary, nativeWeeklyApps, nativeMonthlyApps, activeRange]
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <AnimatedBackground />
-      <TopAppsModal
-        visible={showTopApps}
-        onClose={() => setShowTopApps(false)}
-        apps={summary}
-      />
 
       <ScrollView scrollEventThrottle={16} decelerationRate="normal" 
         style={styles.scroll}
@@ -1276,14 +1505,19 @@ export default function AnalyticsScreen() {
           <>
             {/* Range tabs */}
             <Animated.View
-              entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
+              key={`range-bar-${refreshAnimKey}`}
+              entering={isWeb ? undefined : FadeInDown.delay(40).springify()}
               style={[styles.rangeBar, { backgroundColor: colors.surfaceContainerHigh }]}
             >
               {DATE_RANGES.map((r) => (
                 <TouchableOpacity
                   key={r}
                   style={[styles.rangeBtn, activeRange === r && { backgroundColor: colors.primary }]}
-                  onPress={() => setActiveRange(r)}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setActiveRange(r);
+                    setRefreshAnimKey((k) => k + 1);
+                  }}
                   activeOpacity={0.8}
                 >
                   <Text style={[
@@ -1300,7 +1534,10 @@ export default function AnalyticsScreen() {
             </Animated.View>
 
             {/* 1. Health Index Block (Completed vs Forfeited Focus & Goals) */}
-            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(100).springify()}>
+            <Animated.View
+              key={`health-idx-${refreshAnimKey}`}
+              entering={isWeb ? undefined : FadeInDown.delay(80).springify()}
+            >
               <HealthIndexBlock
                 health={insights.health}
                 intervals={insights.tracker.intervals}
@@ -1309,7 +1546,10 @@ export default function AnalyticsScreen() {
             </Animated.View>
 
             {/* 2. Goal Tracker Block (Simple, Clean Screen vs Target Graph) */}
-            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(130).springify()}>
+            <Animated.View
+              key={`goal-tracker-${refreshAnimKey}`}
+              entering={isWeb ? undefined : FadeInDown.delay(120).springify()}
+            >
               <GoalTrackerBlock
                 tracker={insights.tracker}
                 range={activeRange}
@@ -1317,7 +1557,7 @@ export default function AnalyticsScreen() {
               />
             </Animated.View>
 
-            {/* 3. Diagnostic Block (AWS Bedrock LLM — auto-refreshes once every minute) */}
+            {/* 3. Diagnostic Block (AWS Bedrock LLM — auto-refreshes once every minute, not remounted on pull-to-refresh) */}
             <Animated.View entering={isWeb ? undefined : FadeInDown.delay(160).springify()}>
               <BedrockDiagnosticBlock
                 diagnostic={diagnostic}
@@ -1327,14 +1567,19 @@ export default function AnalyticsScreen() {
             </Animated.View>
 
             {/* 2-column KPIs */}
-            <Animated.View entering={isWeb ? undefined : FadeInDown.delay(180).springify()} style={[styles.kpiRow, { gap: 14 }]}>
+            <Animated.View
+              key={`kpis-${refreshAnimKey}`}
+              entering={isWeb ? undefined : FadeInDown.delay(180).springify()}
+              style={[styles.kpiRow, { gap: 14 }]}
+            >
               <KpiCard icon="alarm" label="PEAK USAGE" value={peakTime} />
               <KpiCard icon="timer" label="DAILY AVG" value={dailyAvg} />
             </Animated.View>
 
             {/* Activity chart */}
             <Animated.View
-              entering={isWeb ? undefined : FadeInDown.delay(240).springify()}
+              key={`activity-flow-${refreshAnimKey}`}
+              entering={isWeb ? undefined : FadeInDown.delay(220).springify()}
               style={[styles.chartCard, { backgroundColor: colors.card }]}
             >
               <View style={styles.chartHeader}>
@@ -1354,57 +1599,21 @@ export default function AnalyticsScreen() {
               )}
             </Animated.View>
 
-            {/* Per-app breakdown card */}
-            {summary.length > 0 && (
-              <Animated.View
-                entering={isWeb ? undefined : FadeInDown.delay(300).springify()}
-                style={[styles.chartCard, { backgroundColor: colors.card }]}
-              >
-                <View style={styles.chartHeader}>
-                  <View>
-                    <Text style={[styles.chartSubLabel, { color: colors.outline }]}>BREAKDOWN</Text>
-                    <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Top Apps</Text>
-                  </View>
-                  {summary.length > 3 && (
-                    <TouchableOpacity
-                      style={[styles.yearlyBadge, { backgroundColor: colors.surfaceContainerHigh }]}
-                      onPress={() => setShowTopApps(true)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.yearlyBadgeText, { color: colors.onSurface }]}>See all</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {summary.slice(0, 5).map((app, i) => (
-                  <View
-                    key={app.appName}
-                    style={[
-                      styles.topAppRow,
-                      i < Math.min(summary.length, 5) - 1 && {
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.surfaceContainerHigh,
-                      },
-                    ]}
-                  >
-                    <View style={[styles.topAppIcon, { backgroundColor: colors.surfaceContainerHigh }]}>
-                      <MaterialIcons name={categoryIcon(app.category)} size={20} color={colors.onSurface} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.topAppName, { color: colors.onSurface }]}>{app.appName}</Text>
-                      {app.category ? (
-                        <Text style={[styles.topAppCategory, { color: colors.outline }]}>{app.category}</Text>
-                      ) : null}
-                    </View>
-                    <Text style={[styles.topAppTime, { color: colors.onSurface }]}>
-                      {formatMinutes(app.totalMinutes)}
-                    </Text>
-                  </View>
-                ))}
-              </Animated.View>
-            )}
-
-            
+            {/* Colorful Weekly / Monthly / Yearly Top 5 Most Used Apps Chart (Point 3) */}
+            <Animated.View
+              key={`top5-chart-${refreshAnimKey}`}
+              entering={isWeb ? undefined : FadeInDown.delay(270).springify()}
+            >
+              <ColorfulTop5AppsChartCard
+                top5={top5AppsForRange}
+                range={activeRange}
+                onRangeChange={(r) => {
+                  setActiveRange(r);
+                  setRefreshAnimKey((k) => k + 1);
+                }}
+                animKey={refreshAnimKey}
+              />
+            </Animated.View>
           </>
         )}
       </ScrollView>
@@ -1435,22 +1644,155 @@ const styles = StyleSheet.create({
   kpiRow:  { flexDirection: "row", gap: 10 },
   kpiCard: {
     flex: 1, borderRadius: 20, padding: 14, gap: 6,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04, shadowRadius: 16, elevation: 2,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12, shadowRadius: 16, elevation: 6,
+    borderWidth: 1, borderColor: "rgba(0,0,0,0.05)",
   },
   kpiLabel: { fontSize: 10, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 },
   kpiValue: { fontSize: 15, fontFamily: "Inter_700Bold" },
 
   chartCard: {
     borderRadius: 28, padding: 20, gap: 16,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04, shadowRadius: 24, elevation: 2,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.13, shadowRadius: 20, elevation: 7,
+    borderWidth: 1, borderColor: "rgba(0,0,0,0.05)",
   },
   chartHeader:    { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   chartSubLabel:  { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 1.2 },
   chartTitle:     { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.3, marginTop: 2 },
   yearlyBadge:    { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   yearlyBadgeText:{ fontSize: 12, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5 },
+
+  // Colorful Top 5 Most Used Apps Chart Styles
+  top5RangePillsWrap: {
+    flexDirection: "row",
+    backgroundColor: "#f1f5f9",
+    borderRadius: 999,
+    padding: 3,
+    gap: 3,
+  },
+  top5RangePill: {
+    width: 30,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  top5RangePillActive: {
+    backgroundColor: "#000000",
+  },
+  top5RangePillText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: "#64748b",
+  },
+  colorVerticalChartBox: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  colorBarsRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-around",
+    gap: 6,
+  },
+  colorBarCol: {
+    flex: 1,
+    alignItems: "center",
+    gap: 5,
+  },
+  colorBarTimePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  colorBarTimeText: {
+    fontSize: 9.5,
+    fontFamily: "Inter_700Bold",
+  },
+  colorBarSlot: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  colorBarFill: {
+    width: 34,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingTop: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  colorBarRankCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorBarRankText: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+  },
+  colorBarAppName: {
+    fontSize: 10.5,
+    fontFamily: "Inter_700Bold",
+    color: "#1e293b",
+    marginTop: 2,
+  },
+  colorBarShareText: {
+    fontSize: 9.5,
+    fontFamily: "Inter_700Bold",
+  },
+  segmentedShareTrack: {
+    height: 12,
+    borderRadius: 6,
+    flexDirection: "row",
+    overflow: "hidden",
+    backgroundColor: "#e2e8f0",
+    gap: 2,
+  },
+  colorLegendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+  },
+  colorLegendDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorLegendRank: {
+    color: "#fff",
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+  },
+  colorTimeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  colorTimeBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+  },
 
   topAppRow:      { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 },
   topAppIcon:     { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },

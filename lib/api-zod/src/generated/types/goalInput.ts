@@ -18,5 +18,7 @@ export interface GoalInput {
   /** @minimum 1 */
   durationMinutes: number;
   scheduledDate?: string;
+  status?: 'pending' | 'done' | 'forfeited';
   blockApps?: boolean;
+  blockedApps?: string[];
 }

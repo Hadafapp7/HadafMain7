@@ -7,14 +7,68 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
+import java.io.ByteArrayOutputStream
 import java.util.Calendar
+import java.util.concurrent.ConcurrentHashMap
 
 class UsageStatsModule : Module() {
+  companion object {
+    private val bwIconCache = ConcurrentHashMap<String, String>()
+
+    fun getBlackAndWhiteIconDataUri(pm: PackageManager, pkg: String): String {
+      bwIconCache[pkg]?.let { return it }
+      return try {
+        val drawable = pm.getApplicationIcon(pkg)
+        val size = 72
+        val rawBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val rawCanvas = Canvas(rawBmp)
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(rawCanvas)
+
+        val bwBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val bwCanvas = Canvas(bwBmp)
+        val grayMatrix = ColorMatrix().apply { setSaturation(0f) }
+        val contrast = 1.25f
+        val translate = (-0.5f * contrast + 0.5f) * 255f
+        val contrastMatrix = ColorMatrix(
+          floatArrayOf(
+            contrast, 0f, 0f, 0f, translate,
+            0f, contrast, 0f, 0f, translate,
+            0f, 0f, contrast, 0f, translate,
+            0f, 0f, 0f, 1f, 0f
+          )
+        )
+        grayMatrix.postConcat(contrastMatrix)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+          colorFilter = ColorMatrixColorFilter(grayMatrix)
+        }
+        bwCanvas.drawBitmap(rawBmp, 0f, 0f, paint)
+        rawBmp.recycle()
+
+        val baos = ByteArrayOutputStream()
+        bwBmp.compress(Bitmap.CompressFormat.PNG, 90, baos)
+        bwBmp.recycle()
+        val b64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+        val dataUri = "data:image/png;base64,$b64"
+        bwIconCache[pkg] = dataUri
+        dataUri
+      } catch (_: Exception) {
+        ""
+      }
+    }
+  }
+
   override fun definition() = ModuleDefinition {
     Name("HadafUsageStats")
 
@@ -367,11 +421,14 @@ class UsageStatsModule : Module() {
             else -> "Other"
           }
 
+          val iconUri = getBlackAndWhiteIconDataUri(pm, pkg)
+
           mapOf(
             "appName" to label,
             "packageName" to pkg,
             "totalMinutes" to minutes,
-            "category" to category
+            "category" to category,
+            "iconUri" to iconUri
           )
         }
 

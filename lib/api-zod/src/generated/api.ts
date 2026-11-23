@@ -46,6 +46,7 @@ export const ListGoalsResponseItem = zod.object({
   "forfeitReason": zod.string().nullish(),
   "forfeitRoast": zod.string().nullish(),
   "blockApps": zod.boolean().optional(),
+  "blockedApps": zod.array(zod.string()).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -67,7 +68,9 @@ export const CreateGoalBody = zod.object({
   "startTime": zod.string(),
   "durationMinutes": zod.number().min(1),
   "scheduledDate": zod.string().optional(),
-  "blockApps": zod.boolean().optional()
+  "status": zod.enum(['pending', 'done', 'forfeited']).optional(),
+  "blockApps": zod.boolean().optional(),
+  "blockedApps": zod.array(zod.string()).optional()
 })
 
 
@@ -93,7 +96,8 @@ export const UpdateGoalBody = zod.object({
   "status": zod.enum(['pending', 'done', 'forfeited']).optional(),
   "forfeitReason": zod.string().nullish(),
   "forfeitRoast": zod.string().nullish(),
-  "blockApps": zod.boolean().optional()
+  "blockApps": zod.boolean().optional(),
+  "blockedApps": zod.array(zod.string()).optional()
 })
 
 export const UpdateGoalResponse = zod.object({
@@ -110,6 +114,7 @@ export const UpdateGoalResponse = zod.object({
   "forfeitReason": zod.string().nullish(),
   "forfeitRoast": zod.string().nullish(),
   "blockApps": zod.boolean().optional(),
+  "blockedApps": zod.array(zod.string()).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

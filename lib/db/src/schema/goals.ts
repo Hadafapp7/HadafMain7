@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -26,8 +26,9 @@ export const goalsTable = pgTable("goals", {
   status: text("status", { enum: GOAL_STATUSES }).notNull().default("pending"),
   forfeitReason: text("forfeit_reason"),
   forfeitRoast: text("forfeit_roast"),
-  // When true, the top social apps are blocked while the goal window is active.
+  // When true, the selected/top social apps are blocked while the goal window is active.
   blockApps: boolean("block_apps").notNull().default(false),
+  blockedApps: jsonb("blocked_apps").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

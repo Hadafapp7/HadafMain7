@@ -1,3 +1,5 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import UserAvatar from '@/components/UserAvatar';
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@clerk/expo";
@@ -7,6 +9,7 @@ import { router, useFocusEffect } from "expo-router";
 import React, { useState } from "react";
 import {
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,7 +26,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { useColors } from "@/hooks/useColors";
-import { useGetMe, useListFocusSessions, useListGoals } from "@workspace/api-client-react";
+import {
+  customFetch,
+  getListGoalsQueryKey,
+  type Goal,
+  useGetMe,
+  useListFocusSessions,
+  useListGoals,
+} from "@workspace/api-client-react";
 
 const isWeb = Platform.OS === "web";
 
@@ -131,26 +141,124 @@ function PrefItem({ item }: { item: PrefRow }) {
 
 // ── Profile screen ─────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
+  const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const topPad  = isWeb ? 0 : insets.top;
   const tabBarH = isWeb ? 84 : 62 + insets.bottom;
+  const queryClient = useQueryClient();
 
   const { signOut } = useAuth();
   const sub = useSubscription();
   const { data: me, refetch: refetchMe } = useGetMe();
+  const { data: userProfile, refetch: refetchUserProfile } = useQuery({
+    queryKey: ["userMe"],
+    queryFn: () => customFetch<any>("/api/users/me"),
+  });
   const { data: rawFocusSessions, refetch: refetchSessions } = useListFocusSessions();
   const focusSessions = Array.isArray(rawFocusSessions) ? rawFocusSessions : [];
   const { data: rawGoals, refetch: refetchGoals } = useListGoals();
-  const goals = Array.isArray(rawGoals) ? rawGoals : [];
+  const serverGoals = Array.isArray(rawGoals) ? rawGoals : [];
+  const [localGoalsBackup, setLocalGoalsBackup] = useState<Goal[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const syncLocalCompletedGoalsToDatabase = React.useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem("@hadaf/local_goals_backup_v1");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Goal[];
+      if (!Array.isArray(parsed)) return;
+      setLocalGoalsBackup(parsed);
+
+      const currentServerGoals =
+        (queryClient.getQueryData(getListGoalsQueryKey()) as Goal[] | undefined) ?? serverGoals;
+
+      let didMutateServer = false;
+      const updatedLocal = [...parsed];
+
+      for (let i = 0; i < updatedLocal.length; i++) {
+        const lg = updatedLocal[i];
+        if (lg.status !== "done") continue;
+
+        const match = currentServerGoals.find(
+          (s) => s.id === lg.id || (s.title === lg.title && s.startTime === lg.startTime)
+        );
+        if (match && match.status !== "done" && !match.id.startsWith("local-")) {
+          try {
+            await customFetch(`/api/goals/${match.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ status: "done" }),
+            });
+            didMutateServer = true;
+          } catch {}
+        } else if (!match && lg.id.startsWith("local-")) {
+          try {
+            const created = await customFetch<Goal>("/api/goals", {
+              method: "POST",
+              body: JSON.stringify({
+                title: lg.title,
+                intent: lg.intent || undefined,
+                type: lg.type,
+                priority: lg.priority,
+                startTime: lg.startTime,
+                durationMinutes: lg.durationMinutes,
+                scheduledDate: lg.scheduledDate || undefined,
+                status: "done",
+                blockApps: lg.blockApps ?? true,
+                blockedApps: lg.blockedApps ?? [],
+              }),
+            });
+            if (created?.id) {
+              if (created.status !== "done") {
+                await customFetch(`/api/goals/${created.id}`, {
+                  method: "PATCH",
+                  body: JSON.stringify({ status: "done" }),
+                });
+              }
+              updatedLocal[i] = { ...created, status: "done" };
+              didMutateServer = true;
+            }
+          } catch {}
+        }
+      }
+
+      if (didMutateServer) {
+        await AsyncStorage.setItem("@hadaf/local_goals_backup_v1", JSON.stringify(updatedLocal));
+        setLocalGoalsBackup(updatedLocal);
+        await Promise.allSettled([refetchGoals(), refetchMe(), refetchUserProfile()]);
+      }
+    } catch {}
+  }, [queryClient, serverGoals, refetchGoals, refetchMe, refetchUserProfile]);
 
   useFocusEffect(
     React.useCallback(() => {
-      console.log("[Profile] Tab focused. Refreshing stats...");
-      refetchSessions();
-      refetchGoals();
-      refetchMe();
-    }, [refetchSessions, refetchGoals, refetchMe])
+      console.log("[Profile] Tab focused. Refreshing stats from database...");
+      void (async () => {
+        await Promise.allSettled([
+          refetchSessions(),
+          refetchGoals(),
+          refetchMe(),
+          refetchUserProfile(),
+        ]);
+        await syncLocalCompletedGoalsToDatabase();
+      })();
+    }, [refetchSessions, refetchGoals, refetchMe, refetchUserProfile, syncLocalCompletedGoalsToDatabase])
   );
+
+  const handlePullRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    Haptics.selectionAsync();
+    try {
+      await syncLocalCompletedGoalsToDatabase();
+      await Promise.allSettled([
+        refetchSessions(),
+        refetchGoals(),
+        refetchMe(),
+        refetchUserProfile(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [syncLocalCompletedGoalsToDatabase, refetchSessions, refetchGoals, refetchMe, refetchUserProfile]);
 
   const handleSignOut = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -158,20 +266,50 @@ export default function ProfileScreen() {
   };
   const prefs = usePrefs(handleSignOut);
 
+  // Merge server goals + local goals so GOALS DONE reflects database & any just-completed goal
+  const mergedGoals = React.useMemo(() => {
+    const byId = new Map<string, Goal>();
+    for (const g of serverGoals) byId.set(g.id, g);
+    for (const lg of localGoalsBackup) {
+      const matched = serverGoals.find(
+        (s) => s.id === lg.id || (s.title === lg.title && s.startTime === lg.startTime)
+      );
+      if (matched) {
+        if (lg.status === "done" || matched.status === "done") {
+          byId.set(matched.id, { ...matched, status: "done" });
+        }
+      } else {
+        byId.set(lg.id, lg);
+      }
+    }
+    return Array.from(byId.values());
+  }, [serverGoals, localGoalsBackup]);
+
   const completedSessions = focusSessions.filter((s) => s.status === "completed");
-  const totalFocusMinutes = completedSessions.reduce((sum, s) => sum + s.plannedDurationMinutes, 0);
-  const goalsDone = goals.filter((g) => g.status === "done").length;
+  const listFocusMinutes = completedSessions.reduce((sum, s) => sum + s.plannedDurationMinutes, 0);
+  const dbFocusMinutes = Number(userProfile?.totalFocusMinutes ?? (me as any)?.totalFocusMinutes ?? 0);
+  const totalFocusMinutes = Math.max(listFocusMinutes, dbFocusMinutes);
+
+  const dbSessionsCount = Number(userProfile?.completedSessionsCount ?? (me as any)?.completedSessionsCount ?? 0);
+  const totalCompletedSessions = Math.max(completedSessions.length, dbSessionsCount);
+
+  const listGoalsDone = mergedGoals.filter((g) => g.status === "done").length;
+  const dbGoalsDone = Number(userProfile?.goalsDoneCount ?? (me as any)?.goalsDoneCount ?? 0);
+  const goalsDone = Math.max(listGoalsDone, dbGoalsDone);
 
   const stats = [
     { label: "FOCUS",   value: formatHours(totalFocusMinutes) },
-    { label: "SESSIONS", value: String(completedSessions.length) },
+    { label: "SESSIONS", value: String(totalCompletedSessions) },
     { label: "GOALS DONE", value: String(goalsDone) },
   ];
 
-  const displayName = me?.name?.toUpperCase() ?? me?.email?.split("@")[0].toUpperCase() ?? (me as any)?.phone ?? "HADAF USER";
+  const displayName = me?.name?.toUpperCase() ?? userProfile?.name?.toUpperCase() ?? me?.email?.split("@")[0].toUpperCase() ?? (me as any)?.phone ?? "HADAF USER";
+
+  // Point 12: Only show "Master your productivity without limits" card when the user has completed free tier (isLimited) and has NOT subscribed to any plan (!isPro)
+  const showProUpgradeCard = sub.isLimited && !sub.isPro;
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <AnimatedBackground />
 
       {/* ── Top App Bar ── */}
@@ -187,6 +325,14 @@ export default function ProfileScreen() {
           { paddingTop: topPad + 72, paddingBottom: tabBarH + 32 },
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
+            tintColor="#000"
+            colors={["#000000"]}
+          />
+        }
       >
 
         {/* ── Profile Identity ── */}
@@ -195,11 +341,11 @@ export default function ProfileScreen() {
           style={styles.identitySection}
         >
           <View style={styles.avatarWrap}>
-            <UserAvatar gender={(me as any)?.gender} isPro={sub.isPro} size={84} />
+            <UserAvatar gender={(me as any)?.gender ?? userProfile?.gender} isPro={sub.isPro} size={84} />
           </View>
 
           <Text style={styles.profileName}>{displayName}</Text>
-          <Text style={styles.profileEmail}>{me?.email ?? (me as any)?.phone ?? ""}</Text>
+          <Text style={styles.profileEmail}>{me?.email ?? userProfile?.email ?? (me as any)?.phone ?? ""}</Text>
         </Animated.View>
 
         {/* ── Stats Row ── */}
@@ -215,33 +361,35 @@ export default function ProfileScreen() {
           ))}
         </Animated.View>
 
-        {/* ── Premium Widget ── */}
-        <PressCard delay={120} style={styles.proCard}>
-          <View style={styles.sparkleWrap} pointerEvents="none">
-            <MaterialIcons name="auto-awesome" size={88} color="#fff" style={{ opacity: 0.10 }} />
-          </View>
-
-          <View style={styles.proContent}>
-            <View style={styles.proTierBadge}>
-              <Text style={styles.proTierText}>PRO TIER</Text>
+        {/* ── Premium Widget (Point 12: Only shown when free trial ended and user has not subscribed) ── */}
+        {showProUpgradeCard && (
+          <PressCard delay={120} style={styles.proCard}>
+            <View style={styles.sparkleWrap} pointerEvents="none">
+              <MaterialIcons name="auto-awesome" size={88} color="#fff" style={{ opacity: 0.10 }} />
             </View>
 
-            <Text style={styles.proHeadline}>
-              {"MASTER YOUR PRODUCTIVITY\nWITHOUT LIMITS."}
-            </Text>
+            <View style={styles.proContent}>
+              <View style={styles.proTierBadge}>
+                <Text style={styles.proTierText}>PRO TIER</Text>
+              </View>
 
-            <TouchableOpacity
-              style={styles.proBtn}
-              activeOpacity={0.85}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                router.push("/subscription" as any);
-              }}
-            >
-              <Text style={styles.proBtnText}>{sub.isPro ? "MANAGE SUBSCRIPTION" : "UNLOCK PRO ACCESS"}</Text>
-            </TouchableOpacity>
-          </View>
-        </PressCard>
+              <Text style={styles.proHeadline}>
+                {"MASTER YOUR PRODUCTIVITY\nWITHOUT LIMITS."}
+              </Text>
+
+              <TouchableOpacity
+                style={styles.proBtn}
+                activeOpacity={0.85}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  router.push("/subscription" as any);
+                }}
+              >
+                <Text style={styles.proBtnText}>UNLOCK PRO ACCESS</Text>
+              </TouchableOpacity>
+            </View>
+          </PressCard>
+        )}
 
         {/* ── Preferences ── */}
         <Animated.View
@@ -271,7 +419,7 @@ export default function ProfileScreen() {
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: "#f9f9f9" },
+  root:   { flex: 1, backgroundColor: "#E6E8ED" },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, gap: 20 },
 
@@ -279,7 +427,7 @@ const styles = StyleSheet.create({
     position: "absolute", top: 0, left: 0, right: 0, zIndex: 20,
     flexDirection: "row", alignItems: "center", gap: 14,
     paddingHorizontal: 20, paddingBottom: 14,
-    backgroundColor: "#f3f3f3",
+    backgroundColor: "#DDE0E6",
   },
   topBarTitle: { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.5, color: "#000" },
 
@@ -293,7 +441,7 @@ const styles = StyleSheet.create({
     position: "absolute", bottom: -8, right: -8,
     width: 32, height: 32, borderRadius: 16, backgroundColor: "#000",
     alignItems: "center", justifyContent: "center",
-    borderWidth: 3, borderColor: "#f9f9f9",
+    borderWidth: 3, borderColor: "#E6E8ED",
   },
   profileName: {
     fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5,
@@ -305,14 +453,18 @@ const styles = StyleSheet.create({
 
   statsRow: { flexDirection: "row", gap: 12 },
   statCard: {
-    flex: 1, backgroundColor: "#f3f3f3", borderRadius: 20,
+    flex: 1, backgroundColor: "#ffffff", borderRadius: 20,
     paddingVertical: 20, alignItems: "center", gap: 6,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.13, shadowRadius: 16, elevation: 6,
+    borderWidth: 1, borderColor: "rgba(0,0,0,0.05)",
   },
   statLabel: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.6, color: "#5f5e60", textAlign: "center" },
   statValue: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#000", letterSpacing: -0.5 },
 
-  proCard:    { backgroundColor: "#000", borderRadius: 24, overflow: "hidden", minHeight: 160 },
+  proCard:    {
+    backgroundColor: "#000", borderRadius: 24, overflow: "hidden", minHeight: 160,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 8,
+  },
   sparkleWrap:{ position: "absolute", top: -8, right: -8 },
   proContent: { padding: 24, gap: 14 },
   proTierBadge: {
@@ -329,10 +481,11 @@ const styles = StyleSheet.create({
 
   prefsSection: { gap: 14 },
   prefsLabel:   { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 3, color: "#5f5e60", paddingHorizontal: 4 },
-  prefsList:    { gap: 4 },
+  prefsList:    { gap: 6 },
   prefCardWrap: {
     backgroundColor: "#fff", borderRadius: 18,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 8, elevation: 1,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.11, shadowRadius: 14, elevation: 5,
+    borderWidth: 1, borderColor: "rgba(0,0,0,0.05)",
   },
 
   prefBadge: {

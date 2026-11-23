@@ -139,8 +139,8 @@ const SOCIAL_APPS: Record<string, string[]> = {
   Brave: ["com.brave.browser"],
   Spotify: ["com.spotify.music"],
 };
-const DEFAULT_TOP_APPS = ["Instagram", "YouTube"];
-const MOST_USED_CACHE_KEY = "hadaf_most_used_apps_v3";
+const DEFAULT_TOP_APPS = ["Instagram", "YouTube", "WhatsApp", "Chrome", "Snapchat", "Twitter"];
+const MOST_USED_CACHE_KEY = "hadaf_most_used_apps_v4";
 
 const PACKAGE_TO_APP: Record<string, string> = {};
 for (const [name, pkgs] of Object.entries(SOCIAL_APPS)) for (const p of pkgs) PACKAGE_TO_APP[p] = name;
@@ -156,14 +156,32 @@ function canonicalAppName(raw: string): string | null {
 
 export interface TopSocialApps {
   names: string[];
+  /** Full list of suggested apps (up to 8) that the user can choose from when creating a goal */
+  suggestedNames?: string[];
   packages: string[];
+  packagesByApp?: Record<string, string[]>;
 }
 
 let topCache: { at: number; value: TopSocialApps } | null = null;
 
+export function resolvePackagesForAppNames(
+  appNames: string[],
+  packagesByApp?: Record<string, string[]>
+): string[] {
+  const pkgSet = new Set<string>();
+  for (const rawName of appNames) {
+    const clean = canonicalAppName(rawName) || rawName.trim();
+    const known = SOCIAL_APPS[clean] ?? SOCIAL_APPS[rawName] ?? [];
+    for (const kp of known) pkgSet.add(kp);
+    const dynamic = packagesByApp?.[clean] ?? packagesByApp?.[rawName] ?? [];
+    for (const dp of dynamic) pkgSet.add(dp);
+  }
+  return Array.from(pkgSet);
+}
+
 /**
- * The top 3 apps from the user's actual Most Used Apps list (device usage -> cached most used apps -> server summary).
- * NEVER pads with uninstalled apps like TikTok when actual device usage data exists!
+ * Returns the top 3 default apps + up to 8 suggested apps from the user's actual Most Used Apps list
+ * so the user can choose which apps to block out of the suggested block list.
  */
 export async function getTopSocialApps(force = false): Promise<TopSocialApps> {
   if (!force && topCache && Date.now() - topCache.at < 2 * 60_000) return topCache.value;
@@ -207,7 +225,9 @@ export async function getTopSocialApps(force = false): Promise<TopSocialApps> {
 
   if (minutesByApp.size === 0) {
     try {
-      const cachedRaw = await AsyncStorage.getItem(MOST_USED_CACHE_KEY);
+      const cachedRaw =
+        (await AsyncStorage.getItem(MOST_USED_CACHE_KEY)) ||
+        (await AsyncStorage.getItem("hadaf_most_used_apps_v3"));
       if (cachedRaw) {
         const parsed = JSON.parse(cachedRaw);
         if (Array.isArray(parsed)) {
@@ -242,16 +262,31 @@ export async function getTopSocialApps(force = false): Promise<TopSocialApps> {
   });
 
   const ranked = entries.map(([name]) => name);
-  // Only fall back to DEFAULT_TOP_APPS if the user has 0 usage stats on their device
+  const suggestedSet = new Set<string>(ranked);
+  for (const fallbackApp of DEFAULT_TOP_APPS) {
+    if (suggestedSet.size < 6) suggestedSet.add(fallbackApp);
+  }
+  const suggestedNames = Array.from(suggestedSet).slice(0, 8);
   const names = (ranked.length > 0 ? ranked : DEFAULT_TOP_APPS).slice(0, 3);
+
+  const packagesByApp: Record<string, string[]> = {};
+  for (const n of suggestedNames) {
+    const appPkgs = new Set<string>(SOCIAL_APPS[n] ?? []);
+    const dyn = minutesByApp.get(n)?.pkg;
+    if (dyn) appPkgs.add(dyn);
+    packagesByApp[n] = Array.from(appPkgs);
+  }
+
   const pkgSet = new Set<string>();
   for (const n of names) {
-    const knownPkgs = SOCIAL_APPS[n] ?? [];
-    for (const kp of knownPkgs) pkgSet.add(kp);
-    const dynamicPkg = minutesByApp.get(n)?.pkg;
-    if (dynamicPkg) pkgSet.add(dynamicPkg);
+    for (const p of packagesByApp[n] ?? []) pkgSet.add(p);
   }
-  const value: TopSocialApps = { names, packages: Array.from(pkgSet) };
+  const value: TopSocialApps = {
+    names,
+    suggestedNames,
+    packages: Array.from(pkgSet),
+    packagesByApp,
+  };
   topCache = { at: Date.now(), value };
   return value;
 }
@@ -455,9 +490,11 @@ let jsBlockedWindow: string | null = null; // fallback for binaries without sche
 async function applyBlocking(goals: Goal[]) {
   const now = Date.now();
   const blockingGoals = goals.filter((g) => isPending(g) && wantsBlocking(g));
-  const windows = blockingGoals.flatMap((g) => goalWindows(g, now));
+  const windowsWithGoal = blockingGoals.flatMap((g) =>
+    goalWindows(g, now).map((w) => ({ window: w, goal: g }))
+  );
 
-  if (windows.length === 0) {
+  if (windowsWithGoal.length === 0) {
     if (isScheduledBlockingSupported) setScheduledBlocks([]);
     if (jsBlockedWindow) {
       jsBlockedWindow = null;
@@ -469,29 +506,38 @@ async function applyBlocking(goals: Goal[]) {
   const top = await getTopSocialApps();
   if (top.packages.length === 0) return;
 
+  const pkgsForGoal = (g: Goal): string[] => {
+    const chosen = (g as any).blockedApps;
+    if (Array.isArray(chosen) && chosen.length > 0) {
+      const resolved = resolvePackagesForAppNames(chosen, top.packagesByApp);
+      if (resolved.length > 0) return resolved;
+    }
+    return top.packages;
+  };
+
   if (isScheduledBlockingSupported) {
     // 1. Save full schedule to SharedPreferences for background persistence
-    const payload: ScheduledBlockWindow[] = windows.map((w) => ({
+    const payload: ScheduledBlockWindow[] = windowsWithGoal.map(({ window: w, goal: g }) => ({
       id: w.id,
       start: w.startMs,
       end: w.endMs,
-      pkgs: top.packages,
+      pkgs: pkgsForGoal(g),
     }));
     setScheduledBlocks(payload);
   }
 
   // 2. Also directly activate startNativeSession whenever a goal window is currently active!
-  // This arms HadafAccessibilityService.instance.onSessionStarted(...) in memory using the exact
-  // same code path as Focus Session so blocked apps are immediately locked during the goal duration.
   if (!isNativeAppBlockerSupported) return;
-  const active = windows.find((w) => w.startMs <= now && now < w.endMs);
-  if (active) {
+  const activeItem = windowsWithGoal.find(({ window: w }) => w.startMs <= now && now < w.endMs);
+  if (activeItem) {
+    const active = activeItem.window;
+    const targetPkgs = pkgsForGoal(activeItem.goal);
     const remainingMins = Math.max(1, Math.ceil((active.endMs - now) / 60_000));
     if (jsBlockedWindow !== active.id) {
       jsBlockedWindow = active.id;
     }
-    await startNativeSession(top.packages, remainingMins);
-  } else if (!active && jsBlockedWindow) {
+    await startNativeSession(targetPkgs, remainingMins);
+  } else if (!activeItem && jsBlockedWindow) {
     jsBlockedWindow = null;
     await stopNativeSession();
   }
@@ -533,7 +579,17 @@ let running = false;
 
 const signatureOf = (goals: Goal[]): string =>
   goals
-    .map((g) => [g.id, g.status, g.startTime, g.durationMinutes, g.type, g.scheduledDate ?? "", g.title, wantsBlocking(g) ? 1 : 0].join("|"))
+    .map((g) => [
+      g.id,
+      g.status,
+      g.startTime,
+      g.durationMinutes,
+      g.type,
+      g.scheduledDate ?? "",
+      g.title,
+      wantsBlocking(g) ? 1 : 0,
+      Array.isArray((g as any).blockedApps) ? (g as any).blockedApps.join(",") : "",
+    ].join("|"))
     .sort()
     .join("§");
 

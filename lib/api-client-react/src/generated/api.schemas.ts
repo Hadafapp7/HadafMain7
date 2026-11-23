@@ -64,6 +64,7 @@ export interface Goal {
   /** @nullable */
   forfeitRoast?: string | null;
   blockApps?: boolean;
+  blockedApps?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -96,7 +97,9 @@ export interface GoalInput {
   /** @minimum 1 */
   durationMinutes: number;
   scheduledDate?: string;
+  status?: GoalStatus;
   blockApps?: boolean;
+  blockedApps?: string[];
 }
 
 export type GoalUpdateType = typeof GoalUpdateType[keyof typeof GoalUpdateType];
@@ -142,6 +145,7 @@ export interface GoalUpdate {
   /** @nullable */
   forfeitRoast?: string | null;
   blockApps?: boolean;
+  blockedApps?: string[];
 }
 
 export interface AppUsageEntry {

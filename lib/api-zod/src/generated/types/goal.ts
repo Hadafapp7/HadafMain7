@@ -27,6 +27,7 @@ export interface Goal {
   /** @nullable */
   forfeitRoast?: string | null;
   blockApps?: boolean;
+  blockedApps?: string[];
   createdAt: Date;
   updatedAt: Date;
 }

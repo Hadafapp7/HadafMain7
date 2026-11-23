@@ -19,11 +19,15 @@ export async function awardXpAndCheckBadges(
     if (!user) return;
 
     let newXp = user.xp + xpGained;
-    let newLevel = user.level;
+    let newLevel = Math.min(100, Math.max(1, user.level));
 
-    while (newXp >= newLevel * 100) {
+    while (newLevel < 100 && newXp >= newLevel * 100) {
       newXp -= newLevel * 100;
       newLevel += 1;
+    }
+    if (newLevel >= 100) {
+      newLevel = 100;
+      newXp = Math.min(newXp, 100 * 100);
     }
 
     await db

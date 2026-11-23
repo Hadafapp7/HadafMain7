@@ -94,6 +94,7 @@ interface GoalDraft {
   durationMinutes: number;
   scheduledDate?: string;
   blockApps: boolean;
+  blockedApps: string[];
 }
 
 const PRIORITIES: Priority[] = ["low", "medium", "high", "critical"];
@@ -305,7 +306,8 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   const [duration,  setDuration]  = useState(90);
   const [startTime, setStartTime] = useState(() => defaultStartTime15MinAhead());
   const [blockApps, setBlockApps] = useState(true);
-  const [topSocialApps, setTopSocialApps] = useState<string[]>([]);
+  const [suggestedApps, setSuggestedApps] = useState<string[]>(["Instagram", "YouTube", "WhatsApp", "Chrome", "Snapchat", "Twitter"]);
+  const [selectedBlockedApps, setSelectedBlockedApps] = useState<string[]>(["Instagram", "YouTube", "WhatsApp"]);
   const [focusedField, setFocusedField] = useState<"title" | "intent" | null>(null);
 
   const detailsInputRef = useRef<TextInput>(null);
@@ -313,16 +315,26 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   const scale   = useSharedValue(0.88);
   const opacity = useSharedValue(0);
 
-  // Load top 3 most-used apps by screen time when modal opens (never hardcoding uninstalled apps like TikTok)
+  // Load suggested block apps by screen time when modal opens so the user can choose which apps to block
   useEffect(() => {
     if (visible) {
       getTopSocialApps(true)
         .then((apps) => {
-          if (apps.names.length > 0) setTopSocialApps(apps.names.slice(0, 3));
+          const suggested =
+            apps.suggestedNames && apps.suggestedNames.length > 0
+              ? apps.suggestedNames
+              : apps.names.length > 0
+                ? apps.names
+                : ["Instagram", "YouTube", "WhatsApp", "Chrome", "Snapchat", "Twitter"];
+          setSuggestedApps(suggested);
+          if (!editingGoal || !Array.isArray(editingGoal.blockedApps) || editingGoal.blockedApps.length === 0) {
+            const defaultPick = apps.names.length > 0 ? apps.names.slice(0, 3) : suggested.slice(0, 3);
+            setSelectedBlockedApps(defaultPick);
+          }
         })
         .catch(() => {});
     }
-  }, [visible]);
+  }, [visible, editingGoal?.id]);
 
   // Sync fields when editing goal changes
   useEffect(() => {
@@ -334,6 +346,9 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
       setStartTime(editingGoal.startTime || "10:00 AM");
       setDuration(editingGoal.durationMinutes || 90);
       setBlockApps(editingGoal.blockApps ?? true);
+      if (Array.isArray(editingGoal.blockedApps) && editingGoal.blockedApps.length > 0) {
+        setSelectedBlockedApps(editingGoal.blockedApps);
+      }
     } else if (visible) {
       setStartTime(defaultStartTime15MinAhead());
       setBlockApps(true);
@@ -418,7 +433,8 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
         goalType === "scheduled"
           ? editingGoal?.scheduledDate || todayDateStr()
           : undefined,
-      blockApps,
+      blockApps: blockApps && selectedBlockedApps.length > 0,
+      blockedApps: blockApps ? selectedBlockedApps : [],
     };
     if (isEditMode && onUpdate && editingGoal) {
       onUpdate(editingGoal.id, draft);
@@ -541,7 +557,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
               }}
             />
 
-            {/* Block Top 3 Social Media Apps Toggle (like Focus Session) */}
+            {/* Choose Apps to Block from Suggested Block List (Point 5) */}
             <View style={[styles.blockAppsCard, { marginTop: 0, marginBottom: 18 }]}>
               <View style={styles.blockAppsHeader}>
                 <View style={styles.blockAppsIconWrap}>
@@ -553,10 +569,12 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.blockAppsTitle}>
-                    BLOCK TOP 3 SOCIAL APPS
+                    CHOOSE APPS TO BLOCK
                   </Text>
                   <Text style={styles.blockAppsSubtitle}>
-                    Auto-blocks highest screen-time apps during goal window + 15m reminder
+                    {blockApps
+                      ? `Tap suggested apps below to block during goal (${selectedBlockedApps.length} selected)`
+                      : "Turn on to block distracting apps during this goal window"}
                   </Text>
                 </View>
                 <Switch
@@ -569,12 +587,41 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
 
               {blockApps && (
                 <View style={styles.topAppsPillsRow}>
-                  {topSocialApps.map((app) => (
-                    <View key={app} style={styles.topAppPill}>
-                      <MaterialIcons name="block" size={11} color="#ef4444" />
-                      <Text style={styles.topAppPillText}>{app}</Text>
-                    </View>
-                  ))}
+                  {suggestedApps.map((app) => {
+                    const isSelected = selectedBlockedApps.includes(app);
+                    return (
+                      <TouchableOpacity
+                        key={app}
+                        style={[
+                          styles.topAppPill,
+                          isSelected && styles.topAppPillSelected,
+                        ]}
+                        activeOpacity={0.75}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setSelectedBlockedApps((prev) =>
+                            prev.includes(app)
+                              ? prev.filter((a) => a !== app)
+                              : [...prev, app]
+                          );
+                        }}
+                      >
+                        <MaterialIcons
+                          name={isSelected ? "block" : "add-circle-outline"}
+                          size={12}
+                          color={isSelected ? "#ffffff" : "#71717a"}
+                        />
+                        <Text
+                          style={[
+                            styles.topAppPillText,
+                            isSelected && styles.topAppPillTextSelected,
+                          ]}
+                        >
+                          {app}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -771,7 +818,9 @@ function GoalDetailSheet({ goal, onClose, onDone, onForfeit }: {
           <View style={styles.detailBlockBadge}>
             <MaterialIcons name="shield" size={16} color="#000" />
             <Text style={styles.detailBlockBadgeText}>
-              Top 3 social media apps blocked during this goal window
+              {Array.isArray(goal.blockedApps) && goal.blockedApps.length > 0
+                ? `Blocked apps: ${goal.blockedApps.join(", ")}`
+                : "Selected social media apps blocked during this goal window"}
             </Text>
           </View>
         )}
@@ -1317,6 +1366,10 @@ export default function GoalsScreen() {
           status: localUpdated > serverUpdated ? lg.status : matchedServer.status,
           updatedAt: localUpdated > serverUpdated ? lg.updatedAt : matchedServer.updatedAt,
           blockApps: matchedServer.blockApps ?? lg.blockApps ?? true,
+          blockedApps:
+            (Array.isArray(matchedServer.blockedApps) && matchedServer.blockedApps.length > 0
+              ? matchedServer.blockedApps
+              : lg.blockedApps) ?? [],
         });
       } else {
         byId.set(lg.id, lg);
@@ -1417,7 +1470,12 @@ export default function GoalsScreen() {
         // Check if an active goal just finished its duration window!
         const prev = prevActiveGoalRef.current;
         if (prev && !promptedWindowIdsRef.current.has(prev.windowId)) {
-          const latestGoal = goals.find((g) => g.id === prev.goal.id) ?? prev.goal;
+          const latestGoal =
+            goals.find(
+              (g) =>
+                g.id === prev.goal.id ||
+                (g.title === prev.goal.title && g.startTime === prev.goal.startTime)
+            ) ?? prev.goal;
           if (latestGoal.status === "pending") {
             promptedWindowIdsRef.current.add(prev.windowId);
             try {
@@ -1490,6 +1548,7 @@ export default function GoalsScreen() {
     durationMinutes: draft.durationMinutes,
     scheduledDate: draft.scheduledDate,
     blockApps: draft.blockApps,
+    blockedApps: draft.blockedApps,
   });
 
   const handleDeleteGoal = (goal: Goal) => {
@@ -1603,6 +1662,7 @@ export default function GoalsScreen() {
           : null,
       status: "pending",
       blockApps: draft.blockApps,
+      blockedApps: draft.blockedApps,
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -1627,13 +1687,22 @@ export default function GoalsScreen() {
       {
         onSuccess: (created: any) => {
           if (created && created.id) {
-            const synced = nextGoals.map((g) =>
-              g.id === optimisticGoal.id
-                ? { ...created, blockApps: draft.blockApps }
-                : g,
-            );
-            saveLocalGoals(synced);
-            queryClient.setQueryData(getListGoalsQueryKey(), synced);
+            setLocalGoals((prevLocal) => {
+              const baseList = prevLocal.length > 0 ? prevLocal : nextGoals;
+              const synced = baseList.map((g) =>
+                g.id === optimisticGoal.id
+                  ? {
+                      ...created,
+                      status: g.status !== "pending" ? g.status : created.status,
+                      blockApps: draft.blockApps,
+                      blockedApps: draft.blockedApps,
+                    }
+                  : g,
+              );
+              AsyncStorage.setItem(LOCAL_GOALS_CACHE_KEY, JSON.stringify(synced)).catch(() => {});
+              queryClient.setQueryData(getListGoalsQueryKey(), synced);
+              return synced;
+            });
           }
           refetch();
           void syncGuiltNotifications(true);
@@ -1661,6 +1730,7 @@ export default function GoalsScreen() {
                 ? draft.scheduledDate || g.scheduledDate || todayDateStr()
                 : null,
             blockApps: draft.blockApps,
+            blockedApps: draft.blockedApps,
             updatedAt: new Date().toISOString(),
           }
         : g,
@@ -1700,7 +1770,11 @@ export default function GoalsScreen() {
   const handleConfirmTrulyDone = async (goal: Goal) => {
     try {
       stopNativeCompletionAlarm();
-      if (activeGoalSession?.goal.id === goal.id) {
+      if (
+        activeGoalSession?.goal.id === goal.id ||
+        (activeGoalSession?.goal.title === goal.title &&
+          activeGoalSession?.goal.startTime === goal.startTime)
+      ) {
         dismissNativeNotification();
         prevActiveGoalRef.current = null;
         setActiveGoalSession(null);
@@ -1710,10 +1784,22 @@ export default function GoalsScreen() {
     setVerifyingGoal(null);
     setDetailGoal(null);
 
+    // Match by id OR (title + startTime) in case a local-* id was upgraded to a server UUID while the timer ran
+    const serverList = Array.isArray(rawGoals) ? rawGoals : [];
+    const matchedServerGoal = serverList.find(
+      (s) =>
+        s.id === goal.id ||
+        (s.title === goal.title && s.startTime === goal.startTime)
+    );
+    const effectiveServerId =
+      matchedServerGoal?.id ?? (!goal.id.startsWith("local-") ? goal.id : null);
+
     const nowIso = new Date().toISOString();
     const nextGoals = goals.map((g) =>
-      g.id === goal.id
-        ? { ...g, status: "done" as GoalStatusValue, updatedAt: nowIso }
+      g.id === goal.id ||
+      (effectiveServerId && g.id === effectiveServerId) ||
+      (g.title === goal.title && g.startTime === goal.startTime)
+        ? { ...g, id: effectiveServerId ?? g.id, status: "done" as GoalStatusValue, updatedAt: nowIso }
         : g,
     );
     saveLocalGoals(nextGoals);
@@ -1721,13 +1807,10 @@ export default function GoalsScreen() {
     void syncGoalAutomation(nextGoals);
 
     try {
-      if (!goal.id.startsWith("local-")) {
-        await updateGoal.mutateAsync({ id: goal.id, data: { status: "done" } });
-        await queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
-        refetch();
-        void syncGuiltNotifications(true);
+      if (effectiveServerId) {
+        await updateGoal.mutateAsync({ id: effectiveServerId, data: { status: "done" } });
       } else {
-        // Goal had a local-* id; persist to server and mark done so Analytics sees it!
+        // Goal was still local-only; create on server with status="done" so database & Profile page reflect it immediately!
         const created: any = await createGoal.mutateAsync({
           data: {
             title: goal.title,
@@ -1737,15 +1820,32 @@ export default function GoalsScreen() {
             startTime: goal.startTime,
             durationMinutes: goal.durationMinutes,
             scheduledDate: goal.scheduledDate || undefined,
+            status: "done",
             blockApps: goal.blockApps ?? true,
+            blockedApps: goal.blockedApps ?? [],
           },
         });
         if (created?.id) {
-          await updateGoal.mutateAsync({ id: created.id, data: { status: "done" } });
-          await queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
-          refetch();
+          if (created.status !== "done") {
+            await updateGoal.mutateAsync({ id: created.id, data: { status: "done" } });
+          }
+          const upgraded = nextGoals.map((g) =>
+            g.id === goal.id || (g.title === goal.title && g.startTime === goal.startTime)
+              ? { ...created, status: "done" as GoalStatusValue, updatedAt: nowIso }
+              : g
+          );
+          saveLocalGoals(upgraded);
+          queryClient.setQueryData(getListGoalsQueryKey(), upgraded);
         }
       }
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: ["userMe"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/me"] }),
+        queryClient.invalidateQueries({ queryKey: ["achievements"] }),
+      ]);
+      void refetch();
+      void syncGuiltNotifications(true);
     } catch (e) {
       console.warn("Saved goal completion locally:", e);
     }
@@ -2005,7 +2105,7 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: 40 },
 
   // Goal card
-  goalCard:       { borderRadius: 24, flexDirection: "row", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 20, elevation: 2 },
+  goalCard:       { borderRadius: 24, flexDirection: "row", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.14, shadowRadius: 18, elevation: 6, borderWidth: 1, borderColor: "rgba(0,0,0,0.05)" },
   goalCardAccent: { width: 5 },
   goalCardInner:  { flex: 1, padding: 20, gap: 12 },
   cardActions:    { position: "absolute", top: 12, right: 12, flexDirection: "row", gap: 8, zIndex: 5 },
@@ -2479,18 +2579,26 @@ const styles = StyleSheet.create({
   topAppPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
     backgroundColor: "#ffffff",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#e4e4e7",
+    borderWidth: 1.5,
+    borderColor: "#d4d4d8",
+  },
+  topAppPillSelected: {
+    backgroundColor: "#000000",
+    borderColor: "#000000",
   },
   topAppPillText: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontFamily: "Inter_600SemiBold",
-    color: "#18181b",
+    color: "#3f3f46",
+  },
+  topAppPillTextSelected: {
+    color: "#ffffff",
+    fontFamily: "Inter_700Bold",
   },
 
   commitBtn: {

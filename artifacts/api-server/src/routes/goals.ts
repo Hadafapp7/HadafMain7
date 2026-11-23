@@ -67,9 +67,17 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
       .values({
         ...parsed.data,
         blockApps: body.blockApps === true,
+        blockedApps: Array.isArray(body.blockedApps)
+          ? (body.blockedApps as unknown[]).filter((x): x is string => typeof x === "string")
+          : [],
         userId: req.userId!,
       })
       .returning();
+
+    if (parsed.data.status === "done") {
+      await awardXpAndCheckBadges(req.userId!, 20, "goal_done");
+      await updateStreak(req.userId!);
+    }
 
     res.status(201).json(goal);
   } catch (err: any) {
@@ -100,6 +108,9 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
     if (typeof body.forfeitReason === "string") changes.forfeitReason = body.forfeitReason;
     if (typeof body.forfeitRoast === "string") changes.forfeitRoast = body.forfeitRoast;
     if (typeof body.blockApps === "boolean") changes.blockApps = body.blockApps;
+    if (Array.isArray(body.blockedApps)) {
+      changes.blockedApps = (body.blockedApps as unknown[]).filter((x): x is string => typeof x === "string");
+    }
 
     const [goal] = await db
       .update(goalsTable)

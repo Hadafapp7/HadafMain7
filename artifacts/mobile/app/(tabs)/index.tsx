@@ -11,6 +11,7 @@ import {
   AppState,
   ActivityIndicator,
   Dimensions,
+  Image,
   Modal,
   Platform,
   RefreshControl,
@@ -21,6 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Svg, { Circle as SvgCircle, Path as SvgPath, Rect as SvgRect } from "react-native-svg";
 import Animated, {
   FadeInDown,
   runOnJS,
@@ -35,6 +37,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { HadafInlineLoader } from "@/components/AppLoadingScreen";
+import {
+  getMiniPlayerSnapshot,
+  publishMiniPlayerUpdate,
+  subscribeMiniPlayer,
+  toggleMiniPlayer,
+} from "@/components/OfflineCenterBanner";
 import { useColors } from "@/hooks/useColors";
 import { isSocialOrGameApp, localDayKey } from "@/lib/usageStats";
 import {
@@ -261,13 +269,14 @@ function CalendarModal({ visible, onClose }: { visible: boolean; onClose: () => 
 
 // ─── Animated progress bar ────────────────────────────────────────────────────
 
-function AnimatedProgressBar({ percent, delay = 0, trackColor, fillColor, height = 5, radius = 3 }: {
-  percent: number; delay?: number; trackColor?: string; fillColor?: string; height?: number; radius?: number;
+function AnimatedProgressBar({ percent, delay = 0, trackColor, fillColor, height = 5, radius = 3, animKey = 0 }: {
+  percent: number; delay?: number; trackColor?: string; fillColor?: string; height?: number; radius?: number; animKey?: number;
 }) {
   const progress = useSharedValue(0);
   useEffect(() => {
+    progress.value = 0;
     progress.value = withDelay(delay, withSpring(percent, { damping: 20, stiffness: 90 }));
-  }, [percent, delay]);
+  }, [percent, delay, animKey]);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as any }));
   return (
     <View style={[styles.progressTrack, { backgroundColor: trackColor ?? "#e8e8e8", height, borderRadius: radius }]}>
@@ -276,9 +285,9 @@ function AnimatedProgressBar({ percent, delay = 0, trackColor, fillColor, height
   );
 }
 
-// ─── Counter number ───────────────────────────────────────────────────────────
+// ─── Counter number & ScreenTime counter ──────────────────────────────────────
 
-function CounterNumber({ target, delay = 0, style: textStyle }: { target: number; delay?: number; style?: any }) {
+function CounterNumber({ target, delay = 0, style: textStyle, animKey = 0 }: { target: number; delay?: number; style?: any; animKey?: number }) {
   const count = useSharedValue(isWeb ? target : 0);
   const [display, setDisplay] = useState(isWeb ? target : 0);
   useAnimatedReaction(
@@ -287,12 +296,33 @@ function CounterNumber({ target, delay = 0, style: textStyle }: { target: number
   );
   useEffect(() => {
     if (!isWeb) {
-      count.value = withDelay(delay, withTiming(target, { duration: 1000 }));
+      count.value = 0;
+      setDisplay(0);
+      count.value = withDelay(delay, withTiming(target, { duration: 950 }));
     } else {
       setDisplay(target);
     }
-  }, [target, delay]);
+  }, [target, delay, animKey]);
   return <Text style={textStyle}>{display}</Text>;
+}
+
+function ScreenTimeCounter({ targetMinutes, delay = 0, style: textStyle, animKey = 0 }: { targetMinutes: number; delay?: number; style?: any; animKey?: number }) {
+  const count = useSharedValue(isWeb ? targetMinutes : 0);
+  const [displayMins, setDisplayMins] = useState(isWeb ? targetMinutes : 0);
+  useAnimatedReaction(
+    () => Math.round(count.value),
+    (cur, prev) => { if (cur !== prev) runOnJS(setDisplayMins)(cur); }
+  );
+  useEffect(() => {
+    if (!isWeb) {
+      count.value = 0;
+      setDisplayMins(0);
+      count.value = withDelay(delay, withTiming(targetMinutes, { duration: 950 }));
+    } else {
+      setDisplayMins(targetMinutes);
+    }
+  }, [targetMinutes, delay, animKey]);
+  return <Text style={textStyle}>{formatDuration(displayMins)}</Text>;
 }
 
 // ─── App row ──────────────────────────────────────────────────────────────────
@@ -373,21 +403,167 @@ const QUICK_TIMES = [
   { label: "3h",  mins: 180 },
 ];
 
-function AppRow({ app, index, last, maxMinutes }: {
-  app: any; index: number; last: boolean; maxMinutes: number;
+// ─── Pure Black & White Original App Icon ────────────────────────────────────
+
+function MonochromeBrandSvg({ appName, pkg, category }: { appName: string; pkg?: string; category?: string }) {
+  const n = (appName || "").toLowerCase();
+  const p = (pkg || "").toLowerCase();
+
+  // Instagram original camera glyph in pure B&W
+  if (n.includes("instagram") || p.includes("instagram")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgRect x="3" y="3" width="18" height="18" rx="5" stroke="#fff" strokeWidth="2" fill="none" />
+        <SvgCircle cx="12" cy="12" r="4.2" stroke="#fff" strokeWidth="2" fill="none" />
+        <SvgCircle cx="17.3" cy="6.7" r="1.2" fill="#fff" />
+      </Svg>
+    );
+  }
+
+  // WhatsApp original phone-in-bubble glyph in pure B&W
+  if (n.includes("whatsapp") || p.includes("whatsapp")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgPath
+          d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3z"
+          stroke="#fff"
+          strokeWidth="2"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        <SvgPath
+          d="M9.5 8.5c.3 0 .6 0 .8.5l.7 1.6c.1.3 0 .6-.2.8l-.5.6c.6 1.1 1.5 1.9 2.6 2.5l.6-.5c.2-.2.5-.3.8-.2l1.6.7c.5.2.5.5.5.8 0 1-.8 1.8-1.8 1.8-2.8 0-6.9-4.1-6.9-6.9 0-1 .8-1.7 1.8-1.7z"
+          fill="#fff"
+        />
+      </Svg>
+    );
+  }
+
+  // Chrome original 3-ring lens glyph in pure B&W
+  if (n.includes("chrome") || p.includes("chrome")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgCircle cx="12" cy="12" r="9" stroke="#fff" strokeWidth="2" fill="none" />
+        <SvgCircle cx="12" cy="12" r="3.6" fill="#fff" />
+        <SvgPath d="M12 8.4H20.2M8.9 13.8L4.8 6.7M15.1 13.8L11 20.9" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+      </Svg>
+    );
+  }
+
+  // Brave original lion/shield glyph in pure B&W
+  if (n.includes("brave") || p.includes("brave")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgPath
+          d="M12 2.5L4.5 5.5l1.2 9.2L12 21.5l6.3-6.8 1.2-9.2L12 2.5z"
+          stroke="#fff"
+          strokeWidth="2"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        <SvgPath d="M9 10l3 2 3-2M10 14.5h4" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+      </Svg>
+    );
+  }
+
+  // YouTube original rounded screen + play triangle in pure B&W
+  if (n.includes("youtube") || p.includes("youtube")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgRect x="2.5" y="5" width="19" height="14" rx="4" stroke="#fff" strokeWidth="2" fill="none" />
+        <SvgPath d="M10 9.2L15.5 12 10 14.8V9.2z" fill="#fff" />
+      </Svg>
+    );
+  }
+
+  // X / Twitter original glyph in pure B&W
+  if (n.includes("twitter") || n === "x" || p.includes("twitter")) {
+    return (
+      <Svg width={20} height={20} viewBox="0 0 24 24">
+        <SvgPath d="M4 4l16 16M20 4L4 20" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
+      </Svg>
+    );
+  }
+
+  // TikTok original music note glyph in pure B&W
+  if (n.includes("tiktok") || p.includes("musically") || p.includes("trill")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgPath
+          d="M14 4v10.5a3.5 3.5 0 1 1-2.5-3.35V8.5a6.5 6.5 0 1 0 5.5 6.4V9.2c1.2.9 2.6 1.3 4 1.3V7.5c-2.2 0-4-1.5-4-3.5h-3z"
+          fill="#fff"
+        />
+      </Svg>
+    );
+  }
+
+  // Facebook original 'f' glyph in pure B&W
+  if (n.includes("facebook") || p.includes("facebook")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgPath
+          d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.326-.043-1.557-.14-2.857-.14C11.928 2 10 3.657 10 6.7v2.8H7v4h3V22h4v-8.5z"
+          fill="#fff"
+        />
+      </Svg>
+    );
+  }
+
+  // Telegram paper plane in pure B&W
+  if (n.includes("telegram") || p.includes("telegram")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgPath
+          d="M21 4L3 11l6.5 2.5L18 7l-6 7.8v5.2l3.2-3.3L19 19l2-15z"
+          stroke="#fff"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      </Svg>
+    );
+  }
+
+  // Spotify waves in pure B&W
+  if (n.includes("spotify") || p.includes("spotify")) {
+    return (
+      <Svg width={22} height={22} viewBox="0 0 24 24">
+        <SvgCircle cx="12" cy="12" r="9" stroke="#fff" strokeWidth="2" fill="none" />
+        <SvgPath d="M7.5 10c3-1 6.5-.8 9.2.8M8.2 13c2.4-.7 5.2-.5 7.4.7M9 16c1.8-.5 3.9-.3 5.5.6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+      </Svg>
+    );
+  }
+
+  const icon = APP_ICONS[(category ?? "").toLowerCase()] ?? "apps";
+  return <MaterialIcons name={icon} size={20} color="#fff" />;
+}
+
+function AppRow({ app, index, last, maxMinutes, animKey = 0 }: {
+  app: any; index: number; last: boolean; maxMinutes: number; animKey?: number;
 }) {
   const percent  = maxMinutes > 0 ? Math.min(1, app.dailyMinutes / maxMinutes) : 0;
   const progress = useSharedValue(0);
   useEffect(() => {
-    progress.value = withDelay(400 + index * 120, withSpring(percent, { damping: 20 }));
-  }, [percent]);
+    progress.value = 0;
+    progress.value = withDelay(280 + index * 110, withSpring(percent, { damping: 20 }));
+  }, [percent, animKey]);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as any }));
-  const icon = APP_ICONS[(app.category ?? "").toLowerCase()] ?? "apps";
+
+  const hasNativeBwIcon = typeof app.iconUri === "string" && app.iconUri.startsWith("data:image/");
+
   return (
     <View>
       <View style={styles.appRow}>
-        <View style={styles.appIconWrap}>
-          <MaterialIcons name={icon} size={20} color="#fff" />
+        <View style={[styles.appIconWrap, hasNativeBwIcon && styles.appIconWrapNativeBw]}>
+          {hasNativeBwIcon ? (
+            <Image
+              source={{ uri: app.iconUri }}
+              style={styles.appBwIconImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <MonochromeBrandSvg appName={app.appName} pkg={app.packageName} category={app.category} />
+          )}
         </View>
         <View style={styles.appInfo}>
           <Text style={styles.appName}>{app.appName}</Text>
@@ -550,6 +726,133 @@ function UsageOptInModal({ visible, onClose, onEnable, enabling }: {
   );
 }
 
+// ─── Target DoomScore Modal (Point 9) ─────────────────────────────────────────
+
+const DOOM_TARGET_STORAGE_KEY = "@hadaf/target_doom_score_v1";
+const DOOM_PRESETS = [20, 30, 40, 50, 65];
+
+function TargetDoomScoreModal({
+  visible,
+  currentTarget,
+  currentDoomScore,
+  onSave,
+  onClose,
+}: {
+  visible: boolean;
+  currentTarget: number | null;
+  currentDoomScore: number;
+  onSave: (target: number) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<number>(currentTarget ?? 30);
+
+  useEffect(() => {
+    if (visible) {
+      setDraft(currentTarget ?? 30);
+    }
+  }, [visible, currentTarget]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.calOuter} activeOpacity={1} onPress={onClose}>
+        <BlurView intensity={24} tint="dark" style={StyleSheet.absoluteFill} />
+        <View
+          style={styles.doomModalCard}
+          onStartShouldSetResponder={() => true}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          <View style={styles.goalsSheetHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <MaterialIcons name="speed" size={20} color="#000" />
+              <Text style={styles.goalsSheetTitle}>TARGET DOOMSCORE</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} hitSlop={14}>
+              <MaterialIcons name="close" size={20} color="#777" />
+            </TouchableOpacity>
+          </View>
+
+          {/* 1-2 line info about what DoomScore is */}
+          <View style={styles.doomInfoBox}>
+            <Text style={styles.doomInfoText}>
+              DoomScore (0–100) measures your daily distraction load from social media and games. Keep your score below your daily target to protect your deep focus.
+            </Text>
+          </View>
+
+          {/* Stepper */}
+          <View style={styles.doomStepperRow}>
+            <TouchableOpacity
+              style={styles.doomStepperBtn}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setDraft((v) => Math.max(5, v - 5));
+              }}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="remove" size={22} color="#000" />
+            </TouchableOpacity>
+
+            <View style={{ alignItems: "center", minWidth: 110 }}>
+              <Text style={styles.doomTargetBigNum}>{draft}</Text>
+              <Text style={styles.doomTargetUnit}>MAX POINTS / DAY</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.doomStepperBtn}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setDraft((v) => Math.min(95, v + 5));
+              }}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="add" size={22} color="#000" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Quick presets */}
+          <View style={styles.doomPresetsRow}>
+            {DOOM_PRESETS.map((p) => {
+              const active = draft === p;
+              return (
+                <TouchableOpacity
+                  key={p}
+                  style={[styles.doomPresetChip, active && styles.doomPresetChipActive]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setDraft(p);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.doomPresetChipText, active && { color: "#fff" }]}>
+                    ≤ {p}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={styles.doomCurrentCompare}>
+            Current DoomScore: <Text style={{ fontFamily: "Inter_700Bold", color: currentDoomScore <= draft ? "#16a34a" : "#dc2626" }}>{currentDoomScore} pts</Text> ({currentDoomScore <= draft ? "Within Target" : "Above Target"})
+          </Text>
+
+          <TouchableOpacity
+            style={styles.logSubmitBtn}
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              onSave(draft);
+              onClose();
+            }}
+          >
+            <Text style={styles.logSubmitBtnText}>SET TARGET (≤ {draft} PTS)</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 // ─── Goals Status Modal ───────────────────────────────────────────────────────
 
 function GoalsStatusModal({ visible, onClose, goals }: {
@@ -570,8 +873,11 @@ function GoalsStatusModal({ visible, onClose, goals }: {
 
   if (!visible) return null;
 
-  const done    = goals.filter(g => g.status === "done").length;
-  const total   = goals.length;
+  // Prefer daily goals, or show all added goals if user added scheduled goals
+  const dailyGoals = goals.filter((g) => g.type === "daily");
+  const displayGoals = dailyGoals.length > 0 ? dailyGoals : goals;
+  const done  = displayGoals.filter((g) => g.status === "done").length;
+  const total = displayGoals.length;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -583,32 +889,94 @@ function GoalsStatusModal({ visible, onClose, goals }: {
           onTouchEnd={e => e.stopPropagation()}
         >
           <View style={styles.goalsSheetHeader}>
-            <Text style={styles.goalsSheetTitle}>DAILY GOALS</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center" }}>
+                <MaterialIcons name="checklist" size={16} color="#0284C7" />
+              </View>
+              <Text style={styles.goalsSheetTitle}>DAILY GOALS</Text>
+            </View>
             <TouchableOpacity onPress={onClose} hitSlop={14}>
               <MaterialIcons name="close" size={20} color="#777" />
             </TouchableOpacity>
           </View>
           <Text style={styles.goalsSheetSub}>
-            {done} of {total} completed today
+            {total > 0 ? `${done} of ${total} completed today` : "No daily goals added yet"}
           </Text>
-          <View style={styles.goalsList}>
-            {total === 0 && (
-              <Text style={[styles.goalsListName, { color: "#999", paddingVertical: 12 }]}>
-                No goals yet — add one from the Goals tab.
-              </Text>
-            )}
-            {goals.map((g, i) => (
-              <View key={g.id} style={[styles.goalsListRow, i < goals.length - 1 && styles.goalsListDivider]}>
-                <View style={[styles.goalsListDot, { backgroundColor: g.status === "done" ? "#16a34a" : "#e5e7eb" }]}>
-                  {g.status === "done" && <MaterialIcons name="check" size={12} color="#fff" />}
-                </View>
-                <Text style={[styles.goalsListName, { color: g.status === "done" ? "#111" : "#555" }]}>{g.title}</Text>
-                <Text style={[styles.goalsListStatus, { color: g.status === "done" ? "#16a34a" : "#aaa" }]}>
-                  {g.status === "done" ? "Done" : "Pending"}
+          <ScrollView style={{ maxHeight: 310 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.goalsList}>
+              {total === 0 && (
+                <Text style={[styles.goalsListName, { color: "#999", paddingVertical: 14, textAlign: "center" }]}>
+                  No daily goals added yet — tap below to add your first daily goal.
                 </Text>
-              </View>
-            ))}
-          </View>
+              )}
+              {displayGoals.map((g, i) => {
+                const isDone = g.status === "done";
+                const isForfeited = (g.status as string) === "forfeited";
+                return (
+                  <View key={g.id} style={[styles.goalsListRow, i < displayGoals.length - 1 && styles.goalsListDivider]}>
+                    <View
+                      style={[
+                        styles.goalsListDot,
+                        {
+                          backgroundColor: isDone
+                            ? "#16a34a"
+                            : isForfeited
+                              ? "#fee2e2"
+                              : "#DBEAFE",
+                        },
+                      ]}
+                    >
+                      {isDone ? (
+                        <MaterialIcons name="check" size={13} color="#fff" />
+                      ) : isForfeited ? (
+                        <MaterialIcons name="close" size={13} color="#dc2626" />
+                      ) : (
+                        <MaterialIcons name="schedule" size={12} color="#0284C7" />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.goalsListName, { color: isDone ? "#111" : "#222" }]}>
+                        {g.title}
+                      </Text>
+                      <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: "#64748b", marginTop: 2 }}>
+                        {g.startTime} · {g.durationMinutes}m · {(g.priority || "medium").toUpperCase()}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 999,
+                        backgroundColor: isDone ? "#dcfce7" : isForfeited ? "#fee2e2" : "#E0F2FE",
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.goalsListStatus,
+                          {
+                            color: isDone ? "#15803d" : isForfeited ? "#dc2626" : "#0284C7",
+                          },
+                        ]}
+                      >
+                        {isDone ? "Done" : isForfeited ? "Forfeited" : "Pending"}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          <TouchableOpacity
+            style={[styles.logSubmitBtn, { backgroundColor: "#0284C7", marginTop: 14, height: 46 }]}
+            activeOpacity={0.85}
+            onPress={() => {
+              onClose();
+              router.push("/(tabs)/goals" as any);
+            }}
+          >
+            <Text style={styles.logSubmitBtnText}>OPEN GOALS TAB</Text>
+          </TouchableOpacity>
         </Animated.View>
       </TouchableOpacity>
     </Modal>
@@ -759,9 +1127,10 @@ interface MergedAppUsage {
   dailyMinutes: number;
   totalMinutes: number;
   weeklyAvgMinutes?: number;
+  iconUri?: string;
 }
 let memoryMostUsedCache: MergedAppUsage[] = [];
-const MOST_USED_CACHE_KEY = "hadaf_most_used_apps_v3";
+const MOST_USED_CACHE_KEY = "hadaf_most_used_apps_v4";
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -771,6 +1140,41 @@ export default function HomeScreen() {
   const [showGoals, setShowGoals] = useState(false);
   const [showLogUsage, setShowLogUsage] = useState(false);
   const [showOptIn, setShowOptIn] = useState(false);
+  const [showDoomTargetModal, setShowDoomTargetModal] = useState(false);
+  const [targetDoomScore, setTargetDoomScore] = useState<number | null>(null);
+  const [refreshAnimKey, setRefreshAnimKey] = useState(0);
+  const [localGoalsBackup, setLocalGoalsBackup] = useState<Goal[]>([]);
+  const [miniPlayerEnabled, setMiniPlayerEnabled] = useState<boolean>(getMiniPlayerSnapshot().enabled);
+
+  useEffect(() => {
+    return subscribeMiniPlayer((snap) => setMiniPlayerEnabled(snap.enabled));
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(DOOM_TARGET_STORAGE_KEY)
+      .then((val) => {
+        if (val) {
+          const num = parseInt(val, 10);
+          if (!isNaN(num) && num > 0) setTargetDoomScore(num);
+        }
+      })
+      .catch(() => {});
+
+    AsyncStorage.getItem("@hadaf/local_goals_backup_v1")
+      .then((raw) => {
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) setLocalGoalsBackup(parsed);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSaveTargetDoomScore = (target: number) => {
+    setTargetDoomScore(target);
+    AsyncStorage.setItem(DOOM_TARGET_STORAGE_KEY, String(target)).catch(() => {});
+    publishMiniPlayerUpdate({ targetScore: target });
+  };
 
   // Native device usage state
   const [deviceUsage, setDeviceUsage] = useState<MergedAppUsage[]>(memoryMostUsedCache);
@@ -800,7 +1204,27 @@ export default function HomeScreen() {
 
   const { data: me, refetch: refetchMe } = useGetMe();
   const { data: rawGoals, refetch: refetchGoals } = useListGoals();
-  const goals = Array.isArray(rawGoals) ? rawGoals : [];
+  const goals = React.useMemo(() => {
+    const serverList = Array.isArray(rawGoals) ? rawGoals : [];
+    const byId = new Map<string, Goal>();
+    for (const g of serverList) byId.set(g.id, g);
+    for (const lg of localGoalsBackup) {
+      const matched = serverList.find(
+        (s) => s.id === lg.id || (s.title === lg.title && s.startTime === lg.startTime)
+      );
+      if (matched) {
+        const localUpdated = new Date(lg.updatedAt || 0).getTime();
+        const serverUpdated = new Date(matched.updatedAt || 0).getTime();
+        byId.set(
+          matched.id,
+          localUpdated >= serverUpdated ? { ...matched, status: lg.status, updatedAt: lg.updatedAt } : matched
+        );
+      } else {
+        byId.set(lg.id, lg);
+      }
+    }
+    return Array.from(byId.values());
+  }, [rawGoals, localGoalsBackup]);
   const { data: rawAppUsage, refetch: refetchAppUsage } = useGetAppUsageSummary();
   const appUsage = Array.isArray(rawAppUsage) ? rawAppUsage : [];
   const { data: settings } = useGetUserSettings();
@@ -876,6 +1300,7 @@ export default function HomeScreen() {
             dailyMinutes: d.totalMinutes,
             totalMinutes: total7,
             weeklyAvgMinutes: Math.max(1, Math.round(total7 / 7)),
+            iconUri: d.iconUri || w?.iconUri || undefined,
           });
         }
         for (const w of weekly) {
@@ -891,6 +1316,7 @@ export default function HomeScreen() {
               dailyMinutes: d ? d.totalMinutes : 0,
               totalMinutes: w.totalMinutes,
               weeklyAvgMinutes: Math.max(1, Math.round(w.totalMinutes / 7)),
+              iconUri: w.iconUri || d?.iconUri || undefined,
             });
           }
         }
@@ -965,6 +1391,7 @@ export default function HomeScreen() {
     dailyMinutes: number;
     totalMinutes: number;
     weeklyAvgMinutes: number;
+    iconUri?: string;
   }
 
   const todayKeyStr = localDayKey(new Date());
@@ -1025,6 +1452,7 @@ export default function HomeScreen() {
             dailyMinutes: d.dailyMinutes,
             totalMinutes: d.totalMinutes,
             weeklyAvgMinutes: d.weeklyAvgMinutes || Math.max(1, Math.round((d.totalMinutes || d.dailyMinutes) / 7)),
+            iconUri: d.iconUri,
           }))
       : fallbackServerUsage
           .filter((d) => !isCallOrSystemNoise(d.appName, d.packageName))
@@ -1037,6 +1465,11 @@ export default function HomeScreen() {
     setRefreshing(true);
     Haptics.selectionAsync();
     try {
+      const localRaw = await AsyncStorage.getItem("@hadaf/local_goals_backup_v1");
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw);
+        if (Array.isArray(parsed)) setLocalGoalsBackup(parsed);
+      }
       // Refresh all Home cards (screen time, DoomScore, most used apps, goals, mood, streak) EXCEPT AI messages
       await Promise.allSettled([
         checkAndLoadStats(),
@@ -1050,6 +1483,8 @@ export default function HomeScreen() {
       ]);
     } finally {
       setRefreshing(false);
+      // Replay fresh counter, progress bar, and card entrance animations!
+      setRefreshAnimKey((k) => k + 1);
     }
   }, [
     checkAndLoadStats,
@@ -1180,11 +1615,31 @@ export default function HomeScreen() {
 
   const progressColor = doomScore < 30 ? "#4ade80" : doomScore < 70 ? "#facc15" : "#f87171";
 
+  // Keep Hadaf Mini Player synced with latest DoomScore, target, and screen time
+  useEffect(() => {
+    publishMiniPlayerUpdate({
+      doomScore,
+      targetScore: targetDoomScore ?? 30,
+      screenTimeLabel: formatDuration(totalScreenMinutes),
+    });
+  }, [doomScore, targetDoomScore, totalScreenMinutes]);
+
+  const dailyGoalsOnly = goals.filter((g) => g.type === "daily");
+  const displayDailyGoals = dailyGoalsOnly.length > 0 ? dailyGoalsOnly : goals;
+  const doneDailyCount = displayDailyGoals.filter((g) => g.status === "done").length;
+
   return (
-    <View style={[styles.root, { backgroundColor: "#f5f5f5" }]}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <AnimatedBackground />
       <CalendarModal visible={showCal} onClose={() => setShowCal(false)} />
       <GoalsStatusModal visible={showGoals} onClose={() => setShowGoals(false)} goals={goals} />
+      <TargetDoomScoreModal
+        visible={showDoomTargetModal}
+        currentTarget={targetDoomScore}
+        currentDoomScore={doomScore}
+        onSave={handleSaveTargetDoomScore}
+        onClose={() => setShowDoomTargetModal(false)}
+      />
       <SelectAppsModal
         visible={showLogUsage}
         onClose={() => setShowLogUsage(false)}
@@ -1215,18 +1670,24 @@ export default function HomeScreen() {
         }
       >
 
-        {/* ── AI Coach Reality Check & Motivation Widget ── */}
+        {/* ── AI Coach Reality Check & Motivation Widget (auto-refreshes every 1m, not on manual swipe) ── */}
         <AiCoachWidget firstName={firstName} />
 
-        {/* ── Two stat cards ── */}
+        {/* ── Two stat cards (Screen Time & Clickable DoomScore with Target) ── */}
         <Animated.View
+          key={`stat-row-${refreshAnimKey}`}
           entering={isWeb ? undefined : FadeInDown.delay(60).springify()}
           style={styles.statRow}
         >
           {/* Screen Time */}
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>SCREEN TIME</Text>
-            <Text style={styles.statNumber}>{formatDuration(totalScreenMinutes)}</Text>
+            <ScreenTimeCounter
+              targetMinutes={totalScreenMinutes}
+              delay={120}
+              animKey={refreshAnimKey}
+              style={styles.statNumber}
+            />
             <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)", paddingTop: 8, marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.5)", letterSpacing: 0.8 }}>
                 WEEKLY AVG
@@ -1237,37 +1698,116 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* DoomScore */}
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>DOOMSCORE</Text>
-            <CounterNumber
-              target={doomScore}
-              delay={200}
-              style={styles.statNumber}
-            />
+          {/* DoomScore (Clickable to set Target DoomScore) */}
+          <TouchableOpacity
+            style={styles.statCard}
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setShowDoomTargetModal(true);
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={styles.statLabel}>DOOMSCORE</Text>
+              <MaterialIcons name="tune" size={13} color="rgba(255,255,255,0.65)" />
+            </View>
+
+            <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
+              <CounterNumber
+                target={doomScore}
+                delay={180}
+                animKey={refreshAnimKey}
+                style={styles.statNumber}
+              />
+              {targetDoomScore !== null && (
+                <View
+                  style={[
+                    styles.doomTargetMiniBadge,
+                    {
+                      backgroundColor:
+                        doomScore <= targetDoomScore
+                          ? "rgba(74, 222, 128, 0.18)"
+                          : "rgba(248, 113, 113, 0.22)",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.doomTargetMiniText,
+                      {
+                        color: doomScore <= targetDoomScore ? "#4ade80" : "#f87171",
+                      },
+                    ]}
+                  >
+                    TARGET ≤ {targetDoomScore}
+                  </Text>
+                </View>
+              )}
+            </View>
 
             <AnimatedProgressBar
               percent={doomScore / 100}
-              delay={350}
+              delay={300}
+              animKey={refreshAnimKey}
               height={5}
               radius={3}
               trackColor="rgba(255,255,255,0.2)"
               fillColor={progressColor}
             />
-            <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)", paddingTop: 8, marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
+            <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)", paddingTop: 8, marginTop: 6, flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.5)", letterSpacing: 0.8 }}>
-                WEEKLY AVG
+                {targetDoomScore !== null ? `TARGET: ${targetDoomScore} PTS` : "WEEKLY AVG"}
               </Text>
               <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" }}>
-                {avgDoomScore} pts
+                AVG {avgDoomScore} pts
               </Text>
             </View>
-          </View>
+          </TouchableOpacity>
         </Animated.View>
 
-        {/* ── Most Used Apps ── */}
+        {/* ── Hadaf DoomScore Floating Mini Player Toggle Card (Point 10) ── */}
         <Animated.View
-          entering={isWeb ? undefined : FadeInDown.delay(120).springify()}
+          key={`mini-player-${refreshAnimKey}`}
+          entering={isWeb ? undefined : FadeInDown.delay(95).springify()}
+          style={styles.miniPlayerCard}
+        >
+          <View style={styles.miniPlayerIconBox}>
+            <MaterialIcons name="picture-in-picture-alt" size={19} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.miniPlayerCardTitle}>HADAF MINI PLAYER</Text>
+            <Text style={styles.miniPlayerCardSub}>
+              {miniPlayerEnabled
+                ? `Active · Displaying DoomScore (${doomScore} pts) anywhere on your phone`
+                : "Float a live DoomScore mini-app anywhere on your phone"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.miniPlayerToggleBtn,
+              miniPlayerEnabled && styles.miniPlayerToggleBtnActive,
+            ]}
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              void toggleMiniPlayer(true);
+            }}
+          >
+            <Text
+              style={[
+                styles.miniPlayerToggleText,
+                miniPlayerEnabled && { color: "#fff" },
+              ]}
+            >
+              {miniPlayerEnabled ? "ON" : "LAUNCH"}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* ── Most Used Apps (Original Icons in Pure Black & White Theme) ── */}
+        <Animated.View
+          key={`apps-card-${refreshAnimKey}`}
+          entering={isWeb ? undefined : FadeInDown.delay(130).springify()}
           style={styles.appsCard}
         >
           <View style={styles.appsHeader}>
@@ -1300,26 +1840,41 @@ export default function HomeScreen() {
                 </Text>
               )}
               {topApps.map((app, i) => (
-                <AppRow key={app.appName} app={app} index={i} last={i === topApps.length - 1} maxMinutes={maxAppMinutes} />
+                <AppRow
+                  key={`${app.appName}-${refreshAnimKey}`}
+                  app={app}
+                  index={i}
+                  last={i === topApps.length - 1}
+                  maxMinutes={maxAppMinutes}
+                  animKey={refreshAnimKey}
+                />
               ))}
             </>
           )}
         </Animated.View>
 
-        {/* ── Three oval accent cards ── */}
+        {/* ── Three oval accent cards (Daily Goals in Light Blue, Mood, Streaks) ── */}
         <Animated.View
+          key={`oval-row-${refreshAnimKey}`}
           entering={isWeb ? undefined : FadeInDown.delay(180).springify()}
           style={styles.ovalRow}
         >
           <OvalCard
-            bg="#e8f5e9"
-            iconColor="#2e7d32"
+            bg="#DBEAFE"
+            iconColor="#0284C7"
             icon="checklist"
             label1="DAILY"
             label2="GOALS"
-            badgeText={goals.length === 0 ? undefined : `${pendingGoals} LEFT`}
-            badgeBg="#2e7d32"
-            onPress={() => setShowGoals(true)}
+            badgeText={
+              displayDailyGoals.length === 0
+                ? "VIEW LIST"
+                : `${doneDailyCount}/${displayDailyGoals.length} DONE`
+            }
+            badgeBg="#0284C7"
+            onPress={() => {
+              Haptics.selectionAsync();
+              setShowGoals(true);
+            }}
           />
           <OvalCard
             bg={todayMoodData?.logged ? "#e8f5e9" : "#fff3e0"}
@@ -1493,13 +2048,164 @@ const styles = StyleSheet.create({
     paddingBottom: 22,
     gap: 10,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 20,
+    elevation: 9,
   },
   statLabel:  { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.55)", letterSpacing: 1.4 },
   statNumber: { fontSize: 34, fontFamily: "Inter_700Bold",    color: "#fff", letterSpacing: -1 },
+
+  doomTargetMiniBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  doomTargetMiniText: {
+    fontSize: 8.5,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.5,
+  },
+
+  // Mini Player toggle card
+  miniPlayerCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+  },
+  miniPlayerIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#000000",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  miniPlayerCardTitle: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: "#111",
+    letterSpacing: 1,
+  },
+  miniPlayerCardSub: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  miniPlayerToggleBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+  },
+  miniPlayerToggleBtnActive: {
+    backgroundColor: "#000000",
+    borderColor: "#000000",
+  },
+  miniPlayerToggleText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: "#111",
+    letterSpacing: 0.8,
+  },
+
+  // Target DoomScore Modal
+  doomModalCard: {
+    width: SCREEN_W * 0.9,
+    backgroundColor: "#ffffff",
+    borderRadius: 26,
+    padding: 24,
+    gap: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.25,
+    shadowRadius: 30,
+    elevation: 18,
+  },
+  doomInfoBox: {
+    backgroundColor: "#f4f4f5",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e4e4e7",
+  },
+  doomInfoText: {
+    fontSize: 12.5,
+    fontFamily: "Inter_500Medium",
+    color: "#3f3f46",
+    lineHeight: 18,
+  },
+  doomStepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 20,
+    paddingVertical: 6,
+  },
+  doomStepperBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  doomTargetBigNum: {
+    fontSize: 42,
+    fontFamily: "Inter_700Bold",
+    color: "#000",
+    letterSpacing: -1.5,
+  },
+  doomTargetUnit: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    color: "#71717a",
+    letterSpacing: 1.2,
+  },
+  doomPresetsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+  },
+  doomPresetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "#f4f4f5",
+    borderWidth: 1,
+    borderColor: "#e4e4e7",
+  },
+  doomPresetChipActive: {
+    backgroundColor: "#000",
+    borderColor: "#000",
+  },
+  doomPresetChipText: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    color: "#3f3f46",
+  },
+  doomCurrentCompare: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    color: "#52525b",
+    textAlign: "center",
+  },
 
   // Screen Time card bottom row
   statCardBottom: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
@@ -1520,10 +2226,12 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     padding: 18,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.13,
+    shadowRadius: 18,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
     gap: 0,
   },
   appsHeader:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
@@ -1532,14 +2240,33 @@ const styles = StyleSheet.create({
   appsHeaderAddBtn:{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#f0f0f0", alignItems: "center", justifyContent: "center" },
 
   appRow:      { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
-  appIconWrap: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#2a2a2a", alignItems: "center", justifyContent: "center" },
+  appIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#0a0a0a",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#1f1f1f",
+  },
+  appIconWrapNativeBw: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d4d4d8",
+  },
+  appBwIconImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 11,
+  },
   appInfo:     { flex: 1, gap: 2 },
   appName:     { fontSize: 14, fontFamily: "Inter_700Bold", color: "#111" },
   appCategory: { fontSize: 10, fontFamily: "Inter_500Medium", color: "#888", letterSpacing: 0.8 },
   appRight:    { alignItems: "flex-end", gap: 5 },
   appTime:     { fontSize: 14, fontFamily: "Inter_700Bold", color: "#111" },
   appBarTrack: { width: 64, height: 4, borderRadius: 2, backgroundColor: "#ececec", overflow: "hidden" },
-  appBarFill:  { height: "100%", borderRadius: 2, backgroundColor: "#222" },
+  appBarFill:  { height: "100%", borderRadius: 2, backgroundColor: "#111" },
   appDivider:  { height: 1, backgroundColor: "#f0f0f0" },
 
   // Oval accent cards
@@ -1551,6 +2278,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     alignItems: "center",
     gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.11,
+    shadowRadius: 14,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.04)",
   },
   ovalLabel:     { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.2, textAlign: "center" },
   ovalEmpty:     { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 },

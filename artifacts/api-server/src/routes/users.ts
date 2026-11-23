@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, goalsTable, focusSessionsTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { maybeSendWelcomeEmail } from "../lib/email";
+import { ensureSchema } from "../lib/schema-sync";
 import dns from "dns";
 import net from "net";
 
@@ -87,10 +88,28 @@ const getMeHandler = async (req: any, res: any): Promise<void> => {
   }
 
   try {
+    await ensureSchema();
     let [user] = await db
       .select()
       .from(usersTable)
       .where(eq(usersTable.id, userId));
+
+    const [goalsDoneRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(goalsTable)
+      .where(and(eq(goalsTable.userId, userId), eq(goalsTable.status, "done")));
+
+    const [sessionsSummaryRow] = await db
+      .select({
+        count: sql<number>`count(*)`,
+        totalMinutes: sql<number>`coalesce(sum(${focusSessionsTable.plannedDurationMinutes}), 0)`,
+      })
+      .from(focusSessionsTable)
+      .where(and(eq(focusSessionsTable.userId, userId), eq(focusSessionsTable.status, "completed")));
+
+    const goalsDoneCount = Number(goalsDoneRow?.count ?? 0);
+    const completedSessionsCount = Number(sessionsSummaryRow?.count ?? 0);
+    const totalFocusMinutes = Number(sessionsSummaryRow?.totalMinutes ?? 0);
 
     if (!user) {
       res.status(200).json({
@@ -105,6 +124,9 @@ const getMeHandler = async (req: any, res: any): Promise<void> => {
         level: 1,
         currentStreak: 0,
         bestStreak: 0,
+        goalsDoneCount,
+        completedSessionsCount,
+        totalFocusMinutes,
       });
       return;
     }
@@ -128,7 +150,13 @@ const getMeHandler = async (req: any, res: any): Promise<void> => {
       }
     }
 
-    res.status(200).json(user);
+    res.status(200).json({
+      ...user,
+      level: Math.min(100, Math.max(1, user.level ?? 1)),
+      goalsDoneCount,
+      completedSessionsCount,
+      totalFocusMinutes,
+    });
   } catch (err: any) {
     console.error("[Users] Get me error:", err);
     res.status(500).json({ error: "Failed to fetch user profile" });

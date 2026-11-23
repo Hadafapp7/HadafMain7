@@ -15,7 +15,7 @@ export default function AnimatedBackground() {
           height: 240,
           borderRadius: 120,
           backgroundColor: "#000000",
-          opacity: 0.03,
+          opacity: 0.05,
         }}
       />
       <View
@@ -26,8 +26,8 @@ export default function AnimatedBackground() {
           width: 200,
           height: 200,
           borderRadius: 100,
-          backgroundColor: "#5e5e5e",
-          opacity: 0.03,
+          backgroundColor: "#3f3f46",
+          opacity: 0.05,
         }}
       />
       <View
@@ -39,7 +39,7 @@ export default function AnimatedBackground() {
           height: 180,
           borderRadius: 90,
           backgroundColor: "#000000",
-          opacity: 0.02,
+          opacity: 0.04,
         }}
       />
     </View>

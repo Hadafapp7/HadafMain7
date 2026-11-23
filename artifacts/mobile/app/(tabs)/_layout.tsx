@@ -1,8 +1,10 @@
 import { useListGoals } from "@workspace/api-client-react";
 import { Tabs } from "expo-router";
 import React from "react";
+import { View } from "react-native";
 
 import AnimatedTabBar from "@/components/AnimatedTabBar";
+import OfflineCenterBanner from "@/components/OfflineCenterBanner";
 import { useGoalAutomation } from "@/lib/goalAutomation";
 import { useGuiltNotifications } from "@/lib/guiltNotifications";
 
@@ -12,15 +14,18 @@ export default function TabLayout() {
   useGoalAutomation(Array.isArray(goals) ? goals : undefined);
 
   return (
-    <Tabs
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => <AnimatedTabBar {...props} />}
-    >
-      <Tabs.Screen name="index"     />
-      <Tabs.Screen name="analytics" />
-      <Tabs.Screen name="focus"     />
-      <Tabs.Screen name="goals"     />
-      <Tabs.Screen name="profile"   />
-    </Tabs>
+    <View style={{ flex: 1 }}>
+      <Tabs
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <AnimatedTabBar {...props} />}
+      >
+        <Tabs.Screen name="index"     />
+        <Tabs.Screen name="analytics" />
+        <Tabs.Screen name="focus"     />
+        <Tabs.Screen name="goals"     />
+        <Tabs.Screen name="profile"   />
+      </Tabs>
+      <OfflineCenterBanner showMiniPlayer />
+    </View>
   );
 }
