@@ -70,18 +70,7 @@ class HadafAccessibilityService : AccessibilityService() {
     if (evType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
         evType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
     val pkg = event.packageName?.toString() ?: return
-    if (pkg == packageName) {
-      // User is inside Hadaf -> hide the floating mini player
-      if (evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-        AppBlockerModule.onAppForegrounded(this)
-      }
-      return
-    }
-    // User switched to phone home screen or another app (ignore transient systemui shade/keyboard)
-    if (evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-        !pkg.contains("systemui") && !pkg.contains("inputmethod") && !pkg.contains("honeyboard")) {
-      AppBlockerModule.onAppBackgrounded(this)
-    }
+    if (pkg == packageName) return
 
     val now = System.currentTimeMillis()
     var shouldBlock = false

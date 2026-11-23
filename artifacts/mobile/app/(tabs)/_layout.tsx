@@ -25,7 +25,7 @@ export default function TabLayout() {
         <Tabs.Screen name="goals"     />
         <Tabs.Screen name="profile"   />
       </Tabs>
-      <OfflineCenterBanner showMiniPlayer />
+      <OfflineCenterBanner />
     </View>
   );
 }

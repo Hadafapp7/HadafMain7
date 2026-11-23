@@ -37,12 +37,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AnimatedBackground from "@/components/AnimatedBackground";
 import { HadafInlineLoader } from "@/components/AppLoadingScreen";
-import {
-  getMiniPlayerSnapshot,
-  publishMiniPlayerUpdate,
-  subscribeMiniPlayer,
-  toggleMiniPlayer,
-} from "@/components/OfflineCenterBanner";
 import { useColors } from "@/hooks/useColors";
 import { isSocialOrGameApp, localDayKey } from "@/lib/usageStats";
 import {
@@ -1000,11 +994,6 @@ export default function HomeScreen() {
   const [targetDoomScore, setTargetDoomScore] = useState<number | null>(null);
   const [refreshAnimKey, setRefreshAnimKey] = useState(0);
   const [localGoalsBackup, setLocalGoalsBackup] = useState<Goal[]>([]);
-  const [miniPlayerEnabled, setMiniPlayerEnabled] = useState<boolean>(getMiniPlayerSnapshot().enabled);
-
-  useEffect(() => {
-    return subscribeMiniPlayer((snap) => setMiniPlayerEnabled(snap.enabled));
-  }, []);
 
   useEffect(() => {
     AsyncStorage.getItem(DOOM_TARGET_STORAGE_KEY)
@@ -1029,7 +1018,6 @@ export default function HomeScreen() {
   const handleSaveTargetDoomScore = (target: number) => {
     setTargetDoomScore(target);
     AsyncStorage.setItem(DOOM_TARGET_STORAGE_KEY, String(target)).catch(() => {});
-    publishMiniPlayerUpdate({ targetScore: target });
   };
 
   // Native device usage state
@@ -1471,15 +1459,6 @@ export default function HomeScreen() {
 
   const progressColor = doomScore < 30 ? "#4ade80" : doomScore < 70 ? "#facc15" : "#f87171";
 
-  // Keep Hadaf Mini Player synced with latest DoomScore, target, and screen time
-  useEffect(() => {
-    publishMiniPlayerUpdate({
-      doomScore,
-      targetScore: targetDoomScore ?? 30,
-      screenTimeLabel: formatDuration(totalScreenMinutes),
-    });
-  }, [doomScore, targetDoomScore, totalScreenMinutes]);
-
   const dailyGoalsOnly = goals.filter((g) => g.type === "daily");
   const displayDailyGoals = dailyGoalsOnly.length > 0 ? dailyGoalsOnly : goals;
   const doneDailyCount = displayDailyGoals.filter((g) => g.status === "done").length;
@@ -1882,62 +1861,6 @@ const styles = StyleSheet.create({
     fontSize: 8.5,
     fontFamily: "Inter_700Bold",
     letterSpacing: 0.5,
-  },
-
-  // Mini Player toggle card
-  miniPlayerCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 6,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
-  },
-  miniPlayerIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#000000",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  miniPlayerCardTitle: {
-    fontSize: 11,
-    fontFamily: "Inter_700Bold",
-    color: "#111",
-    letterSpacing: 1,
-  },
-  miniPlayerCardSub: {
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    color: "#6b7280",
-    marginTop: 2,
-  },
-  miniPlayerToggleBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#f3f4f6",
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-  },
-  miniPlayerToggleBtnActive: {
-    backgroundColor: "#000000",
-    borderColor: "#000000",
-  },
-  miniPlayerToggleText: {
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    color: "#111",
-    letterSpacing: 0.8,
   },
 
   // Target DoomScore Modal

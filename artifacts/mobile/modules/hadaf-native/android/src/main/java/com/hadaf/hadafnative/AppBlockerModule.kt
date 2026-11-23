@@ -21,10 +21,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -35,13 +32,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.TypedValue
-import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.WindowManager
-import android.widget.LinearLayout
-import android.widget.TextView
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.text.SimpleDateFormat
@@ -70,268 +60,12 @@ class AppBlockerModule : Module() {
     // JSON array of upcoming blocking windows, e.g. [{"start":1700000000000,"end":1700003600000,"pkgs":["com.instagram.android"]}]
     // Written by JS (goal schedules) and enforced by HadafAccessibilityService even if the app process is dead.
     const val KEY_SCHEDULED   = "scheduledBlocks"
-    const val KEY_DOOM_SCORE  = "lastDoomScore"
-    const val KEY_TARGET_DOOM = "lastTargetDoomScore"
-    const val KEY_SCREEN_TIME = "lastScreenTimeLabel"
     private var activeAlarmRingtone: Ringtone? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var timerRunnable: Runnable? = null
     private var timerEndMs: Long = 0L
     private var timerTotalDurationLabel: String = ""
     private var cachedHourglassBitmap: Bitmap? = null
-
-    // Floating system-wide Hadaf Mini Player state (ONLY shown outside Hadaf app!)
-    private var miniPlayerView: LinearLayout? = null
-    private var miniPlayerWindowManager: WindowManager? = null
-    private var miniPlayerDotView: View? = null
-    private var miniPlayerScoreText: TextView? = null
-    private var miniPlayerSubText: TextView? = null
-    private var miniPlayerParams: WindowManager.LayoutParams? = null
-    @Volatile var isHadafInForeground: Boolean = true
-
-    fun dpToPx(ctx: Context, dp: Float): Int =
-      TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp, ctx.resources.displayMetrics).toInt()
-
-    fun doomDotColor(score: Int): Int = when {
-      score < 30 -> 0xFF4ADE80.toInt()
-      score < 70 -> 0xFFFACC15.toInt()
-      else -> 0xFFF87171.toInt()
-    }
-
-    fun saveMiniPlayerData(ctx: Context, doomScore: Int, targetScore: Int, screenTimeLabel: String) {
-      ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-        .putInt(KEY_DOOM_SCORE, doomScore)
-        .putInt(KEY_TARGET_DOOM, targetScore)
-        .putString(KEY_SCREEN_TIME, screenTimeLabel)
-        .apply()
-      if (!isHadafInForeground && miniPlayerView != null) {
-        showOrUpdateFloatingMiniPlayer(ctx, doomScore, targetScore, screenTimeLabel)
-      }
-    }
-
-    fun onAppBackgrounded(ctx: Context) {
-      isHadafInForeground = false
-      val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-      val doom = p.getInt(KEY_DOOM_SCORE, 0)
-      val target = p.getInt(KEY_TARGET_DOOM, 0)
-      val st = p.getString(KEY_SCREEN_TIME, "") ?: ""
-      showOrUpdateFloatingMiniPlayer(ctx, doom, target, st)
-    }
-
-    fun onAppForegrounded(ctx: Context) {
-      isHadafInForeground = true
-      hideFloatingMiniPlayer(ctx)
-    }
-
-    fun showOrUpdateFloatingMiniPlayer(ctx: Context, doomScore: Int, targetScore: Int, screenTimeLabel: String): Boolean {
-      if (isHadafInForeground) {
-        hideFloatingMiniPlayer(ctx)
-        return false
-      }
-      val a11yService = HadafAccessibilityService.instance
-      val canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx)
-      if (a11yService == null && !canOverlay) {
-        return false
-      }
-
-      val hostCtx: Context = if (canOverlay) ctx.applicationContext else (a11yService ?: ctx.applicationContext)
-      val wm = hostCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-
-      mainHandler.post {
-        try {
-          if (isHadafInForeground) {
-            hideFloatingMiniPlayer(ctx)
-            return@post
-          }
-
-          val subStr = buildString {
-            if (targetScore > 0) {
-              append("Target ≤ $targetScore")
-              if (screenTimeLabel.isNotEmpty()) append(" · ")
-            }
-            if (screenTimeLabel.isNotEmpty()) {
-              append(screenTimeLabel)
-            } else if (targetScore <= 0) {
-              append("DoomScore")
-            }
-          }
-
-          if (miniPlayerView != null) {
-            miniPlayerScoreText?.text = "DOOM $doomScore"
-            miniPlayerSubText?.text = subStr
-            (miniPlayerDotView?.background as? GradientDrawable)?.setColor(doomDotColor(doomScore))
-            return@post
-          }
-
-          val root = LinearLayout(hostCtx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            val padH = dpToPx(hostCtx, 14f)
-            val padV = dpToPx(hostCtx, 9f)
-            setPadding(padH, padV, dpToPx(hostCtx, 10f), padV)
-            background = GradientDrawable().apply {
-              shape = GradientDrawable.RECTANGLE
-              cornerRadius = dpToPx(hostCtx, 28f).toFloat()
-              setColor(0xF20A0A0C.toInt())
-              setStroke(dpToPx(hostCtx, 1.2f), 0x40FFFFFF)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-              elevation = dpToPx(hostCtx, 10f).toFloat()
-            }
-          }
-
-          val dotSize = dpToPx(hostCtx, 10f)
-          val dot = View(hostCtx).apply {
-            layoutParams = LinearLayout.LayoutParams(dotSize, dotSize).apply {
-              rightMargin = dpToPx(hostCtx, 10f)
-            }
-            background = GradientDrawable().apply {
-              shape = GradientDrawable.OVAL
-              setColor(doomDotColor(doomScore))
-            }
-          }
-          root.addView(dot)
-          miniPlayerDotView = dot
-
-          val textCol = LinearLayout(hostCtx).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-              LinearLayout.LayoutParams.WRAP_CONTENT,
-              LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-              rightMargin = dpToPx(hostCtx, 10f)
-            }
-          }
-
-          val titleTv = TextView(hostCtx).apply {
-            text = "DOOM $doomScore"
-            setTextColor(0xFFFFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            typeface = Typeface.DEFAULT_BOLD
-          }
-          textCol.addView(titleTv)
-          miniPlayerScoreText = titleTv
-
-          val subTv = TextView(hostCtx).apply {
-            text = subStr
-            setTextColor(0xB3FFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-          }
-          textCol.addView(subTv)
-          miniPlayerSubText = subTv
-
-          root.addView(textCol)
-
-          val closeTv = TextView(hostCtx).apply {
-            text = "✕"
-            setTextColor(0x99FFFFFF.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            val p = dpToPx(hostCtx, 6f)
-            setPadding(p, p / 2, p, p / 2)
-            setOnClickListener {
-              hideFloatingMiniPlayer(hostCtx)
-            }
-          }
-          root.addView(closeTv)
-
-          val overlayType = when {
-            canOverlay && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ->
-              WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            canOverlay -> {
-              @Suppress("DEPRECATION")
-              WindowManager.LayoutParams.TYPE_PHONE
-            }
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1 ->
-              WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-            else -> {
-              @Suppress("DEPRECATION")
-              WindowManager.LayoutParams.TYPE_PHONE
-            }
-          }
-
-          val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            overlayType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-          ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = dpToPx(hostCtx, 16f)
-            y = dpToPx(hostCtx, 140f)
-          }
-
-          var initialX = 0
-          var initialY = 0
-          var initialTouchX = 0f
-          var initialTouchY = 0f
-          var isDragging = false
-
-          root.setOnTouchListener { v, event ->
-            when (event.action) {
-              MotionEvent.ACTION_DOWN -> {
-                initialX = params.x
-                initialY = params.y
-                initialTouchX = event.rawX
-                initialTouchY = event.rawY
-                isDragging = false
-                true
-              }
-              MotionEvent.ACTION_MOVE -> {
-                val dx = (event.rawX - initialTouchX).toInt()
-                val dy = (event.rawY - initialTouchY).toInt()
-                if (kotlin.math.abs(dx) > 10 || kotlin.math.abs(dy) > 10) {
-                  isDragging = true
-                }
-                params.x = initialX + dx
-                params.y = initialY + dy
-                try {
-                  wm.updateViewLayout(v, params)
-                } catch (_: Exception) {}
-                true
-              }
-              MotionEvent.ACTION_UP -> {
-                if (!isDragging) {
-                  try {
-                    val launch = hostCtx.packageManager.getLaunchIntentForPackage(hostCtx.packageName)?.apply {
-                      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    }
-                    if (launch != null) {
-                      hideFloatingMiniPlayer(hostCtx)
-                      hostCtx.startActivity(launch)
-                    }
-                  } catch (_: Exception) {}
-                }
-                true
-              }
-              else -> false
-            }
-          }
-
-          wm.addView(root, params)
-          miniPlayerView = root
-          miniPlayerWindowManager = wm
-          miniPlayerParams = params
-        } catch (_: Exception) {}
-      }
-      return true
-    }
-
-    fun hideFloatingMiniPlayer(ctx: Context) {
-      mainHandler.post {
-        try {
-          val wm = miniPlayerWindowManager
-            ?: (ctx.applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
-          miniPlayerView?.let { wm.removeView(it) }
-        } catch (_: Exception) {}
-        miniPlayerView = null
-        miniPlayerWindowManager = null
-        miniPlayerDotView = null
-        miniPlayerScoreText = null
-        miniPlayerSubText = null
-        miniPlayerParams = null
-      }
-    }
 
     fun getHourglassBitmap(): Bitmap {
       cachedHourglassBitmap?.let { return it }
@@ -873,48 +607,6 @@ class AppBlockerModule : Module() {
       } catch (_: Exception) {
         true
       }
-    }
-
-    // ── System-Wide Floating Hadaf DoomScore Mini Player (only outside Hadaf) ──
-    OnActivityEntersForeground {
-      val ctx = appContext.reactContext
-      if (ctx != null) {
-        onAppForegrounded(ctx)
-      }
-    }
-
-    OnActivityEntersBackground {
-      val ctx = appContext.reactContext
-      if (ctx != null) {
-        onAppBackgrounded(ctx)
-      }
-    }
-
-    Function("startMiniPlayer") { doomScore: Int, targetScore: Int, screenTimeLabel: String ->
-      val ctx = appContext.reactContext ?: return@Function false
-      saveMiniPlayerData(ctx, doomScore, targetScore, screenTimeLabel)
-      onAppBackgrounded(ctx)
-      true
-    }
-
-    Function("updateMiniPlayer") { doomScore: Int, targetScore: Int, screenTimeLabel: String ->
-      val ctx = appContext.reactContext
-      if (ctx != null) {
-        saveMiniPlayerData(ctx, doomScore, targetScore, screenTimeLabel)
-      }
-      Unit
-    }
-
-    Function("stopMiniPlayer") {
-      val ctx = appContext.reactContext
-      if (ctx != null) {
-        onAppForegrounded(ctx)
-      }
-      Unit
-    }
-
-    Function("isMiniPlayerActive") {
-      miniPlayerView != null
     }
   }
 }
