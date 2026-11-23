@@ -22,7 +22,7 @@
       "bundleIdentifier": "in.co.hadaf.app"
     },
     "android": {
-      "versionCode": 35,
+      "versionCode": 36,
       "softwareKeyboardLayoutMode": "resize",
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
