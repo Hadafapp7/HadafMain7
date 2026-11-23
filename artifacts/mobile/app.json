@@ -13,6 +13,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "notification": {
+      "icon": "./assets/images/notification-icon.png",
+      "color": "#000000"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "in.co.hadaf.app"

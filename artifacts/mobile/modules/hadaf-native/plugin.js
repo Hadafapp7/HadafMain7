@@ -17,9 +17,12 @@
 const {
   withAndroidManifest,
   withAndroidStyles,
+  withDangerousMod,
   withEntitlementsPlist,
   withInfoPlist,
 } = require("expo/config-plugins");
+const fs = require("fs");
+const path = require("path");
 
 // ── Android ────────────────────────────────────────────────────────────────
 
@@ -88,6 +91,26 @@ function withAndroidAccessibilityService(config) {
       });
     }
 
+    // Ensure default notification icon metadata points to @drawable/notification_icon
+    if (!app["meta-data"]) app["meta-data"] = [];
+    const notifMetaKeys = [
+      "expo.modules.notifications.default_notification_icon",
+      "com.google.firebase.messaging.default_notification_icon",
+    ];
+    for (const metaKey of notifMetaKeys) {
+      const existing = app["meta-data"].find((m) => m.$?.["android:name"] === metaKey);
+      if (existing) {
+        existing.$["android:resource"] = "@drawable/notification_icon";
+      } else {
+        app["meta-data"].push({
+          $: {
+            "android:name": metaKey,
+            "android:resource": "@drawable/notification_icon",
+          },
+        });
+      }
+    }
+
     return cfg;
   });
 }
@@ -123,6 +146,39 @@ function withDisableAndroidForceDark(config) {
   });
 }
 
+function withAndroidNotificationDrawable(config) {
+  return withDangerousMod(config, [
+    "android",
+    async (cfg) => {
+      const projectRoot = cfg.modRequest.projectRoot;
+      const srcIcon = path.join(projectRoot, "assets", "images", "notification-icon.png");
+      if (fs.existsSync(srcIcon)) {
+        const resBase = path.join(
+          cfg.modRequest.platformProjectRoot,
+          "app",
+          "src",
+          "main",
+          "res"
+        );
+        const folders = [
+          "drawable",
+          "drawable-mdpi",
+          "drawable-hdpi",
+          "drawable-xhdpi",
+          "drawable-xxhdpi",
+          "drawable-xxxhdpi",
+        ];
+        for (const folder of folders) {
+          const dir = path.join(resBase, folder);
+          fs.mkdirSync(dir, { recursive: true });
+          fs.copyFileSync(srcIcon, path.join(dir, "notification_icon.png"));
+        }
+      }
+      return cfg;
+    },
+  ]);
+}
+
 // ── iOS ────────────────────────────────────────────────────────────────────
 
 function withIOSFamilyControls(config) {
@@ -154,6 +210,7 @@ function withIOSFamilyControls(config) {
 module.exports = (config) => {
   config = withAndroidAccessibilityService(config);
   config = withDisableAndroidForceDark(config);
+  config = withAndroidNotificationDrawable(config);
   config = withIOSFamilyControls(config);
   return config;
 };

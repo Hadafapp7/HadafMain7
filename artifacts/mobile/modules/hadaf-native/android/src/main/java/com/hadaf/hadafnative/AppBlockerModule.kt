@@ -396,6 +396,24 @@ class AppBlockerModule : Module() {
         else -> "${s} s"
       }
     }
+
+    fun getStatusBarSmallIcon(ctx: Context): Int {
+      val resId = ctx.resources.getIdentifier("notification_icon", "drawable", ctx.packageName)
+      if (resId != 0) return resId
+      val appIcon = ctx.applicationInfo.icon
+      return if (appIcon != 0) appIcon else android.R.drawable.ic_lock_idle_alarm
+    }
+
+    fun getAppLogoLargeIcon(ctx: Context): Bitmap? {
+      return try {
+        val appIcon = ctx.applicationInfo.icon
+        if (appIcon != 0) {
+          android.graphics.BitmapFactory.decodeResource(ctx.resources, appIcon)
+        } else null
+      } catch (_: Exception) {
+        null
+      }
+    }
   }
 
   private fun prefs(ctx: Context) =
@@ -558,10 +576,11 @@ class AppBlockerModule : Module() {
             )
             manager.createNotificationChannel(alertChannel)
           }
-          val appIcon = ctx.applicationInfo.icon
-          val smallIcon = if (appIcon != 0) appIcon else android.R.drawable.ic_dialog_info
+          val smallIcon = getStatusBarSmallIcon(ctx)
+          val largeLogo = getAppLogoLargeIcon(ctx)
           val builder = NotificationCompat.Builder(ctx, alertChannelId)
             .setSmallIcon(smallIcon)
+            .apply { if (largeLogo != null) setLargeIcon(largeLogo) }
             .setContentTitle(if (title.isNotEmpty()) title else "Hadaf")
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -609,7 +628,7 @@ class AppBlockerModule : Module() {
             val subLine = "$timerTotalDurationLabel / $endClockStr"
 
             val builder = NotificationCompat.Builder(ctx, channelId)
-              .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+              .setSmallIcon(getStatusBarSmallIcon(ctx))
               .setLargeIcon(getHourglassBitmap())
               .setColor(0xFF5B5CEB.toInt())
               .setContentTitle(timeStr)
@@ -700,11 +719,12 @@ class AppBlockerModule : Module() {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
           )
-          val appIcon = ctx.applicationInfo.icon
-          val smallIcon = if (appIcon != 0) appIcon else android.R.drawable.ic_lock_idle_alarm
+          val smallIcon = getStatusBarSmallIcon(ctx)
+          val largeLogo = getAppLogoLargeIcon(ctx)
 
           val notif = NotificationCompat.Builder(ctx, alarmChannelId)
             .setSmallIcon(smallIcon)
+            .apply { if (largeLogo != null) setLargeIcon(largeLogo) }
             .setContentTitle(if (title.isNotEmpty()) title else "Session Completed ⏰")
             .setContentText(if (body.isNotEmpty()) body else "Your timer is complete!")
             .setPriority(NotificationCompat.PRIORITY_MAX)
