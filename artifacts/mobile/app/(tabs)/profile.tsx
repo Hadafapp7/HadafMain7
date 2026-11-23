@@ -303,7 +303,13 @@ export default function ProfileScreen() {
     { label: "GOALS DONE", value: String(goalsDone) },
   ];
 
-  const displayName = me?.name?.toUpperCase() ?? userProfile?.name?.toUpperCase() ?? me?.email?.split("@")[0].toUpperCase() ?? (me as any)?.phone ?? "HADAF USER";
+  const rawFullName = (
+    me?.name ??
+    userProfile?.name ??
+    me?.email?.split("@")[0] ??
+    "HADAF USER"
+  ).trim();
+  const displayName = (rawFullName.split(/\s+/)[0] || "HADAF").toUpperCase();
 
   // Point 12: Only show "Master your productivity without limits" card when the user has completed free tier (isLimited) and has NOT subscribed to any plan (!isPro)
   const showProUpgradeCard = sub.isLimited && !sub.isPro;
@@ -345,7 +351,6 @@ export default function ProfileScreen() {
           </View>
 
           <Text style={styles.profileName}>{displayName}</Text>
-          <Text style={styles.profileEmail}>{me?.email ?? userProfile?.email ?? (me as any)?.phone ?? ""}</Text>
         </Animated.View>
 
         {/* ── Stats Row ── */}

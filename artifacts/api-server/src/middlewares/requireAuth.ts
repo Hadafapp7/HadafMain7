@@ -3,6 +3,7 @@ import { clerkClient, getAuth } from "@clerk/express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { maybeSendWelcomeEmail } from "../lib/email";
+import { encryptUserPiiFields } from "../lib/pii";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -89,13 +90,19 @@ export async function requireAuth(
         console.warn("[requireAuth] Could not fetch Clerk user profile details:", clerkErr.message || clerkErr);
       }
 
+      const encryptedPii = await encryptUserPiiFields({
+        email,
+        phone,
+        name,
+      });
+
       await db
         .insert(usersTable)
         .values({
           id: userId,
-          email,
-          phone,
-          name,
+          email: encryptedPii.email ?? null,
+          phone: encryptedPii.phone ?? null,
+          name: encryptedPii.name ?? null,
           avatarUrl,
         })
         .onConflictDoNothing();

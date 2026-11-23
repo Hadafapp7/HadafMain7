@@ -1,6 +1,7 @@
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
+import { decryptUserPii } from "./pii";
 
 let client: SESv2Client | null = null;
 
@@ -166,10 +167,11 @@ export function appUpdateEmail(
 /** Sends the welcome email once per user, as soon as we know their email address. */
 export async function maybeSendWelcomeEmail(userId: string): Promise<void> {
   try {
-    const [u] = await db
+    const [rawUser] = await db
       .select({ email: usersTable.email, name: usersTable.name, sentAt: usersTable.welcomeEmailSentAt })
       .from(usersTable)
       .where(eq(usersTable.id, userId));
+    const u = await decryptUserPii(rawUser);
     if (!u || !u.email || u.sentAt) return;
 
     // Mark first so concurrent requests can't send it twice.

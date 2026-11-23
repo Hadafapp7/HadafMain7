@@ -3,6 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getUserPlan } from "../lib/plan";
+import { decryptUserPii } from "../lib/pii";
 import { paymentEmail, sendEmail, type PaymentKind } from "../lib/email";
 
 const router: IRouter = Router();
@@ -17,10 +18,11 @@ async function setSubscription(userId: string, tier: "pro" | "free", expiresAt: 
 }
 
 async function notifyPayment(userId: string, kind: PaymentKind, amount: string | null, expiresAt: Date | null): Promise<void> {
-  const [u] = await db
+  const [rawUser] = await db
     .select({ email: usersTable.email, name: usersTable.name })
     .from(usersTable)
     .where(eq(usersTable.id, userId));
+  const u = await decryptUserPii(rawUser);
   if (!u?.email) return; // phone-only accounts have no email to notify
   await sendEmail({ to: u.email, ...paymentEmail(u.name, kind, { amount, expiresAt }) });
 }

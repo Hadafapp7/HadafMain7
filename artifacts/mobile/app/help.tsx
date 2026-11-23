@@ -29,7 +29,7 @@ export default function HelpScreen() {
 
   const handleContact = () => {
     Haptics.selectionAsync();
-    Linking.openURL("mailto:support@hadaf.app");
+    Linking.openURL("mailto:support@hadaf.app.co.in");
   };
 
   return (
@@ -60,7 +60,7 @@ export default function HelpScreen() {
 
         <Animated.View entering={isWeb ? undefined : FadeInDown.delay(120).springify()} style={styles.contactCard}>
           <Text style={styles.contactTitle}>Still need help?</Text>
-          <Text style={styles.contactBody}>Our support team typically replies within one business day.</Text>
+          <Text style={styles.contactBody}>Reach us at support@hadaf.app.co.in — our support team typically replies within one business day.</Text>
           <TouchableOpacity style={styles.contactBtn} activeOpacity={0.85} onPress={handleContact}>
             <MaterialIcons name="mail-outline" size={18} color="#000" />
             <Text style={styles.contactBtnText}>Contact Support</Text>

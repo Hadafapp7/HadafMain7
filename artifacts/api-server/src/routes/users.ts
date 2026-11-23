@@ -3,6 +3,7 @@ import { db, usersTable, goalsTable, focusSessionsTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { maybeSendWelcomeEmail } from "../lib/email";
+import { decryptUserPii, encryptUserPiiFields } from "../lib/pii";
 import { ensureSchema } from "../lib/schema-sync";
 import dns from "dns";
 import net from "net";
@@ -131,22 +132,25 @@ const getMeHandler = async (req: any, res: any): Promise<void> => {
       return;
     }
 
+    user = await decryptUserPii(user);
+
     // Self-healing logic for profiles provisioned with virtual emails
     if (user && !user.phone && user.email && user.email.startsWith("phone-")) {
       const extractedDigits = user.email.replace("phone-", "").split("@")[0];
       const parsedPhone = "+" + extractedDigits;
+      const encryptedPhone = await encryptUserPiiFields({ phone: parsedPhone });
       
       const [repairedUser] = await db
         .update(usersTable)
         .set({
-          phone: parsedPhone,
+          phone: encryptedPhone.phone,
           email: null,
         })
         .where(eq(usersTable.id, userId))
         .returning();
         
       if (repairedUser) {
-        user = repairedUser;
+        user = await decryptUserPii(repairedUser);
       }
     }
 
@@ -188,19 +192,24 @@ const updateMeHandler = async (req: any, res: any): Promise<void> => {
   }
 
   try {
-    const [updated] = await db
+    const encryptedFields = await encryptUserPiiFields({
+      ...(name !== undefined && { name: name ? name.trim() : null }),
+      ...(email !== undefined && { email: email ? email.trim() : null }),
+      ...(phone !== undefined && { phone: phone ? phone.trim() : null }),
+      ...(gender !== undefined && { gender: gender ? gender.trim() : null }),
+      ...(age !== undefined && { age: age ? age.trim() : null }),
+    });
+
+    const [updatedRaw] = await db
       .update(usersTable)
       .set({
-        ...(name !== undefined && { name: name ? name.trim() : null }),
+        ...encryptedFields,
         ...(avatarUrl !== undefined && { avatarUrl }),
-        ...(email !== undefined && { email: email ? email.trim() : null }),
-        ...(phone !== undefined && { phone: phone ? phone.trim() : null }),
-        ...(gender !== undefined && { gender: gender ? gender.trim() : null }),
-        ...(age !== undefined && { age: age ? age.trim() : null }),
       })
       .where(eq(usersTable.id, userId))
       .returning();
 
+    const updated = await decryptUserPii(updatedRaw);
     res.status(200).json(updated);
 
     // First time the user saves an email address -> welcome email.

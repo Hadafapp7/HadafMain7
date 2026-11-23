@@ -8,6 +8,7 @@ import {
   appUsageEntriesTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
+import { decryptUserPii } from "../lib/pii";
 import { generateWithBedrock, isBedrockConfigured } from "../lib/bedrock";
 
 const router: IRouter = Router();
@@ -77,7 +78,7 @@ router.get("/coach/reality-check", requireAuth, async (req, res): Promise<void> 
   const weekAgo = new Date(Date.now() - 7 * 86_400_000);
 
   try {
-    const [[user], goals, sessions, todayUsage, weekUsage] = await Promise.all([
+    const [[rawUser], goals, sessions, todayUsage, weekUsage] = await Promise.all([
       db.select().from(usersTable).where(eq(usersTable.id, userId)),
       db.select().from(goalsTable).where(eq(goalsTable.userId, userId)),
       db
@@ -93,6 +94,7 @@ router.get("/coach/reality-check", requireAuth, async (req, res): Promise<void> 
         .from(appUsageEntriesTable)
         .where(and(eq(appUsageEntriesTable.userId, userId), gte(appUsageEntriesTable.loggedAt, weekAgo))),
     ]);
+    const user = await decryptUserPii(rawUser);
 
     const cacheKey = `${userId}:${user?.name ?? ""}`;
     const cached = coachCache.get(cacheKey);

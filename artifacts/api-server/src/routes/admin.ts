@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { isNotNull } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { appUpdateEmail, isEmailConfigured, sendEmail } from "../lib/email";
+import { decryptUserPii } from "../lib/pii";
 
 const router: IRouter = Router();
 
@@ -31,10 +32,14 @@ router.post("/admin/app-update-email", async (req, res): Promise<void> => {
     return;
   }
 
-  let recipients = (await db
+  const rawRecipients = (await db
     .select({ email: usersTable.email, name: usersTable.name })
     .from(usersTable)
     .where(isNotNull(usersTable.email))) as { email: string; name: string | null }[];
+
+  let recipients = (await Promise.all(rawRecipients.map((r) => decryptUserPii(r)))).filter(
+    (r): r is { email: string; name: string | null } => Boolean(r?.email),
+  );
 
   if (Array.isArray(onlyEmails) && onlyEmails.length > 0) {
     const allow = new Set(onlyEmails.map((e: string) => String(e).toLowerCase()));

@@ -13,6 +13,8 @@ import { logger } from "./logger";
  * across several ECS tasks.
  */
 const STATEMENTS: string[] = [
+  // pgcrypto extension for Supabase-compatible PII encryption/decryption
+  `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
   // goals
   `ALTER TABLE goals ADD COLUMN IF NOT EXISTS forfeit_reason text`,
   `ALTER TABLE goals ADD COLUMN IF NOT EXISTS forfeit_roast text`,
