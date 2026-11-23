@@ -28,7 +28,7 @@ import { type BillingPeriod, useSubscription } from "@/hooks/useSubscription";
 
 const isWeb = Platform.OS === "web";
 const INK = "#0a0a0a";
-const TRIAL_DAYS = 5;
+const TRIAL_DAYS = 15;
 
 type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
 
@@ -46,7 +46,7 @@ const PRO_EXTRAS: { icon: IconName; label: string }[] = [
 
 const STAGES: { icon: IconName; title: string; body: string; plan: "trial" | "limited" | "pro" }[] = [
   { icon: "card-giftcard", title: "Free Trial", body: `Days 1-${TRIAL_DAYS} · everything unlocked`, plan: "trial" },
-  { icon: "lock", title: "Free Plan", body: "After 5-day trial · limited features", plan: "limited" },
+  { icon: "lock", title: "Free Plan", body: `After ${TRIAL_DAYS}-day trial · limited features`, plan: "limited" },
   { icon: "bolt", title: "Hadaf Pro", body: "Anytime · unlimited focus, goals & insights", plan: "pro" },
 ];
 
@@ -164,7 +164,7 @@ export default function SubscriptionScreen() {
 
   // Determine highlighted plan in "HOW IT WORKS":
   // New user / just logged in / trial period -> "trial"
-  // After 5 days (limited) -> "limited"
+  // After 15 days (limited) -> "limited"
   // Pro subscriber -> "pro"
   const highlightedPlan: "trial" | "limited" | "pro" =
     sub.isPro || sub.plan === "pro"
@@ -178,7 +178,7 @@ export default function SubscriptionScreen() {
     sub.plan === "pro"
       ? `Unlimited access to every feature.${sub.proExpiresAt ? ` Active until ${new Date(sub.proExpiresAt).toLocaleDateString()}.` : ""}`
       : sub.plan === "limited"
-        ? "Your 5-day trial has ended. Upgrade to unlock everything again."
+        ? `Your ${TRIAL_DAYS}-day trial has ended. Upgrade to unlock everything again.`
         : `${sub.trialDaysLeft || TRIAL_DAYS} day${(sub.trialDaysLeft || TRIAL_DAYS) === 1 ? "" : "s"} left. Every feature is unlocked until then.`;
   const chip = sub.plan === "pro" ? "ACTIVE" : sub.plan === "limited" ? "LIMITED" : "TRIAL";
 
@@ -264,7 +264,8 @@ export default function SubscriptionScreen() {
                 title="Monthly"
                 price={monthly?.priceString ?? sub.priceLabel}
                 period=" / mo"
-                caption="Billed every month"
+                caption={sub.isIndia ? "India plan · ₹299 billed monthly" : "Global plan · $10 billed monthly"}
+                badge={sub.isIndia ? "INDIA" : undefined}
               />
               {annual ? (
                 <PlanCard

@@ -25,10 +25,17 @@ async function notifyPayment(userId: string, kind: PaymentKind, amount: string |
   await sendEmail({ to: u.email, ...paymentEmail(u.name, kind, { amount, expiresAt }) });
 }
 
-/** Current plan for the signed-in user (trial / limited / pro) + feature limits. */
+/** Current plan for the signed-in user (trial / limited / pro) + feature limits + regional pricing. */
 router.get("/subscription/status", requireAuth, async (req, res): Promise<void> => {
   try {
-    res.json(await getUserPlan(req.userId!));
+    const countryHeader =
+      (req.headers["cf-ipcountry"] as string | undefined) ||
+      (req.headers["cloudfront-viewer-country"] as string | undefined) ||
+      (req.headers["x-country-code"] as string | undefined) ||
+      null;
+    const timezoneHeader = (req.headers["x-timezone"] as string | undefined) || null;
+    const acceptLanguage = (req.headers["accept-language"] as string | undefined) || null;
+    res.json(await getUserPlan(req.userId!, { countryHeader, timezoneHeader, acceptLanguage }));
   } catch (err: any) {
     console.error("[Subscription] status error:", err?.message ?? err);
     res.status(500).json({ error: "Failed to load subscription status" });
@@ -189,8 +196,8 @@ router.post("/subscription/test-plan", requireAuth, async (req, res): Promise<vo
     const oneMonth = new Date(Date.now() + 30 * 86_400_000);
     await db.update(usersTable).set({ subscriptionTier: "pro", subscriptionExpiresAt: oneMonth }).where(eq(usersTable.id, userId));
   } else if (plan === "limited") {
-    const sixDaysAgo = new Date(Date.now() - 6 * 86_400_000);
-    await db.update(usersTable).set({ subscriptionTier: "free", trialStartedAt: sixDaysAgo, subscriptionExpiresAt: null }).where(eq(usersTable.id, userId));
+    const sixteenDaysAgo = new Date(Date.now() - 16 * 86_400_000);
+    await db.update(usersTable).set({ subscriptionTier: "free", trialStartedAt: sixteenDaysAgo, subscriptionExpiresAt: null }).where(eq(usersTable.id, userId));
   } else {
     await db.update(usersTable).set({ subscriptionTier: "free", trialStartedAt: now, subscriptionExpiresAt: null }).where(eq(usersTable.id, userId));
   }

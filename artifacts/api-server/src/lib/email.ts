@@ -95,10 +95,10 @@ export function welcomeEmail(name: string | null): { subject: string; html: stri
     subject: "Welcome to Hadaf",
     html: layout(
       `Welcome, ${greet(name)}!`,
-      `<p>Your Hadaf account is ready. For the next <strong>5 days</strong> every feature is unlocked - focus sessions, goals, analytics and app blocking.</p>
+      `<p>Your Hadaf account is ready. For the next <strong>15 days</strong> every feature is unlocked - focus sessions, goals, analytics and app blocking.</p>
        <p>Start with one focus session today. Small wins build the streak.</p>`,
     ),
-    text: `Welcome, ${name ? name.split(" ")[0] : "there"}! Your Hadaf account is ready. For the next 5 days every feature is unlocked. Start with one focus session today.`,
+    text: `Welcome, ${name ? name.split(" ")[0] : "there"}! Your Hadaf account is ready. For the next 15 days every feature is unlocked. Start with one focus session today.`,
   };
 }
 

@@ -524,7 +524,7 @@ export default function FocusScreen() {
   const endFocusSession   = useEndFocusSession();
   const sub = useSubscription();
   const dialog = useDialog();
-  // Limited plan (after the 5-day trial): a single 5-minute session per day.
+  // Limited plan (after the 15-day trial): a single 5-minute session per day.
   const durationOptions = sub.isLimited
     ? [{ minutes: sub.maxFocusMinutes ?? 5, label: "Free" }]
     : DURATION_OPTIONS;

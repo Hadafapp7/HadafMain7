@@ -24,9 +24,17 @@ export type BillingPeriod = "monthly" | "annual";
 interface ServerStatus {
   plan: PlanKind;
   isPro: boolean;
+  trialDays?: number;
   trialEndsAt: string;
   trialDaysLeft: number;
   proExpiresAt: string | null;
+  pricing?: {
+    isIndia: boolean;
+    countryCode: string;
+    currency: "INR" | "USD";
+    monthlyAmount: number;
+    monthlyPriceLabel: string;
+  };
   limits: {
     goals: boolean;
     analytics: boolean;
@@ -34,6 +42,26 @@ interface ServerStatus {
     maxFocusSessionsPerDay: number | null;
   };
 }
+
+function detectDeviceIsIndia(): boolean {
+  try {
+    const opts = Intl.DateTimeFormat().resolvedOptions();
+    const tz = String(opts.timeZone ?? "").toLowerCase();
+    const locale = String(opts.locale ?? "").toLowerCase();
+    return (
+      tz === "asia/kolkata" ||
+      tz === "asia/calcutta" ||
+      locale.endsWith("-in") ||
+      locale.endsWith("_in") ||
+      locale.includes("-in-")
+    );
+  } catch {
+    return false;
+  }
+}
+
+const DEVICE_IS_INDIA = detectDeviceIsIndia();
+const DEFAULT_REGIONAL_PRICE = DEVICE_IS_INDIA ? "₹299" : "$10";
 
 /** A purchasable Pro plan, read from the store (via RevenueCat). */
 export interface PlanOption {
@@ -50,13 +78,15 @@ interface SubscriptionState {
   isPro: boolean;
   isTrial: boolean;
   isLimited: boolean;
+  trialDays: number;
   trialDaysLeft: number;
   proExpiresAt: string | null;
+  isIndia: boolean;
   canCreateGoals: boolean;
   analyticsLocked: boolean;
   maxFocusMinutes: number | null;
   maxFocusSessionsPerDay: number | null;
-  /** Monthly price label (kept for older screens). */
+  /** Monthly price label (₹299 in India, $10 internationally). */
   priceLabel: string;
   /** Plans available to buy right now. `null` = not offered / not loaded. */
   plans: { monthly: PlanOption | null; annual: PlanOption | null };
@@ -74,13 +104,15 @@ const DEFAULT_STATE: SubscriptionState = {
   isPro: false,
   isTrial: false,
   isLimited: false,
+  trialDays: 15,
   trialDaysLeft: 0,
   proExpiresAt: null,
+  isIndia: DEVICE_IS_INDIA,
   canCreateGoals: true,
   analyticsLocked: false,
   maxFocusMinutes: null,
   maxFocusSessionsPerDay: null,
-  priceLabel: "$10.00",
+  priceLabel: DEFAULT_REGIONAL_PRICE,
   plans: { monthly: null, annual: null },
   purchasesReady: false,
   purchasesIssue: null,
@@ -118,7 +150,15 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     enabled: Boolean(isSignedIn),
     staleTime: 30_000,
     retry: 2,
-    queryFn: () => customFetch<ServerStatus>("/api/subscription/status"),
+    queryFn: () => {
+      let tz = "";
+      try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      } catch {}
+      return customFetch<ServerStatus>("/api/subscription/status", {
+        headers: tz ? { "x-timezone": tz } : undefined,
+      });
+    },
   });
 
   // Connect RevenueCat to the signed-in Clerk user so webhooks can map purchases back to them.
@@ -281,18 +321,22 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     const isLimited = plan === "limited";
     const monthly = toPlanOption("monthly", pkgs.monthly);
     const annual = toPlanOption("annual", pkgs.annual);
+    const isIndia = server?.pricing ? server.pricing.isIndia : DEVICE_IS_INDIA;
+    const regionalFallbackPrice = server?.pricing?.monthlyPriceLabel || (isIndia ? "₹299" : "$10");
     return {
       plan,
       isPro,
       isTrial: plan === "trial",
       isLimited,
+      trialDays: server?.trialDays ?? 15,
       trialDaysLeft: server?.trialDaysLeft ?? 0,
       proExpiresAt: server?.proExpiresAt ?? null,
+      isIndia,
       canCreateGoals: !isLimited,
       analyticsLocked: isLimited,
       maxFocusMinutes: isLimited ? server?.limits.maxFocusMinutes ?? 5 : null,
       maxFocusSessionsPerDay: isLimited ? server?.limits.maxFocusSessionsPerDay ?? 1 : null,
-      priceLabel: monthly?.priceString || annual?.priceString || "$10.00",
+      priceLabel: monthly?.priceString || regionalFallbackPrice,
       plans: { monthly, annual },
       purchasesReady: Boolean(pkgs.monthly || pkgs.annual),
       purchasesIssue,
