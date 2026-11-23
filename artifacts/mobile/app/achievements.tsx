@@ -197,9 +197,11 @@ export default function AchievementsScreen() {
           </Text>
 
           <View style={styles.xpRow}>
-            <Text style={styles.xpLabel}>WEEKLY LEVEL-UP PROGRESS</Text>
-            <Text style={styles.xpValue}>
-              {completedCount} / {totalMilestones} MILESTONES ({weeklyProgressPct}%)
+            <Text style={styles.xpLabel} numberOfLines={1} adjustsFontSizeToFit>
+              WEEKLY PROGRESS
+            </Text>
+            <Text style={styles.xpValue} numberOfLines={1} adjustsFontSizeToFit>
+              {completedCount}/{totalMilestones} DONE ({weeklyProgressPct}%)
             </Text>
           </View>
           <View style={styles.xpBarBg}>
@@ -233,9 +235,13 @@ export default function AchievementsScreen() {
           entering={isWeb ? undefined : FadeInDown.delay(140).springify()}
           style={styles.section}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={styles.sectionLabel}>WEEKLY MILESTONES · LEVEL {clampedLevel}</Text>
-            <Text style={styles.weeklyResetTag}>7-DAY CHALLENGE</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <Text style={styles.sectionLabel} numberOfLines={1} adjustsFontSizeToFit>
+              MILESTONES · LVL {clampedLevel}
+            </Text>
+            <Text style={styles.weeklyResetTag} numberOfLines={1}>
+              7-DAY CHALLENGE
+            </Text>
           </View>
 
           <View style={styles.milestoneList}>
@@ -397,9 +403,9 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.72)",
     lineHeight: 17,
   },
-  xpRow:  { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
-  xpLabel:{ fontSize: 9.5, fontFamily: "Inter_700Bold", color: "rgba(255,255,255,0.6)", letterSpacing: 1.2 },
-  xpValue:{ fontSize: 9.5, fontFamily: "Inter_700Bold", color: "#4ade80", letterSpacing: 0.8 },
+  xpRow:  { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 6 },
+  xpLabel:{ fontSize: 9, fontFamily: "Inter_700Bold", color: "rgba(255,255,255,0.6)", letterSpacing: 0.7, flexShrink: 1 },
+  xpValue:{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#4ade80", letterSpacing: 0.5, flexShrink: 1 },
   xpBarBg:{ height: 7, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 4, overflow: "hidden" },
   xpBarFill:{ height: 7, backgroundColor: "#4ade80", borderRadius: 4 },
 
@@ -415,16 +421,16 @@ const styles = StyleSheet.create({
   streakValue: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#000" },
 
   section:      { gap: 14 },
-  sectionLabel: { fontSize: 10, fontFamily: "Inter_700Bold", color: "#444", letterSpacing: 2 },
+  sectionLabel: { fontSize: 9.5, fontFamily: "Inter_700Bold", color: "#444", letterSpacing: 1.3, flexShrink: 1 },
   weeklyResetTag: {
-    fontSize: 9.5,
+    fontSize: 9,
     fontFamily: "Inter_700Bold",
     color: "#0284C7",
     backgroundColor: "#DBEAFE",
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 999,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
   },
 
   milestoneList: { gap: 12 },
