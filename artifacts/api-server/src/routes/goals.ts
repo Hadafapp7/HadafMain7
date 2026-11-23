@@ -66,7 +66,7 @@ router.post("/goals", requireAuth, async (req, res): Promise<void> => {
       .insert(goalsTable)
       .values({
         ...parsed.data,
-        blockApps: body.blockApps === true,
+        blockApps: body.blockApps !== false,
         blockedApps: Array.isArray(body.blockedApps)
           ? (body.blockedApps as unknown[]).filter((x): x is string => typeof x === "string")
           : [],
@@ -137,21 +137,39 @@ router.patch("/goals/:id", requireAuth, async (req, res): Promise<void> => {
 
 router.delete("/goals/:id", requireAuth, async (req, res): Promise<void> => {
   try {
+    await ensureSchema();
     const params = DeleteGoalParams.safeParse(req.params);
     if (!params.success) {
       res.status(400).json({ error: params.error.message });
       return;
     }
 
-    const [goal] = await db
-      .delete(goalsTable)
-      .where(and(eq(goalsTable.id, params.data.id), eq(goalsTable.userId, req.userId!)))
-      .returning();
+    // Check existing goal status first:
+    // If the goal was COMPLETED ('done') or FORFEITED ('forfeited'), NEVER hard-delete it from the database!
+    // Instead, mark `archived = true` so the card is hidden on the Goals page while the completed/forfeited
+    // record stays permanently in the database, Analytics Health Index Goals chart, and Profile Goals Done count!
+    const [existing] = await db
+      .select()
+      .from(goalsTable)
+      .where(and(eq(goalsTable.id, params.data.id), eq(goalsTable.userId, req.userId!)));
 
-    if (!goal) {
+    if (!existing) {
       res.status(404).json({ error: "Goal not found" });
       return;
     }
+
+    if (existing.status === "done" || existing.status === "forfeited") {
+      await db
+        .update(goalsTable)
+        .set({ archived: true, updatedAt: new Date() })
+        .where(and(eq(goalsTable.id, params.data.id), eq(goalsTable.userId, req.userId!)));
+      res.sendStatus(204);
+      return;
+    }
+
+    await db
+      .delete(goalsTable)
+      .where(and(eq(goalsTable.id, params.data.id), eq(goalsTable.userId, req.userId!)));
 
     res.sendStatus(204);
   } catch (err: any) {

@@ -28,6 +28,7 @@ import { focusSessionState } from "@/lib/focusSessionState";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
   dismissNativeNotification,
+  enforceActiveGoalBlockingNow,
   findActiveGoalSession,
   getTopSocialApps,
   goalWindows,
@@ -41,8 +42,10 @@ import { syncGuiltNotifications } from "@/lib/guiltNotifications";
 import {
   getPermissionStatus,
   isNativeAppBlockerSupported,
+  isNativeSessionActive,
   openAccessibilitySettings,
   stopNativeCompletionAlarm,
+  stopNativeSession,
 } from "../../modules/hadaf-native/src";
 import Animated, {
   FadeInDown,
@@ -78,6 +81,7 @@ const FAB_SIZE  = 56;
 const FAB_RIGHT = 20;
 const THRESHOLD = 60;
 const LOCAL_GOALS_CACHE_KEY = "@hadaf/local_goals_backup_v1";
+const DISMISSED_GOAL_CARDS_KEY = "@hadaf/dismissed_goal_card_ids_v1";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type GoalType = Goal["type"];
@@ -156,7 +160,8 @@ const HOURS_12 = ["1","2","3","4","5","6","7","8","9","10","11","12"];
 const MINUTES  = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 const PERIODS  = ["AM","PM"];
 const DUR_HRS  = ["0","1","2","3","4","5","6","7","8","9","10","11","12"];
-const DUR_MINS = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
+// Point 3: Never keep "00" mins under Duration — always start with "05" mins!
+const DUR_MINS = ["05","10","15","20","25","30","35","40","45","50","55"];
 const ITEM_H   = 44;
 
 function formatCountdown(secs: number): string {
@@ -267,13 +272,14 @@ function DrumTimePicker({ value, onChange }: { value: string; onChange: (v: stri
   );
 }
 
-// ── Inline drum duration picker ────────────────────────────────────────────────
+// ── Inline drum duration picker (minutes column starts at 05, no 00) ───────────
 function DrumDurationPicker({ minutes, onChange }: { minutes: number; onChange: (v: number) => void }) {
   const hrs0  = String(Math.floor(minutes / 60));
   const rawMin = minutes % 60;
-  const snappedMin = String(Math.round(rawMin / 5) * 5 % 60).padStart(2, "0");
-  const [hrs,  setHrs]  = useState(DUR_HRS.includes(hrs0) ? hrs0 : "1");
-  const [mins, setMins] = useState(DUR_MINS.includes(snappedMin) ? snappedMin : "30");
+  const clampedMin = Math.max(5, Math.min(55, Math.round(rawMin / 5) * 5));
+  const snappedMin = String(clampedMin).padStart(2, "0");
+  const [hrs,  setHrs]  = useState(DUR_HRS.includes(hrs0) ? hrs0 : "0");
+  const [mins, setMins] = useState(DUR_MINS.includes(snappedMin) ? snappedMin : "05");
   useEffect(() => {
     const total = Math.max(5, parseInt(hrs, 10) * 60 + parseInt(mins, 10));
     onChange(total);
@@ -303,7 +309,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
   const [intent,    setIntent]    = useState("");
   const [goalType,  setGoalType]  = useState<GoalType>("daily");
   const [priority,  setPriority]  = useState<Priority>("medium");
-  const [duration,  setDuration]  = useState(90);
+  const [duration,  setDuration]  = useState(5);
   const [startTime, setStartTime] = useState(() => defaultStartTime15MinAhead());
   const [blockApps, setBlockApps] = useState(true);
   const [suggestedApps, setSuggestedApps] = useState<string[]>(["Instagram", "YouTube", "WhatsApp", "Chrome", "Snapchat", "Twitter"]);
@@ -351,6 +357,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
       }
     } else if (visible) {
       setStartTime(defaultStartTime15MinAhead());
+      setDuration(5);
       setBlockApps(true);
     }
   }, [editingGoal?.id, visible]);
@@ -376,7 +383,7 @@ function AddTaskModal({ visible, onClose, onSave, editingGoal, onUpdate }: {
     setIntent("");
     setGoalType("daily");
     setPriority("medium");
-    setDuration(90);
+    setDuration(5);
     setStartTime(defaultStartTime15MinAhead());
     setBlockApps(true);
     setFocusedField(null);
@@ -919,9 +926,13 @@ function GoalCompletionVerifyModal({
                 onConfirmTrulyDone(goal);
               }}
             >
-              <MaterialIcons name="verified" size={18} color="#fff" />
-              <Text style={styles.verifyConfirmBtnText}>
-                YES, I TRULY COMPLETED IT (100% HONEST)
+              <MaterialIcons name="verified" size={15} color="#fff" />
+              <Text
+                style={styles.verifyConfirmBtnText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                YES, I TRULY COMPLETED IT
               </Text>
             </TouchableOpacity>
 
@@ -933,9 +944,13 @@ function GoalCompletionVerifyModal({
                 onAdmitNotCompleted(goal);
               }}
             >
-              <MaterialIcons name="cancel" size={18} color="#ef4444" />
-              <Text style={styles.verifyForfeitBtnText}>
-                NO, I DID NOT FINISH IT (FORFEIT)
+              <MaterialIcons name="cancel" size={15} color="#ef4444" />
+              <Text
+                style={styles.verifyForfeitBtnText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                NO, I DID NOT FINISH (FORFEIT)
               </Text>
             </TouchableOpacity>
           </View>
@@ -1324,8 +1339,9 @@ export default function GoalsScreen() {
 
   const { data: rawGoals, isLoading, isError, refetch } = useListGoals();
   const [localGoals, setLocalGoals] = useState<Goal[]>([]);
+  const [dismissedCardIds, setDismissedCardIds] = useState<string[]>([]);
 
-  // Load locally persisted goals backup on mount
+  // Load locally persisted goals backup & dismissed card IDs on mount
   useEffect(() => {
     AsyncStorage.getItem(LOCAL_GOALS_CACHE_KEY)
       .then((raw) => {
@@ -1335,6 +1351,20 @@ export default function GoalsScreen() {
         }
       })
       .catch(() => {});
+
+    AsyncStorage.getItem(DISMISSED_GOAL_CARDS_KEY)
+      .then((raw) => {
+        if (raw) {
+          const parsed = JSON.parse(raw) as string[];
+          if (Array.isArray(parsed)) setDismissedCardIds(parsed);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveDismissedCardIds = useCallback((nextIds: string[]) => {
+    setDismissedCardIds(nextIds);
+    AsyncStorage.setItem(DISMISSED_GOAL_CARDS_KEY, JSON.stringify(nextIds)).catch(() => {});
   }, []);
 
   const saveLocalGoals = useCallback((nextGoals: Goal[]) => {
@@ -1361,15 +1391,18 @@ export default function GoalsScreen() {
       if (matchedServer) {
         const localUpdated = new Date(lg.updatedAt || 0).getTime();
         const serverUpdated = new Date(matchedServer.updatedAt || 0).getTime();
+        // Prefer local blockApps if defined so an older server default (false) never disables blocking
+        const effectiveBlockApps =
+          lg.blockApps !== undefined ? lg.blockApps : (matchedServer.blockApps ?? true);
         byId.set(matchedServer.id, {
           ...matchedServer,
           status: localUpdated > serverUpdated ? lg.status : matchedServer.status,
           updatedAt: localUpdated > serverUpdated ? lg.updatedAt : matchedServer.updatedAt,
-          blockApps: matchedServer.blockApps ?? lg.blockApps ?? true,
+          blockApps: effectiveBlockApps,
           blockedApps:
-            (Array.isArray(matchedServer.blockedApps) && matchedServer.blockedApps.length > 0
-              ? matchedServer.blockedApps
-              : lg.blockedApps) ?? [],
+            (Array.isArray(lg.blockedApps) && lg.blockedApps.length > 0
+              ? lg.blockedApps
+              : matchedServer.blockedApps) ?? [],
         });
       } else {
         byId.set(lg.id, lg);
@@ -1448,10 +1481,14 @@ export default function GoalsScreen() {
         setActiveGoalSession(nextState);
         prevActiveGoalRef.current = { goal: found.goal, windowId: found.window.id };
 
-        // Enforce native app blocking immediately when the goal window starts
-        if (enforcedWindowIdRef.current !== found.window.id) {
-          enforcedWindowIdRef.current = found.window.id;
-          void syncGoalAutomation(goals, true);
+        // Enforce native app blocking directly & continuously during the active goal window (Point 4)
+        if (found.goal.blockApps !== false) {
+          const remMins = Math.max(1, Math.ceil(found.remainingSeconds / 60));
+          if (enforcedWindowIdRef.current !== found.window.id || !isNativeSessionActive()) {
+            enforcedWindowIdRef.current = found.window.id;
+            void enforceActiveGoalBlockingNow(found.goal, remMins);
+            void syncGoalAutomation(goals, true);
+          }
         }
 
         // Display live mini timer on notification bar throughout the goal session (Point 2)
@@ -1480,6 +1517,7 @@ export default function GoalsScreen() {
             promptedWindowIdsRef.current.add(prev.windowId);
             try {
               dismissNativeNotification();
+              void stopNativeSession();
             } catch {}
             // Play default system alarm sound on goal duration completion
             try {
@@ -1499,6 +1537,7 @@ export default function GoalsScreen() {
           if (cur) {
             try {
               dismissNativeNotification();
+              void stopNativeSession();
             } catch {}
           }
           return null;
@@ -1514,12 +1553,24 @@ export default function GoalsScreen() {
   const filtersActive = filters.type !== "all" || filters.priority !== "all" || filters.status !== "all";
 
   const visibleGoals = useMemo(() => {
-    return goals.filter(g =>
-      (filters.type === "all" || g.type === filters.type) &&
-      (filters.priority === "all" || g.priority === filters.priority) &&
-      (filters.status === "all" || g.status === filters.status)
-    );
-  }, [goals, filters]);
+    const dismissedSet = new Set(dismissedCardIds);
+    return goals.filter((g) => {
+      // Hide completed or forfeited goal cards that the user deleted from the Goals tab list,
+      // while keeping them intact in `goals`, the database, Analytics, and Profile!
+      if ((g as any).archived === true) return false;
+      if (
+        (g.status === "done" || (g.status as string) === "forfeited") &&
+        (dismissedSet.has(g.id) || dismissedSet.has(`${g.title}|${g.startTime}`))
+      ) {
+        return false;
+      }
+      return (
+        (filters.type === "all" || g.type === filters.type) &&
+        (filters.priority === "all" || g.priority === filters.priority) &&
+        (filters.status === "all" || g.status === filters.status)
+      );
+    });
+  }, [goals, filters, dismissedCardIds]);
 
   const scrollY       = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -1553,11 +1604,59 @@ export default function GoalsScreen() {
 
   const handleDeleteGoal = (goal: Goal) => {
     if (goal.status === "done" || (goal.status as string) === "forfeited") {
+      // Point 1: Deleting a completed or forfeited goal card ONLY removes the card from the Goals tab view!
+      // It MUST NOT delete the completed/forfeited record from `localGoals`, the React Query cache, or the database,
+      // so Analytics Health Index Goals chart and Profile Goals Done keep the record permanently!
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const filteredLocal = localGoals.filter((g) => g.id !== goal.id);
-      saveLocalGoals(filteredLocal);
-      if (!goal.id.startsWith("local-")) {
-        deleteGoal.mutate({ id: goal.id }, { onSuccess: () => refetch() });
+      const nextDismissed = Array.from(
+        new Set([...dismissedCardIds, goal.id, `${goal.title}|${goal.startTime}`])
+      );
+      saveDismissedCardIds(nextDismissed);
+
+      // Ensure the completed/forfeited goal is also recorded in the database (and archived on the server)
+      const serverList = Array.isArray(rawGoals) ? rawGoals : [];
+      const matchedServer = serverList.find(
+        (s) => s.id === goal.id || (s.title === goal.title && s.startTime === goal.startTime)
+      );
+      const serverId = matchedServer?.id ?? (!goal.id.startsWith("local-") ? goal.id : null);
+
+      if (serverId) {
+        // Backend DELETE /api/goals/:id sets `archived = true` for done/forfeited goals without deleting the DB row
+        deleteGoal.mutate({ id: serverId }, { onSuccess: () => refetch() });
+      } else {
+        // Goal was still local-only -> persist its completed/forfeited record to the database first, then archive it!
+        void (async () => {
+          try {
+            const created: any = await createGoal.mutateAsync({
+              data: {
+                title: goal.title,
+                intent: goal.intent || undefined,
+                type: goal.type,
+                priority: goal.priority,
+                startTime: goal.startTime,
+                durationMinutes: goal.durationMinutes,
+                scheduledDate: goal.scheduledDate || undefined,
+                status: goal.status,
+                blockApps: goal.blockApps ?? true,
+                blockedApps: goal.blockedApps ?? [],
+              },
+            });
+            if (created?.id) {
+              if (created.status !== goal.status) {
+                await updateGoal.mutateAsync({
+                  id: created.id,
+                  data: {
+                    status: goal.status as any,
+                    forfeitReason: goal.forfeitReason,
+                    forfeitRoast: goal.forfeitRoast,
+                  } as any,
+                });
+              }
+              await deleteGoal.mutateAsync({ id: created.id });
+              void refetch();
+            }
+          } catch {}
+        })();
       }
     } else {
       // Pending goal: require a reason & trigger LLM reality check notification
@@ -1569,73 +1668,108 @@ export default function GoalsScreen() {
     if (!forfeitingGoal) return;
     const targetId = forfeitingGoal.id;
 
+    const serverList = Array.isArray(rawGoals) ? rawGoals : [];
+    const matchedServerGoal = serverList.find(
+      (s) =>
+        s.id === forfeitingGoal.id ||
+        (s.title === forfeitingGoal.title && s.startTime === forfeitingGoal.startTime)
+    );
+    const effectiveServerId =
+      matchedServerGoal?.id ?? (!targetId.startsWith("local-") ? targetId : null);
+
+    const nowIso = new Date().toISOString();
+
     // Optimistically mark forfeited locally
     const nextLocal = goals.map((g) =>
-      g.id === targetId
+      g.id === targetId ||
+      (effectiveServerId && g.id === effectiveServerId) ||
+      (g.title === forfeitingGoal.title && g.startTime === forfeitingGoal.startTime)
         ? {
             ...g,
+            id: effectiveServerId ?? g.id,
             status: "forfeited" as GoalStatusValue,
             forfeitReason: reason,
             forfeitRoast: roast,
-            updatedAt: new Date().toISOString(),
+            updatedAt: nowIso,
           }
         : g,
     );
     saveLocalGoals(nextLocal);
     queryClient.setQueryData(getListGoalsQueryKey(), nextLocal);
 
-    // If active goal is being forfeited, dismiss the notification bar timer
-    if (activeGoalSession?.goal.id === targetId) {
+    // If active goal is being forfeited, dismiss the notification bar timer & stop app blocker
+    if (
+      activeGoalSession?.goal.id === targetId ||
+      (activeGoalSession?.goal.title === forfeitingGoal.title &&
+        activeGoalSession?.goal.startTime === forfeitingGoal.startTime)
+    ) {
       try {
         dismissNativeNotification();
         stopNativeCompletionAlarm();
+        void stopNativeSession();
       } catch {}
       prevActiveGoalRef.current = null;
       setActiveGoalSession(null);
     }
 
     try {
-      if (!targetId.startsWith("local-")) {
+      if (effectiveServerId) {
         await updateGoal.mutateAsync({
-          id: targetId,
+          id: effectiveServerId,
           data: {
             status: "forfeited" as any,
             forfeitReason: reason,
             forfeitRoast: roast,
           } as any,
         });
-        await queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
-        refetch();
       } else {
-        // Goal was still local: create on server and immediately mark forfeited so Analytics records it!
-        const localTarget = goals.find((g) => g.id === targetId);
-        if (localTarget) {
-          const created: any = await createGoal.mutateAsync({
+        // Goal was still local: create on server and immediately mark forfeited so database & Analytics record it!
+        const created: any = await createGoal.mutateAsync({
+          data: {
+            title: forfeitingGoal.title,
+            intent: forfeitingGoal.intent || undefined,
+            type: forfeitingGoal.type,
+            priority: forfeitingGoal.priority,
+            startTime: forfeitingGoal.startTime,
+            durationMinutes: forfeitingGoal.durationMinutes,
+            scheduledDate: forfeitingGoal.scheduledDate || undefined,
+            status: "forfeited",
+            blockApps: forfeitingGoal.blockApps ?? true,
+            blockedApps: forfeitingGoal.blockedApps ?? [],
+          },
+        });
+        if (created?.id) {
+          await updateGoal.mutateAsync({
+            id: created.id,
             data: {
-              title: localTarget.title,
-              intent: localTarget.intent || undefined,
-              type: localTarget.type,
-              priority: localTarget.priority,
-              startTime: localTarget.startTime,
-              durationMinutes: localTarget.durationMinutes,
-              scheduledDate: localTarget.scheduledDate || undefined,
-              blockApps: localTarget.blockApps ?? true,
-            },
+              status: "forfeited" as any,
+              forfeitReason: reason,
+              forfeitRoast: roast,
+            } as any,
           });
-          if (created?.id) {
-            await updateGoal.mutateAsync({
-              id: created.id,
-              data: {
-                status: "forfeited" as any,
-                forfeitReason: reason,
-                forfeitRoast: roast,
-              } as any,
-            });
-            await queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() });
-            refetch();
-          }
+          const upgraded = nextLocal.map((g) =>
+            g.id === targetId ||
+            (g.title === forfeitingGoal.title && g.startTime === forfeitingGoal.startTime)
+              ? {
+                  ...created,
+                  status: "forfeited" as GoalStatusValue,
+                  forfeitReason: reason,
+                  forfeitRoast: roast,
+                  updatedAt: nowIso,
+                }
+              : g
+          );
+          saveLocalGoals(upgraded);
+          queryClient.setQueryData(getListGoalsQueryKey(), upgraded);
         }
       }
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: getListGoalsQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: ["userMe"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/me"] }),
+        queryClient.invalidateQueries({ queryKey: ["achievements"] }),
+      ]);
+      void refetch();
       void syncGuiltNotifications(true);
       void syncGoalAutomation(nextLocal);
     } catch (e) {
@@ -1770,6 +1904,7 @@ export default function GoalsScreen() {
   const handleConfirmTrulyDone = async (goal: Goal) => {
     try {
       stopNativeCompletionAlarm();
+      void stopNativeSession();
       if (
         activeGoalSession?.goal.id === goal.id ||
         (activeGoalSession?.goal.title === goal.title &&
@@ -2430,23 +2565,30 @@ const styles = StyleSheet.create({
   },
   verifyConfirmBtn: {
     width: "100%",
-    height: 52,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 999,
     backgroundColor: "#16a34a",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 6,
+    overflow: "hidden",
   },
   verifyConfirmBtnText: {
     color: "#ffffff",
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Inter_700Bold",
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
+    textAlign: "center",
+    flexShrink: 1,
   },
   verifyForfeitBtn: {
     width: "100%",
-    height: 50,
+    minHeight: 46,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 999,
     backgroundColor: "#fef2f2",
     borderWidth: 1.5,
@@ -2454,13 +2596,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 6,
+    overflow: "hidden",
   },
   verifyForfeitBtnText: {
     color: "#dc2626",
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Inter_700Bold",
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
+    textAlign: "center",
+    flexShrink: 1,
   },
 
   // FAB

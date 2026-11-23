@@ -44,6 +44,7 @@ class HadafAccessibilityService : AccessibilityService() {
 
   private var blockedPackages: Set<String> = emptySet()
   private var sessionEndMs: Long = 0L
+  private var lastRedirectMs: Long = 0L
   private lateinit var prefs: SharedPreferences
 
   override fun onCreate() {
@@ -55,7 +56,8 @@ class HadafAccessibilityService : AccessibilityService() {
 
   override fun onServiceConnected() {
     val info = AccessibilityServiceInfo().apply {
-      eventTypes          = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+      eventTypes          = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
       feedbackType        = AccessibilityServiceInfo.FEEDBACK_GENERIC
       flags               = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
       notificationTimeout = 50
@@ -64,15 +66,20 @@ class HadafAccessibilityService : AccessibilityService() {
   }
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-    if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+    val evType = event?.eventType ?: return
+    if (evType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+        evType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
     val pkg = event.packageName?.toString() ?: return
     if (pkg == packageName) {
       // User is inside Hadaf -> hide the floating mini player
-      AppBlockerModule.onAppForegrounded(this)
+      if (evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        AppBlockerModule.onAppForegrounded(this)
+      }
       return
     }
     // User switched to phone home screen or another app (ignore transient systemui shade/keyboard)
-    if (!pkg.contains("systemui") && !pkg.contains("inputmethod") && !pkg.contains("honeyboard")) {
+    if (evType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+        !pkg.contains("systemui") && !pkg.contains("inputmethod") && !pkg.contains("honeyboard")) {
       AppBlockerModule.onAppBackgrounded(this)
     }
 
@@ -84,7 +91,10 @@ class HadafAccessibilityService : AccessibilityService() {
     val prefEndMs = prefs.getLong(AppBlockerModule.KEY_SESSION_END, 0L)
     if (prefActive && prefEndMs > now) {
       sessionEndMs = prefEndMs
-      blockedPackages = prefs.getStringSet(AppBlockerModule.KEY_BLOCKED, emptySet()) ?: emptySet()
+      val storedSet = prefs.getStringSet(AppBlockerModule.KEY_BLOCKED, emptySet())
+      if (!storedSet.isNullOrEmpty()) {
+        blockedPackages = HashSet(storedSet)
+      }
     }
 
     // 1) Live focus or goal session
@@ -102,7 +112,8 @@ class HadafAccessibilityService : AccessibilityService() {
       shouldBlock = true
     }
 
-    if (shouldBlock) {
+    if (shouldBlock && now - lastRedirectMs > 350L) {
+      lastRedirectMs = now
       try {
         val launchIntent = packageManager
           .getLaunchIntentForPackage(packageName)

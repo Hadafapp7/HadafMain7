@@ -16,8 +16,9 @@ const STATEMENTS: string[] = [
   // goals
   `ALTER TABLE goals ADD COLUMN IF NOT EXISTS forfeit_reason text`,
   `ALTER TABLE goals ADD COLUMN IF NOT EXISTS forfeit_roast text`,
-  `ALTER TABLE goals ADD COLUMN IF NOT EXISTS block_apps boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE goals ADD COLUMN IF NOT EXISTS block_apps boolean NOT NULL DEFAULT true`,
   `ALTER TABLE goals ADD COLUMN IF NOT EXISTS blocked_apps jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE goals ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false`,
   // focus sessions
   `ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS forfeit_reason text`,
   `ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS forfeit_roast text`,

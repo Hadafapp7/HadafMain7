@@ -12,9 +12,11 @@ import { AppState, Platform } from "react-native";
 import { useEffect } from "react";
 
 import {
+  KNOWN_APPS,
   dismissNativeNotification,
   getDeviceUsageStats,
   isNativeAppBlockerSupported,
+  isNativeSessionActive,
   isScheduledBlockingSupported,
   playNativeCompletionAlarm,
   setScheduledBlocks,
@@ -171,12 +173,57 @@ export function resolvePackagesForAppNames(
   const pkgSet = new Set<string>();
   for (const rawName of appNames) {
     const clean = canonicalAppName(rawName) || rawName.trim();
-    const known = SOCIAL_APPS[clean] ?? SOCIAL_APPS[rawName] ?? [];
-    for (const kp of known) pkgSet.add(kp);
+    const lower = clean.toLowerCase();
+    // 1. Check SOCIAL_APPS (case-insensitive)
+    for (const [k, pkgs] of Object.entries(SOCIAL_APPS)) {
+      if (k.toLowerCase() === lower || k.toLowerCase() === rawName.trim().toLowerCase()) {
+        for (const kp of pkgs) pkgSet.add(kp);
+      }
+    }
+    // 2. Check KNOWN_APPS from hadaf-native (same as Focus Session!)
+    for (const [pkg, info] of Object.entries(KNOWN_APPS)) {
+      if (info.name.toLowerCase() === lower || info.name.toLowerCase() === rawName.trim().toLowerCase()) {
+        pkgSet.add(pkg);
+      }
+    }
+    // 3. Check dynamic device usage packages
     const dynamic = packagesByApp?.[clean] ?? packagesByApp?.[rawName] ?? [];
     for (const dp of dynamic) pkgSet.add(dp);
   }
   return Array.from(pkgSet);
+}
+
+/**
+ * Directly resolves and starts the native OS-level app blocker for a currently running Goal Session,
+ * using the exact same direct `startNativeSession` path as Focus Session!
+ */
+export async function enforceActiveGoalBlockingNow(
+  goal: Goal,
+  remainingMinutes: number
+): Promise<void> {
+  if (Platform.OS === "web" || !isNativeAppBlockerSupported) return;
+  if ((goal as any).blockApps === false) return;
+
+  try {
+    const top = await getTopSocialApps();
+    const chosen = Array.isArray((goal as any).blockedApps) ? (goal as any).blockedApps : [];
+    let targetPkgs =
+      chosen.length > 0 ? resolvePackagesForAppNames(chosen, top.packagesByApp) : [];
+
+    if (targetPkgs.length === 0) {
+      targetPkgs = top.packages;
+    }
+    // Fallback to all common distracting social packages if still empty
+    if (targetPkgs.length === 0) {
+      targetPkgs = resolvePackagesForAppNames(DEFAULT_TOP_APPS);
+    }
+
+    if (targetPkgs.length > 0) {
+      await startNativeSession(targetPkgs, Math.max(1, remainingMinutes));
+    }
+  } catch (e) {
+    console.warn("[Goals] enforceActiveGoalBlockingNow error:", e);
+  }
 }
 
 /**
@@ -598,7 +645,15 @@ const signatureOf = (goals: Goal[]): string =>
  * `force` re-applies even if nothing changed (e.g. when the app returns to the foreground).
  */
 export async function syncGoalAutomation(goals: Goal[], force = false): Promise<void> {
-  if (Platform.OS === "web" || running) return;
+  if (Platform.OS === "web") return;
+  // Always apply blocking immediately, even if notification rescheduling is in progress!
+  try {
+    await applyBlocking(goals);
+  } catch (e) {
+    console.log("[Goals] app-blocking sync failed:", e);
+  }
+
+  if (running) return;
   const signature = signatureOf(goals);
   const unchanged = signature === lastSignature;
   if (unchanged && !force) return;
@@ -611,11 +666,6 @@ export async function syncGoalAutomation(goals: Goal[], force = false): Promise<
       } catch (e) {
         console.log("[Goals] reminder scheduling failed:", e);
       }
-    }
-    try {
-      await applyBlocking(goals);
-    } catch (e) {
-      console.log("[Goals] app-blocking sync failed:", e);
     }
   } finally {
     running = false;

@@ -27,8 +27,9 @@ export const goalsTable = pgTable("goals", {
   forfeitReason: text("forfeit_reason"),
   forfeitRoast: text("forfeit_roast"),
   // When true, the selected/top social apps are blocked while the goal window is active.
-  blockApps: boolean("block_apps").notNull().default(false),
+  blockApps: boolean("block_apps").notNull().default(true),
   blockedApps: jsonb("blocked_apps").$type<string[]>().notNull().default([]),
+  archived: boolean("archived").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

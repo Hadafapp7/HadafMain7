@@ -462,13 +462,17 @@ class AppBlockerModule : Module() {
       val ctx = appContext.reactContext
       if (ctx != null) {
         val endMs = System.currentTimeMillis() + durationMinutes * 60_000L
+        val pkgSet = HashSet<String>(packageNames)
+        prefs(ctx).edit()
+          .remove(KEY_BLOCKED)
+          .commit()
         prefs(ctx).edit()
           .putBoolean(KEY_ACTIVE, true)
-          .putStringSet(KEY_BLOCKED, packageNames.toSet())
+          .putStringSet(KEY_BLOCKED, pkgSet)
           .putLong(KEY_SESSION_END, endMs)
-          .apply()
+          .commit()
         // Notify the running service immediately if it's active
-        HadafAccessibilityService.instance?.onSessionStarted(packageNames.toSet(), endMs)
+        HadafAccessibilityService.instance?.onSessionStarted(pkgSet, endMs)
       }
       Unit
     }
@@ -478,9 +482,9 @@ class AppBlockerModule : Module() {
       if (ctx != null) {
         prefs(ctx).edit()
           .putBoolean(KEY_ACTIVE, false)
-          .putStringSet(KEY_BLOCKED, emptySet<String>())
+          .remove(KEY_BLOCKED)
           .putLong(KEY_SESSION_END, 0L)
-          .apply()
+          .commit()
         HadafAccessibilityService.instance?.onSessionStopped()
       }
       Unit
