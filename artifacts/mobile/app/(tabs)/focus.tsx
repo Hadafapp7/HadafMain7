@@ -1723,7 +1723,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, gap: 22 },
 
   headerRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
+  headerTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: 1 },
 
   // Ring
   ringWrapper:   { alignItems: "center" },

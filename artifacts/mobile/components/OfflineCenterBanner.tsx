@@ -66,26 +66,14 @@ export function publishMiniPlayerUpdate(partial: Partial<MiniPlayerSnapshot>) {
   AsyncStorage.setItem(MINI_PLAYER_STORAGE_KEY, JSON.stringify(currentSnapshot)).catch(() => {});
 
   if (Platform.OS === "android") {
-    if (currentSnapshot.enabled) {
-      const perms = getPermissionStatus();
-      if (perms.hasOverlayPermission) {
-        if (isNativeMiniPlayerActive()) {
-          updateNativeMiniPlayer(
-            currentSnapshot.doomScore,
-            currentSnapshot.targetScore,
-            currentSnapshot.screenTimeLabel
-          );
-        } else {
-          startNativeMiniPlayer(
-            currentSnapshot.doomScore,
-            currentSnapshot.targetScore,
-            currentSnapshot.screenTimeLabel
-          );
-        }
-      }
-    } else {
-      stopNativeMiniPlayer();
-    }
+    // Always sync latest DoomScore, target, and screen time to native SharedPreferences.
+    // The native floating mini-player automatically shows ONLY when the user switches away
+    // from Hadaf to their phone's home screen or another app, and hides when inside Hadaf!
+    updateNativeMiniPlayer(
+      currentSnapshot.doomScore,
+      currentSnapshot.targetScore,
+      currentSnapshot.screenTimeLabel
+    );
   }
 }
 
@@ -208,10 +196,15 @@ export default function OfflineCenterBanner({ showMiniPlayer = false }: { showMi
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         void checkNetwork();
-        // Also re-sync native floating overlay if user just returned from granting overlay permission
-        if (Platform.OS === "android" && getMiniPlayerSnapshot().enabled) {
+        // User is inside Hadaf -> hide the floating mini player
+        if (Platform.OS === "android") {
+          stopNativeMiniPlayer();
+        }
+      } else if (state === "background" || state === "inactive") {
+        // User switched away from Hadaf to phone home screen or another app -> show floating mini player!
+        if (Platform.OS === "android") {
           const snap = getMiniPlayerSnapshot();
-          publishMiniPlayerUpdate(snap);
+          startNativeMiniPlayer(snap.doomScore, snap.targetScore, snap.screenTimeLabel);
         }
       }
     });
@@ -222,65 +215,8 @@ export default function OfflineCenterBanner({ showMiniPlayer = false }: { showMi
     };
   }, [checkNetwork]);
 
-  const panResponder = React.useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4,
-      onPanResponderMove: (_, g) => {
-        setPos((prev) => ({
-          x: Math.max(10, Math.min(SCREEN_W - 150, prev.x + g.dx * 0.15)),
-          y: Math.max(54, Math.min(SCREEN_H - 150, prev.y + g.dy * 0.15)),
-        }));
-      },
-    })
-  ).current;
-
-  const dotColor =
-    miniSnap.doomScore < 30 ? "#4ade80" : miniSnap.doomScore < 70 ? "#facc15" : "#f87171";
-
   return (
     <>
-      {/* In-App Floating Mini Player Pill (shown when enabled; on Android also floats system-wide over all apps) */}
-      {showMiniPlayer && miniSnap.enabled && (
-        <View
-          {...panResponder.panHandlers}
-          style={[
-            styles.miniPill,
-            {
-              left: pos.x,
-              top: pos.y,
-            },
-          ]}
-        >
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.miniPillTouch}
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/(tabs)" as any);
-            }}
-          >
-            <View style={[styles.miniDot, { backgroundColor: dotColor }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.miniTitle}>DOOM {miniSnap.doomScore}</Text>
-              <Text style={styles.miniSub} numberOfLines={1}>
-                {miniSnap.targetScore > 0 ? `Target ≤${miniSnap.targetScore}` : "Hadaf Mini"}
-                {miniSnap.screenTimeLabel ? ` · ${miniSnap.screenTimeLabel}` : ""}
-              </Text>
-            </View>
-            <TouchableOpacity
-              hitSlop={10}
-              onPress={() => {
-                Haptics.selectionAsync();
-                publishMiniPlayerUpdate({ enabled: false });
-              }}
-            >
-              <MaterialIcons name="close" size={14} color="rgba(255,255,255,0.65)" />
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* Directly Centered "Needs network" Card when mobile internet / Wi-Fi is off */}
       {isOffline && (
         <View style={styles.centerOverlay} pointerEvents="box-none">

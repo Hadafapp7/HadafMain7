@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingBottom: 14,
     backgroundColor: "#DDE0E6",
   },
-  topBarTitle: { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.5, color: "#000" },
+  topBarTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: 1, color: "#141618" },
 
   identitySection: { alignItems: "center", gap: 6 },
   avatarWrap:      { marginBottom: 6, position: "relative" },

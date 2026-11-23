@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#DDE0E6",
   },
   backBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
-  topBarTitle: { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.5, color: "#000" },
+  topBarTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: 1, color: "#141618" },
 
   levelCard: {
     backgroundColor: "#0a0a0a",

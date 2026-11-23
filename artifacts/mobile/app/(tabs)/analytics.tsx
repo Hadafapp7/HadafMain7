@@ -266,12 +266,13 @@ function isNoiseApp(appName?: string | null): boolean {
   return n === "call" || n === "phone" || n === "incallui" || n === "dialer";
 }
 
+// Subtle, high-contrast editorial palette designed to look great on Hadaf's Black & White theme
 const TOP5_COLORS = [
-  { main: "#6366f1", bg: "#eef2ff", light: "rgba(99, 102, 241, 0.16)" },  // Indigo
-  { main: "#ec4899", bg: "#fdf2f8", light: "rgba(236, 72, 153, 0.16)" },  // Pink
-  { main: "#f59e0b", bg: "#fffbeb", light: "rgba(245, 158, 11, 0.16)" },  // Amber
-  { main: "#10b981", bg: "#ecfdf5", light: "rgba(16, 185, 129, 0.16)" },  // Emerald
-  { main: "#3b82f6", bg: "#eff6ff", light: "rgba(59, 130, 246, 0.16)" },  // Blue
+  { main: "#111827", bg: "#f3f4f6", light: "rgba(17, 24, 39, 0.12)" },   // Obsidian Black
+  { main: "#2563eb", bg: "#eff6ff", light: "rgba(37, 99, 235, 0.12)" },  // Slate Royal Blue
+  { main: "#0d9488", bg: "#f0fdfa", light: "rgba(13, 148, 136, 0.12)" }, // Deep Teal
+  { main: "#d97706", bg: "#fffbeb", light: "rgba(217, 119, 6, 0.12)" },  // Warm Ochre Amber
+  { main: "#7c3aed", bg: "#f5f3ff", light: "rgba(124, 58, 237, 0.12)" }, // Muted Royal Violet
 ];
 
 interface Top5AppStat {
@@ -282,6 +283,13 @@ interface Top5AppStat {
   color: string;
   bgColor: string;
   lightColor: string;
+  /** Per-slot minutes corresponding to the X-axis slots (Mon..Sun for WEEK, Jan..Dec for MONTH, Years for YEAR) */
+  slotMinutes: number[];
+}
+
+export interface Top5TimelineChartData {
+  slots: { key: string; label: string; isCurrent: boolean }[];
+  apps: Top5AppStat[];
 }
 
 function buildTop5AppsForRange(
@@ -290,52 +298,115 @@ function buildTop5AppsForRange(
   nativeWeekly: { appName: string; category?: string; totalMinutes: number }[],
   nativeMonthly: { appName: string; category?: string; totalMinutes: number }[],
   range: PeriodRange
-): Top5AppStat[] {
-  const now = Date.now();
+): Top5TimelineChartData {
+  const now = new Date();
+  const nowMs = now.getTime();
+
+  // Build X-axis slots:
+  // WEEK -> Mon, Tue, Wed, Thu, Fri, Sat, Sun of current week
+  // MONTH -> Jan..Dec of current year
+  // YEAR -> Last 5 years
+  const slots: { key: string; label: string; isCurrent: boolean }[] = [];
+  if (range === "WEEK") {
+    const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const todayDow = (now.getDay() + 6) % 7; // 0 = Mon .. 6 = Sun
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - todayDow);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      slots.push({
+        key,
+        label: weekdayLabels[i],
+        isCurrent: i === todayDow,
+      });
+    }
+  } else if (range === "MONTH") {
+    const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    for (let m = 0; m < 12; m++) {
+      slots.push({
+        key: `${curYear}-${String(m + 1).padStart(2, "0")}`,
+        label: monthLabels[m],
+        isCurrent: m === curMonth,
+      });
+    }
+  } else {
+    const curYear = now.getFullYear();
+    for (let y = curYear - 4; y <= curYear; y++) {
+      slots.push({
+        key: String(y),
+        label: String(y),
+        isCurrent: y === curYear,
+      });
+    }
+  }
+
   const cutoffMs =
     range === "WEEK"
-      ? now - 7 * 86_400_000
+      ? nowMs - 7 * 86_400_000
       : range === "MONTH"
-        ? now - 30 * 86_400_000
-        : now - 365 * 86_400_000;
+        ? nowMs - 365 * 86_400_000
+        : nowMs - 5 * 365 * 86_400_000;
 
-  // 1. Aggregate from server entries in the period (deduped by app + day)
-  const perAppDay = new Map<string, { appName: string; category: string; mins: number }>();
+  // 1. Aggregate from server entries (deduped by app + day)
+  const perAppDay = new Map<string, { appName: string; category: string; dayKey: string; monthKey: string; yearKey: string; mins: number }>();
   for (const e of entries) {
     if (isNoiseApp(e.appName)) continue;
-    const ts = new Date(e.loggedAt).getTime();
+    const d = new Date(e.loggedAt);
+    const ts = d.getTime();
     if (ts < cutoffMs) continue;
-    const dayKey = new Date(e.loggedAt).toISOString().slice(0, 10);
+    const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const yearKey = String(d.getFullYear());
     const k = `${e.appName.toLowerCase()}|${dayKey}`;
     const prev = perAppDay.get(k);
     if (!prev || e.durationMinutes >= prev.mins) {
       perAppDay.set(k, {
         appName: e.appName,
         category: e.category || "Social",
+        dayKey,
+        monthKey,
+        yearKey,
         mins: e.durationMinutes,
       });
     }
   }
 
-  const totalsByApp = new Map<string, { appName: string; category: string; totalMinutes: number }>();
+  const totalsByApp = new Map<string, { appName: string; category: string; totalMinutes: number; bySlot: Map<string, number> }>();
   for (const item of perAppDay.values()) {
+    const slotKey = range === "WEEK" ? item.dayKey : range === "MONTH" ? item.monthKey : item.yearKey;
+    if (!slots.some((s) => s.key === slotKey)) continue;
     const k = item.appName.toLowerCase();
-    const cur = totalsByApp.get(k) ?? { appName: item.appName, category: item.category, totalMinutes: 0 };
+    const cur = totalsByApp.get(k) ?? {
+      appName: item.appName,
+      category: item.category,
+      totalMinutes: 0,
+      bySlot: new Map<string, number>(),
+    };
     cur.totalMinutes += item.mins;
+    cur.bySlot.set(slotKey, (cur.bySlot.get(slotKey) ?? 0) + item.mins);
     totalsByApp.set(k, cur);
   }
 
-  // 2. Merge with native device stats for WEEK (7d) or MONTH/YEAR (30d) so device data is always reflected
+  // 2. Merge with native device stats for WEEK (7d) or MONTH/YEAR (30d)
   const nativeSource = range === "WEEK" ? nativeWeekly : nativeMonthly;
+  const currentSlotKey = slots.find((s) => s.isCurrent)?.key ?? slots[slots.length - 1]?.key;
   for (const n of nativeSource) {
     if (isNoiseApp(n.appName) || n.totalMinutes <= 0) continue;
     const k = n.appName.toLowerCase();
     const cur = totalsByApp.get(k);
     if (!cur || n.totalMinutes > cur.totalMinutes) {
+      const bySlot = cur?.bySlot ?? new Map<string, number>();
+      const existingSlotSum = Array.from(bySlot.values()).reduce((a, b) => a + b, 0);
+      if (existingSlotSum < n.totalMinutes && currentSlotKey) {
+        bySlot.set(currentSlotKey, (bySlot.get(currentSlotKey) ?? 0) + (n.totalMinutes - existingSlotSum));
+      }
       totalsByApp.set(k, {
         appName: n.appName,
         category: n.category || cur?.category || "Other",
         totalMinutes: n.totalMinutes,
+        bySlot,
       });
     }
   }
@@ -344,10 +415,13 @@ function buildTop5AppsForRange(
   if (totalsByApp.size === 0 && summary.length > 0) {
     for (const s of summary) {
       if (isNoiseApp(s.appName) || s.totalMinutes <= 0) continue;
+      const bySlot = new Map<string, number>();
+      if (currentSlotKey) bySlot.set(currentSlotKey, s.totalMinutes);
       totalsByApp.set(s.appName.toLowerCase(), {
         appName: s.appName,
         category: s.category || "Other",
         totalMinutes: s.totalMinutes,
+        bySlot,
       });
     }
   }
@@ -359,7 +433,7 @@ function buildTop5AppsForRange(
 
   const sumTop5 = Math.max(1, top5.reduce((acc, a) => acc + a.totalMinutes, 0));
 
-  return top5.map((a, idx) => {
+  const apps: Top5AppStat[] = top5.map((a, idx) => {
     const palette = TOP5_COLORS[idx % TOP5_COLORS.length];
     return {
       appName: a.appName,
@@ -369,85 +443,80 @@ function buildTop5AppsForRange(
       color: palette.main,
       bgColor: palette.bg,
       lightColor: palette.light,
+      slotMinutes: slots.map((s) => a.bySlot.get(s.key) ?? 0),
     };
   });
+
+  return { slots, apps };
 }
 
-function AnimatedColorfulVerticalBar({
-  item,
-  maxMinutes,
-  index,
+function AnimatedThinLineBar({
+  minutes,
+  maxSlotMinutes,
+  color,
+  chartH,
+  delay,
   animKey,
 }: {
-  item: Top5AppStat;
-  maxMinutes: number;
-  index: number;
+  minutes: number;
+  maxSlotMinutes: number;
+  color: string;
+  chartH: number;
+  delay: number;
   animKey: number;
 }) {
-  const chartH = 132;
-  const targetH = maxMinutes > 0 ? Math.max(18, Math.round((item.totalMinutes / maxMinutes) * chartH)) : 18;
+  const targetH =
+    minutes > 0 && maxSlotMinutes > 0
+      ? Math.max(8, Math.round((minutes / maxSlotMinutes) * chartH))
+      : 3;
   const barH = useSharedValue(0);
 
   useEffect(() => {
     barH.value = 0;
-    barH.value = withDelay(120 + index * 90, withSpring(targetH, { damping: 16, stiffness: 110 }));
-  }, [targetH, index, animKey]);
+    barH.value = withDelay(delay, withSpring(targetH, { damping: 18, stiffness: 120 }));
+  }, [targetH, delay, animKey]);
 
-  const animBarStyle = useAnimatedStyle(() => ({
+  const animStyle = useAnimatedStyle(() => ({
     height: barH.value,
   }));
 
-  const shortName = item.appName.length > 8 ? item.appName.slice(0, 7) + "…" : item.appName;
-
   return (
-    <View style={styles.colorBarCol}>
-      <View style={[styles.colorBarTimePill, { backgroundColor: item.lightColor }]}>
-        <Text style={[styles.colorBarTimeText, { color: item.color }]}>
-          {formatMinutes(item.totalMinutes)}
-        </Text>
-      </View>
-
-      <View style={[styles.colorBarSlot, { height: chartH }]}>
-        <Animated.View
-          style={[
-            styles.colorBarFill,
-            {
-              backgroundColor: item.color,
-              shadowColor: item.color,
-            },
-            animBarStyle,
-          ]}
-        >
-          <View style={styles.colorBarRankCircle}>
-            <Text style={[styles.colorBarRankText, { color: item.color }]}>#{index + 1}</Text>
-          </View>
-        </Animated.View>
-      </View>
-
-      <Text style={styles.colorBarAppName} numberOfLines={1}>
-        {shortName}
-      </Text>
-      <Text style={[styles.colorBarShareText, { color: item.color }]}>
-        {item.sharePct}%
-      </Text>
-    </View>
+    <Animated.View
+      style={[
+        styles.thinLineBar,
+        {
+          backgroundColor: minutes > 0 ? color : "rgba(0,0,0,0.08)",
+        },
+        animStyle,
+      ]}
+    />
   );
 }
 
 function ColorfulTop5AppsChartCard({
-  top5,
+  chartData,
   range,
   onRangeChange,
   animKey,
 }: {
-  top5: Top5AppStat[];
+  chartData: Top5TimelineChartData;
   range: PeriodRange;
   onRangeChange: (r: PeriodRange) => void;
   animKey: number;
 }) {
   const colors = useColors();
-  const maxMinutes = Math.max(1, ...top5.map((a) => a.totalMinutes));
-  const totalTop5Minutes = top5.reduce((s, a) => s + a.totalMinutes, 0);
+  const { slots, apps: top5 } = chartData;
+  const chartH = 128;
+
+  const maxSlotMinutes = useMemo(() => {
+    let m = 1;
+    for (const app of top5) {
+      for (const v of app.slotMinutes) {
+        if (v > m) m = v;
+      }
+    }
+    return m;
+  }, [top5]);
 
   return (
     <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
@@ -488,48 +557,41 @@ function ColorfulTop5AppsChartCard({
         <EmptyChart colors={colors} />
       ) : (
         <>
-          {/* Colorful 5-Bar Vertical Chart */}
+          {/* Thin-Line Interval Chart (Mon, Tue, Wed, Thu, Fri, Sat, Sun in WEEK; Jan..Dec in MONTH; Years in YEAR) */}
           <View style={styles.colorVerticalChartBox}>
-            <View style={styles.colorBarsRow}>
-              {top5.map((item, idx) => (
-                <AnimatedColorfulVerticalBar
-                  key={`${item.appName}-${range}-${animKey}`}
-                  item={item}
-                  maxMinutes={maxMinutes}
-                  index={idx}
-                  animKey={animKey}
-                />
+            <View style={styles.thinSlotColsRow}>
+              {slots.map((slot, slotIdx) => (
+                <View key={slot.key} style={styles.thinSlotCol}>
+                  <View style={[styles.thinLinesGroup, { height: chartH }]}>
+                    {top5.map((app, appIdx) => (
+                      <AnimatedThinLineBar
+                        key={`${app.appName}-${slot.key}-${animKey}`}
+                        minutes={app.slotMinutes[slotIdx] ?? 0}
+                        maxSlotMinutes={maxSlotMinutes}
+                        color={app.color}
+                        chartH={chartH}
+                        delay={80 + slotIdx * 35 + appIdx * 20}
+                        animKey={animKey}
+                      />
+                    ))}
+                  </View>
+                  <Text
+                    style={[
+                      styles.thinSlotLabel,
+                      slot.isCurrent && styles.thinSlotLabelCurrent,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {slot.label}
+                  </Text>
+                </View>
               ))}
             </View>
           </View>
 
-          {/* Colorful Multi-Segment Share Bar */}
-          <View style={{ gap: 6 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ fontSize: 10, fontFamily: "Inter_700Bold", color: colors.outline, letterSpacing: 1 }}>
-                {range === "WEEK" ? "WEEKLY" : range === "MONTH" ? "MONTHLY" : "YEARLY"} SHARE DISTRIBUTION
-              </Text>
-              <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: colors.onSurface }}>
-                Total: {formatMinutes(totalTop5Minutes)}
-              </Text>
-            </View>
-            <View style={styles.segmentedShareTrack}>
-              {top5.map((item) => (
-                <View
-                  key={item.appName}
-                  style={{
-                    flex: Math.max(1, item.totalMinutes),
-                    backgroundColor: item.color,
-                    height: "100%",
-                  }}
-                />
-              ))}
-            </View>
-          </View>
-
-          {/* Colorful Legend & Breakdown List */}
-          <View style={{ gap: 10, marginTop: 4 }}>
-            {top5.map((item, idx) => (
+          {/* Compact Monochrome-Friendly Top 5 Legend Rows */}
+          <View style={{ gap: 8, marginTop: 2 }}>
+            {top5.map((item) => (
               <View
                 key={item.appName}
                 style={[
@@ -537,15 +599,14 @@ function ColorfulTop5AppsChartCard({
                   { backgroundColor: item.bgColor },
                 ]}
               >
-                <View style={[styles.colorLegendDot, { backgroundColor: item.color }]}>
-                  <Text style={styles.colorLegendRank}>{idx + 1}</Text>
-                </View>
+                {/* Thin vertical line color indicator matching the chart lines */}
+                <View style={[styles.thinLegendLineIndicator, { backgroundColor: item.color }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.topAppName, { color: "#111827", fontFamily: "Inter_700Bold" }]}>
                     {item.appName}
                   </Text>
-                  <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: item.color, letterSpacing: 0.6 }}>
-                    {(item.category || "OTHER").toUpperCase()} · {item.sharePct}% OF TOP 5
+                  <Text style={{ fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#64748b", letterSpacing: 0.6 }}>
+                    {(item.category || "OTHER").toUpperCase()} · {item.sharePct}% SHARE
                   </Text>
                 </View>
                 <View style={[styles.colorTimeBadge, { backgroundColor: item.color }]}>
@@ -969,30 +1030,38 @@ function GoalTrackerBlock({
 
   return (
     <View style={[styles.chartCard, { backgroundColor: colors.card }]}>
-      <View style={styles.chartHeader}>
-        <View>
-          <Text style={[styles.chartSubLabel, { color: colors.outline }]}>GOAL TRACKER · {range}</Text>
-          <Text style={[styles.chartTitle, { color: colors.onSurface }]}>Screen Time vs Target</Text>
+      <View style={[styles.chartHeader, { alignItems: "center", gap: 8 }]}>
+        <View style={{ flex: 1, flexShrink: 1, paddingRight: 4 }}>
+          <Text style={[styles.chartSubLabel, { color: colors.outline }]} numberOfLines={1}>
+            GOAL TRACKER · {range}
+          </Text>
+          <Text
+            style={[styles.chartTitle, { color: colors.onSurface, fontSize: 18 }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            Screen Time vs Target
+          </Text>
         </View>
 
-        {/* Target Stepper */}
-        <View style={[styles.targetStepper, { backgroundColor: colors.surfaceContainerHigh }]}>
+        {/* Target Stepper (compact & flexShrink: 0 so it always fits inside the card) */}
+        <View style={[styles.targetStepper, { backgroundColor: colors.surfaceContainerHigh, flexShrink: 0 }]}>
           <TouchableOpacity
             hitSlop={8}
             onPress={() => onTargetChange(Math.max(MIN_TARGET, tracker.targetPerDay - TARGET_STEP))}
             style={styles.stepperBtn}
           >
-            <MaterialIcons name="remove" size={16} color={colors.onSurface} />
+            <MaterialIcons name="remove" size={14} color={colors.onSurface} />
           </TouchableOpacity>
-          <Text style={[styles.targetValueText, { color: colors.onSurface }]}>
-            {fmtMin(tracker.targetPerDay)}/d
+          <Text style={[styles.targetValueText, { color: colors.onSurface }]} numberOfLines={1}>
+            {fmtShort(tracker.targetPerDay)}/d
           </Text>
           <TouchableOpacity
             hitSlop={8}
             onPress={() => onTargetChange(Math.min(MAX_TARGET, tracker.targetPerDay + TARGET_STEP))}
             style={styles.stepperBtn}
           >
-            <MaterialIcons name="add" size={16} color={colors.onSurface} />
+            <MaterialIcons name="add" size={14} color={colors.onSurface} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1599,13 +1668,13 @@ export default function AnalyticsScreen() {
               )}
             </Animated.View>
 
-            {/* Colorful Weekly / Monthly / Yearly Top 5 Most Used Apps Chart (Point 3) */}
+            {/* Colorful Weekly / Monthly / Yearly Top 5 Most Used Apps Thin-Line Chart (Point 5) */}
             <Animated.View
               key={`top5-chart-${refreshAnimKey}`}
               entering={isWeb ? undefined : FadeInDown.delay(270).springify()}
             >
               <ColorfulTop5AppsChartCard
-                top5={top5AppsForRange}
+                chartData={top5AppsForRange}
                 range={activeRange}
                 onRangeChange={(r) => {
                   setActiveRange(r);
@@ -1690,78 +1759,45 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
     borderRadius: 20,
     paddingVertical: 16,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
-  colorBarsRow: {
+  thinSlotColsRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "space-around",
-    gap: 6,
+    justifyContent: "space-between",
+    gap: 2,
   },
-  colorBarCol: {
+  thinSlotCol: {
     flex: 1,
     alignItems: "center",
-    gap: 5,
+    gap: 6,
   },
-  colorBarTimePill: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  colorBarTimeText: {
-    fontSize: 9.5,
-    fontFamily: "Inter_700Bold",
-  },
-  colorBarSlot: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  colorBarFill: {
-    width: 34,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    paddingTop: 6,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  colorBarRankCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  colorBarRankText: {
-    fontSize: 9,
-    fontFamily: "Inter_700Bold",
-  },
-  colorBarAppName: {
-    fontSize: 10.5,
-    fontFamily: "Inter_700Bold",
-    color: "#1e293b",
-    marginTop: 2,
-  },
-  colorBarShareText: {
-    fontSize: 9.5,
-    fontFamily: "Inter_700Bold",
-  },
-  segmentedShareTrack: {
-    height: 12,
-    borderRadius: 6,
+  thinLinesGroup: {
     flexDirection: "row",
-    overflow: "hidden",
-    backgroundColor: "#e2e8f0",
-    gap: 2,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    gap: 2.5,
+    width: "100%",
+  },
+  thinLineBar: {
+    width: 3,
+    borderRadius: 1.5,
+  },
+  thinSlotLabel: {
+    fontSize: 9.5,
+    fontFamily: "Inter_500Medium",
+    color: "#64748b",
+  },
+  thinSlotLabelCurrent: {
+    fontFamily: "Inter_700Bold",
+    color: "#111827",
+  },
+  thinLegendLineIndicator: {
+    width: 3.5,
+    height: 22,
+    borderRadius: 2,
   },
   colorLegendRow: {
     flexDirection: "row",

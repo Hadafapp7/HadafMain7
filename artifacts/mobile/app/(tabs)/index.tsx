@@ -403,141 +403,6 @@ const QUICK_TIMES = [
   { label: "3h",  mins: 180 },
 ];
 
-// ─── Pure Black & White Original App Icon ────────────────────────────────────
-
-function MonochromeBrandSvg({ appName, pkg, category }: { appName: string; pkg?: string; category?: string }) {
-  const n = (appName || "").toLowerCase();
-  const p = (pkg || "").toLowerCase();
-
-  // Instagram original camera glyph in pure B&W
-  if (n.includes("instagram") || p.includes("instagram")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgRect x="3" y="3" width="18" height="18" rx="5" stroke="#fff" strokeWidth="2" fill="none" />
-        <SvgCircle cx="12" cy="12" r="4.2" stroke="#fff" strokeWidth="2" fill="none" />
-        <SvgCircle cx="17.3" cy="6.7" r="1.2" fill="#fff" />
-      </Svg>
-    );
-  }
-
-  // WhatsApp original phone-in-bubble glyph in pure B&W
-  if (n.includes("whatsapp") || p.includes("whatsapp")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgPath
-          d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3z"
-          stroke="#fff"
-          strokeWidth="2"
-          strokeLinejoin="round"
-          fill="none"
-        />
-        <SvgPath
-          d="M9.5 8.5c.3 0 .6 0 .8.5l.7 1.6c.1.3 0 .6-.2.8l-.5.6c.6 1.1 1.5 1.9 2.6 2.5l.6-.5c.2-.2.5-.3.8-.2l1.6.7c.5.2.5.5.5.8 0 1-.8 1.8-1.8 1.8-2.8 0-6.9-4.1-6.9-6.9 0-1 .8-1.7 1.8-1.7z"
-          fill="#fff"
-        />
-      </Svg>
-    );
-  }
-
-  // Chrome original 3-ring lens glyph in pure B&W
-  if (n.includes("chrome") || p.includes("chrome")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgCircle cx="12" cy="12" r="9" stroke="#fff" strokeWidth="2" fill="none" />
-        <SvgCircle cx="12" cy="12" r="3.6" fill="#fff" />
-        <SvgPath d="M12 8.4H20.2M8.9 13.8L4.8 6.7M15.1 13.8L11 20.9" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
-      </Svg>
-    );
-  }
-
-  // Brave original lion/shield glyph in pure B&W
-  if (n.includes("brave") || p.includes("brave")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgPath
-          d="M12 2.5L4.5 5.5l1.2 9.2L12 21.5l6.3-6.8 1.2-9.2L12 2.5z"
-          stroke="#fff"
-          strokeWidth="2"
-          strokeLinejoin="round"
-          fill="none"
-        />
-        <SvgPath d="M9 10l3 2 3-2M10 14.5h4" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
-      </Svg>
-    );
-  }
-
-  // YouTube original rounded screen + play triangle in pure B&W
-  if (n.includes("youtube") || p.includes("youtube")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgRect x="2.5" y="5" width="19" height="14" rx="4" stroke="#fff" strokeWidth="2" fill="none" />
-        <SvgPath d="M10 9.2L15.5 12 10 14.8V9.2z" fill="#fff" />
-      </Svg>
-    );
-  }
-
-  // X / Twitter original glyph in pure B&W
-  if (n.includes("twitter") || n === "x" || p.includes("twitter")) {
-    return (
-      <Svg width={20} height={20} viewBox="0 0 24 24">
-        <SvgPath d="M4 4l16 16M20 4L4 20" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
-      </Svg>
-    );
-  }
-
-  // TikTok original music note glyph in pure B&W
-  if (n.includes("tiktok") || p.includes("musically") || p.includes("trill")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgPath
-          d="M14 4v10.5a3.5 3.5 0 1 1-2.5-3.35V8.5a6.5 6.5 0 1 0 5.5 6.4V9.2c1.2.9 2.6 1.3 4 1.3V7.5c-2.2 0-4-1.5-4-3.5h-3z"
-          fill="#fff"
-        />
-      </Svg>
-    );
-  }
-
-  // Facebook original 'f' glyph in pure B&W
-  if (n.includes("facebook") || p.includes("facebook")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgPath
-          d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.326-.043-1.557-.14-2.857-.14C11.928 2 10 3.657 10 6.7v2.8H7v4h3V22h4v-8.5z"
-          fill="#fff"
-        />
-      </Svg>
-    );
-  }
-
-  // Telegram paper plane in pure B&W
-  if (n.includes("telegram") || p.includes("telegram")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgPath
-          d="M21 4L3 11l6.5 2.5L18 7l-6 7.8v5.2l3.2-3.3L19 19l2-15z"
-          stroke="#fff"
-          strokeWidth="1.8"
-          strokeLinejoin="round"
-          fill="none"
-        />
-      </Svg>
-    );
-  }
-
-  // Spotify waves in pure B&W
-  if (n.includes("spotify") || p.includes("spotify")) {
-    return (
-      <Svg width={22} height={22} viewBox="0 0 24 24">
-        <SvgCircle cx="12" cy="12" r="9" stroke="#fff" strokeWidth="2" fill="none" />
-        <SvgPath d="M7.5 10c3-1 6.5-.8 9.2.8M8.2 13c2.4-.7 5.2-.5 7.4.7M9 16c1.8-.5 3.9-.3 5.5.6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-      </Svg>
-    );
-  }
-
-  const icon = APP_ICONS[(category ?? "").toLowerCase()] ?? "apps";
-  return <MaterialIcons name={icon} size={20} color="#fff" />;
-}
-
 function AppRow({ app, index, last, maxMinutes, animKey = 0 }: {
   app: any; index: number; last: boolean; maxMinutes: number; animKey?: number;
 }) {
@@ -548,22 +413,13 @@ function AppRow({ app, index, last, maxMinutes, animKey = 0 }: {
     progress.value = withDelay(280 + index * 110, withSpring(percent, { damping: 20 }));
   }, [percent, animKey]);
   const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as any }));
-
-  const hasNativeBwIcon = typeof app.iconUri === "string" && app.iconUri.startsWith("data:image/");
+  const icon = APP_ICONS[(app.category ?? "").toLowerCase()] ?? "apps";
 
   return (
     <View>
       <View style={styles.appRow}>
-        <View style={[styles.appIconWrap, hasNativeBwIcon && styles.appIconWrapNativeBw]}>
-          {hasNativeBwIcon ? (
-            <Image
-              source={{ uri: app.iconUri }}
-              style={styles.appBwIconImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <MonochromeBrandSvg appName={app.appName} pkg={app.packageName} category={app.category} />
-          )}
+        <View style={styles.appIconWrap}>
+          <MaterialIcons name={icon} size={20} color="#fff" />
         </View>
         <View style={styles.appInfo}>
           <Text style={styles.appName}>{app.appName}</Text>
@@ -1754,57 +1610,18 @@ export default function HomeScreen() {
               trackColor="rgba(255,255,255,0.2)"
               fillColor={progressColor}
             />
-            <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)", paddingTop: 8, marginTop: 6, flexDirection: "row", justifyContent: "space-between" }}>
+            <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)", paddingTop: 8, marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={{ fontSize: 9, fontFamily: "Inter_600SemiBold", color: "rgba(255,255,255,0.5)", letterSpacing: 0.8 }}>
-                {targetDoomScore !== null ? `TARGET: ${targetDoomScore} PTS` : "WEEKLY AVG"}
+                WEEKLY AVG
               </Text>
               <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" }}>
-                AVG {avgDoomScore} pts
+                {avgDoomScore} pts
               </Text>
             </View>
           </TouchableOpacity>
         </Animated.View>
 
-        {/* ── Hadaf DoomScore Floating Mini Player Toggle Card (Point 10) ── */}
-        <Animated.View
-          key={`mini-player-${refreshAnimKey}`}
-          entering={isWeb ? undefined : FadeInDown.delay(95).springify()}
-          style={styles.miniPlayerCard}
-        >
-          <View style={styles.miniPlayerIconBox}>
-            <MaterialIcons name="picture-in-picture-alt" size={19} color="#fff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.miniPlayerCardTitle}>HADAF MINI PLAYER</Text>
-            <Text style={styles.miniPlayerCardSub}>
-              {miniPlayerEnabled
-                ? `Active · Displaying DoomScore (${doomScore} pts) anywhere on your phone`
-                : "Float a live DoomScore mini-app anywhere on your phone"}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.miniPlayerToggleBtn,
-              miniPlayerEnabled && styles.miniPlayerToggleBtnActive,
-            ]}
-            activeOpacity={0.85}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              void toggleMiniPlayer(true);
-            }}
-          >
-            <Text
-              style={[
-                styles.miniPlayerToggleText,
-                miniPlayerEnabled && { color: "#fff" },
-              ]}
-            >
-              {miniPlayerEnabled ? "ON" : "LAUNCH"}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* ── Most Used Apps (Original Icons in Pure Black & White Theme) ── */}
+        {/* ── Most Used Apps ── */}
         <Animated.View
           key={`apps-card-${refreshAnimKey}`}
           entering={isWeb ? undefined : FadeInDown.delay(130).springify()}
@@ -1867,7 +1684,7 @@ export default function HomeScreen() {
             label2="GOALS"
             badgeText={
               displayDailyGoals.length === 0
-                ? "VIEW LIST"
+                ? "VIEW"
                 : `${doneDailyCount}/${displayDailyGoals.length} DONE`
             }
             badgeBg="#0284C7"
@@ -2240,33 +2057,14 @@ const styles = StyleSheet.create({
   appsHeaderAddBtn:{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#f0f0f0", alignItems: "center", justifyContent: "center" },
 
   appRow:      { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
-  appIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#0a0a0a",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#1f1f1f",
-  },
-  appIconWrapNativeBw: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d4d4d8",
-  },
-  appBwIconImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 11,
-  },
+  appIconWrap: { width: 42, height: 42, borderRadius: 12, backgroundColor: "#2a2a2a", alignItems: "center", justifyContent: "center" },
   appInfo:     { flex: 1, gap: 2 },
   appName:     { fontSize: 14, fontFamily: "Inter_700Bold", color: "#111" },
   appCategory: { fontSize: 10, fontFamily: "Inter_500Medium", color: "#888", letterSpacing: 0.8 },
   appRight:    { alignItems: "flex-end", gap: 5 },
   appTime:     { fontSize: 14, fontFamily: "Inter_700Bold", color: "#111" },
   appBarTrack: { width: 64, height: 4, borderRadius: 2, backgroundColor: "#ececec", overflow: "hidden" },
-  appBarFill:  { height: "100%", borderRadius: 2, backgroundColor: "#111" },
+  appBarFill:  { height: "100%", borderRadius: 2, backgroundColor: "#222" },
   appDivider:  { height: 1, backgroundColor: "#f0f0f0" },
 
   // Oval accent cards
